@@ -7,12 +7,11 @@ import {
 } from 'react-native';
 import API_URL from './configS';
 
-
-
 export default function Login({ navigation }) {
   const [identificador, setIdentificador] = useState('');
   const [contrasena, setContrasena] = useState('');
   const [loading, setLoading] = useState(false);
+  const [verContrasena, setVerContrasena] = useState(false);
 
   const handleLogin = async () => {
     if (!identificador.trim() || !contrasena.trim()) {
@@ -37,7 +36,6 @@ export default function Login({ navigation }) {
 
       const { usuario } = data;
 
-      // Navegar según el tipo de usuario
       if (usuario.tipo === 'trabajador') {
         navigation.navigate('BuscadorTrabajador', { usuario });
       } else if (usuario.tipo === 'cliente') {
@@ -71,26 +69,33 @@ export default function Login({ navigation }) {
             <Text style={styles.googleText}>G   Continuar con Google</Text>
           </TouchableOpacity>
 
-          {/* Campo unificado: acepta DNI o email */}
-          <TextInput
-            style={styles.input}
-            placeholder="DNI o correo electrónico"
-            placeholderTextColor="#777"
-            autoCapitalize="none"
-            keyboardType="email-address"
-            value={identificador}
-            onChangeText={setIdentificador}
-          />
+          {/* Input DNI / email */}
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.input}
+              placeholder="DNI o correo electrónico"
+              placeholderTextColor="#999"
+              autoCapitalize="none"
+              value={identificador}
+              onChangeText={setIdentificador}
+            />
+          </View>
 
-          <TextInput
-            style={styles.input}
-            placeholder="contraseña"
-            placeholderTextColor="#777"
-            secureTextEntry
-            autoCapitalize="none"
-            value={contrasena}
-            onChangeText={setContrasena}
-          />
+          {/* Input contraseña con Ver/Ocultar */}
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.input}
+              placeholder="Contraseña"
+              placeholderTextColor="#999"
+              secureTextEntry={!verContrasena}
+              autoCapitalize="none"
+              value={contrasena}
+              onChangeText={setContrasena}
+            />
+            <TouchableOpacity onPress={() => setVerContrasena(!verContrasena)}>
+              <Text style={styles.verText}>{verContrasena ? 'Ocultar' : 'Ver'}</Text>
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity
             style={[styles.loginButton, loading && { opacity: 0.7 }]}
@@ -104,12 +109,14 @@ export default function Login({ navigation }) {
             }
           </TouchableOpacity>
 
-          <TouchableOpacity>
-            <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
+          <TouchableOpacity style={styles.linkRow}>
+            <Text style={styles.linkText}>¿Olvidaste tu contraseña?</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => navigation.navigate('Registrarse')}>
-            <Text style={styles.registerText}>¿No tenés cuenta?</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Registrarse')} style={styles.linkRow}>
+            <Text style={styles.linkText}>
+              ¿No tenés cuenta? <Text style={styles.linkBold}>Registrate</Text>
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -132,7 +139,7 @@ const styles = StyleSheet.create({
   logo: { width: 175, height: 175, resizeMode: 'contain' },
   welcomeText: { color: 'white', fontSize: 26, fontWeight: '700', marginTop: 15 },
   card: {
-    backgroundColor: '#b4b7bc63', marginHorizontal: 32, marginTop: -50,
+    backgroundColor: '#3d3d3d63', marginHorizontal: 32, marginTop: -50,
     borderRadius: 24, padding: 24, alignItems: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.2, shadowRadius: 8, elevation: 5,
@@ -142,17 +149,47 @@ const styles = StyleSheet.create({
     borderRadius: 20, alignItems: 'center', marginBottom: 20,
   },
   googleText: { color: '#333', fontWeight: '600', fontSize: 14 },
-  input: {
-    backgroundColor: '#F5F5F7', width: '100%', borderRadius: 20,
-    paddingHorizontal: 16, paddingVertical: Platform.OS === 'ios' ? 12 : 10,
-    fontSize: 14, color: '#222', marginBottom: 14, textAlign: 'center',
+
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F7',
+    width: '100%',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    marginBottom: 20,
   },
+  input: {
+    flex: 1,
+    fontSize: 14,
+    color: '#222',
+    paddingVertical: Platform.OS === 'ios' ? 12 : 10,
+  },
+  verText: {
+    color: '#1565D8',
+    fontSize: 12,
+    fontWeight: '600',
+    paddingVertical: Platform.OS === 'ios' ? 12 : 10,
+  },
+
   loginButton: {
     backgroundColor: '#1565D8', width: '100%', paddingVertical: 12,
-    borderRadius: 20, alignItems: 'center', marginTop: 6, marginBottom: 16,
+    borderRadius: 20, alignItems: 'center', marginTop: 6, marginBottom: 25,
   },
   loginButtonText: { color: 'white', fontWeight: '700', fontSize: 15 },
-  forgotText: { color: 'white', fontSize: 13, fontWeight: '500', marginBottom: 8 },
-  registerText: { color: 'white', fontSize: 13, fontWeight: '600' },
+
+  linkRow: { marginBottom: 20 },
+  linkText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 13,
+    fontWeight: '400',
+    textAlign: 'center',
+  },
+  linkBold: {
+    color: 'white',
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
+
   frase: { textAlign: 'center', color: '#1565D8', fontSize: 22, fontWeight: '800', lineHeight: 30 },
-}); 
+});

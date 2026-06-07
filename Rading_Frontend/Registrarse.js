@@ -31,7 +31,7 @@ function InputField({ label, placeholder, secureTextEntry, keyboardType, value, 
 
 const inputStyles = StyleSheet.create({
   wrapper: { marginBottom: 18 },
-  label: { color: '#4A5568', fontSize: 11, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 },
+  label: { color: '#0b59e0', fontSize: 11, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 },
   input: { color: '#1A202C', fontSize: 15, paddingVertical: Platform.OS === 'ios' ? 10 : 6 },
   inputError: { color: '#E53E3E' },
   inputDisabled: { color: '#38A169' },
@@ -443,11 +443,11 @@ export default function Registrarse({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F0F0F0' },
+  container: { flex: 1, backgroundColor: '#f0f0f000' },
   header: { backgroundColor: '#1565D8', paddingTop: Platform.OS === 'ios' ? 60 : 45, paddingBottom: 35, paddingHorizontal: 28 },
   tagline: { color: 'white', fontSize: 30, fontWeight: '700', marginBottom: 6 },
   subtitle: { color: 'rgba(255,255,255,0.7)', fontSize: 15, fontWeight: '400' },
-  card: { backgroundColor: '#b4b7bc63', marginHorizontal: 16, marginTop: 20, marginBottom: 30, borderRadius: 24, padding: 24, borderWidth: 1, borderColor: 'rgba(0, 0, 0, 0.05)' },
+  card: { backgroundColor: '#babdc4', marginHorizontal: 16, marginTop: 20, marginBottom: 30, borderRadius: 24, padding: 24, borderWidth: 1, borderColor: 'rgba(0, 0, 0, 0.05)' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   sectionDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#1565D8', marginRight: 8 },
   sectionTitle: { color: '#1565D8', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
