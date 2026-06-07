@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Platform, KeyboardAvoidingView, Modal } from 'react-native';
+import {
+  StyleSheet, Text, View, TextInput, TouchableOpacity,
+  ScrollView, Platform, KeyboardAvoidingView, Modal
+} from 'react-native';
 import API_URL from './configS';
 import axios from 'axios';
-import { useRef } from 'react';
 
-function InputField({ label, placeholder, secureTextEntry, keyboardType, value, onChangeText, error }) {
+// ─── InputField reutilizable ───────────────────────────────────────────────
+function InputField({ label, placeholder, secureTextEntry, keyboardType, value, onChangeText, error, editable = true }) {
   return (
     <View style={inputStyles.wrapper}>
       <Text style={inputStyles.label}>{label}</Text>
@@ -14,10 +17,11 @@ function InputField({ label, placeholder, secureTextEntry, keyboardType, value, 
         placeholderTextColor="#999999"
         secureTextEntry={secureTextEntry}
         keyboardType={keyboardType}
-        style={[inputStyles.input, error && inputStyles.inputError]}
+        style={[inputStyles.input, error && inputStyles.inputError, !editable && inputStyles.inputDisabled]}
         autoCapitalize="none"
         value={value}
         onChangeText={onChangeText}
+        editable={editable}
       />
       <View style={[inputStyles.underline, error && inputStyles.underlineError]} />
       {error ? <Text style={inputStyles.errorText}>{error}</Text> : null}
@@ -30,70 +34,90 @@ const inputStyles = StyleSheet.create({
   label: { color: '#4A5568', fontSize: 11, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 },
   input: { color: '#1A202C', fontSize: 15, paddingVertical: Platform.OS === 'ios' ? 10 : 6 },
   inputError: { color: '#E53E3E' },
+  inputDisabled: { color: '#38A169' },
   underline: { height: 1, backgroundColor: 'rgba(0, 0, 0, 0.15)' },
   underlineError: { backgroundColor: '#E53E3E' },
   errorText: { color: '#E53E3E', fontSize: 11, marginTop: 4 },
 });
 
+// ─── Pantalla principal ────────────────────────────────────────────────────
 export default function Registrarse({ route, navigation }) {
-  const tipo = route?.params?.tipo ?? '';
-
+  // ── Form
   const [form, setForm] = useState({
     nombre: '', apellido: '', dni: '', fechaNac: '',
     email: '', telefono: '', direccion: '',
     contrasena: '', repetirContrasena: '',
   });
   const [errores, setErrores] = useState({});
+
+  // ── Dirección
   const [sugerencias, setSugerencias] = useState([]);
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
   const [direccionValidada, setDireccionValidada] = useState(false);
+  const debounceRef = useRef(null);
+
+  // ── Fecha
   const [mostrarPickerModal, setMostrarPickerModal] = useState(false);
   const [diaTemp, setDiaTemp] = useState('');
   const [mesTemp, setMesTemp] = useState('');
   const [anioTemp, setAnioTemp] = useState('');
 
+  // ── Verificación de email
+  const [emailVerificado, setEmailVerificado] = useState(false);
+  const [mostrarModalCodigo, setMostrarModalCodigo] = useState(false);
+  const [codigoIngresado, setCodigoIngresado] = useState('');
+  const [enviandoCodigo, setEnviandoCodigo] = useState(false);
+  const [verificandoCodigo, setVerificandoCodigo] = useState(false);
+  const [errorCodigo, setErrorCodigo] = useState('');
+
+  // ── Helpers
   const set = (campo) => (valor) => {
     setForm(prev => ({ ...prev, [campo]: valor }));
     setErrores(prev => ({ ...prev, [campo]: null }));
   };
 
+  const validarDNI     = (dni)   => { const s = dni.replace(/\D/g, ''); return s.length >= 7 && s.length <= 8; };
+  const validarEmail   = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const validarTelefono= (tel)   => { const s = tel.replace(/\D/g, ''); return s.length >= 10 && s.length <= 13; };
+  const validarNombre  = (txt)   => txt.trim().length >= 2;
+  const calcularEdad   = (f)     => {
+    const hoy = new Date(); const nac = new Date(f);
+    let edad = hoy.getFullYear() - nac.getFullYear();
+    const m = hoy.getMonth() - nac.getMonth();
+    if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--;
+    return edad;
+  };
+
+  // ── Fecha modal
   const confirmarFecha = () => {
-    const dia = parseInt(diaTemp);
-    const mes = parseInt(mesTemp);
-    const anio = parseInt(anioTemp);
+    const dia = parseInt(diaTemp), mes = parseInt(mesTemp), anio = parseInt(anioTemp);
     if (!dia || !mes || !anio || dia < 1 || dia > 31 || mes < 1 || mes > 12 || anio < 1900 || anio > new Date().getFullYear()) {
-      alert('Ingresá una fecha válida');
-      return;
+      alert('Ingresá una fecha válida'); return;
     }
     const fechaStr = `${anio}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
-    const fechaObj = new Date(fechaStr);
-    if (isNaN(fechaObj.getTime())) { alert('Fecha inválida'); return; }
+    if (isNaN(new Date(fechaStr).getTime())) { alert('Fecha inválida'); return; }
     setForm(prev => ({ ...prev, fechaNac: fechaStr }));
     setErrores(prev => ({ ...prev, fechaNac: null }));
     setMostrarPickerModal(false);
   };
 
-  const debounceRef = useRef(null);
-
-const buscarDireccion = (texto) => {
-  set('direccion')(texto);
-  setDireccionValidada(false);
-  if (texto.length < 4) { setSugerencias([]); return; }
-
-  // Cancela la búsqueda anterior
-  if (debounceRef.current) clearTimeout(debounceRef.current);
-
-  debounceRef.current = setTimeout(async () => {
-    try {
-      const res = await axios.get('https://nominatim.openstreetmap.org/search', {
-        params: { q: texto, format: 'json', addressdetails: 1, limit: 5, countrycodes: 'ar' },
-        headers: { 'Accept-Language': 'es', 'User-Agent': 'RadingApp/1.0' },
-      });
-      setSugerencias(res.data);
-      setMostrarSugerencias(true);
-    } catch (e) { console.error(e); }
-  }, 600); // espera 600ms después de que el usuario deja de escribir
-};
+  // ── Dirección autocomplete
+  const buscarDireccion = (texto) => {
+    set('direccion')(texto);
+    setDireccionValidada(false);
+    if (texto.length < 4) { setSugerencias([]); return; }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await axios.get('https://nominatim.openstreetmap.org/search', {
+          params: { q: texto, format: 'json', addressdetails: 1, limit: 5, countrycodes: 'ar' },
+          headers: { 'Accept-Language': 'es', 'User-Agent': 'RadingApp/1.0' },
+        });
+        setSugerencias(res.data);
+        setMostrarSugerencias(true);
+      } catch (e) { console.error(e); }
+    }, 600);
+  };
 
   const elegirDireccion = (item) => {
     setForm(prev => ({ ...prev, direccion: item.display_name }));
@@ -103,34 +127,71 @@ const buscarDireccion = (texto) => {
     setDireccionValidada(true);
   };
 
-  const validarDNI = (dni) => { const s = dni.replace(/\D/g, ''); return s.length >= 7 && s.length <= 8; };
-  const validarEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const validarTelefono = (tel) => { const s = tel.replace(/\D/g, ''); return s.length >= 10 && s.length <= 13; };
-  const validarNombre = (texto) => texto.trim().length >= 2;
-  const calcularEdad = (f) => {
-    const hoy = new Date(); const nac = new Date(f);
-    let edad = hoy.getFullYear() - nac.getFullYear();
-    const m = hoy.getMonth() - nac.getMonth();
-    if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--;
-    return edad;
+  // ── Verificación email
+  const enviarCodigo = async () => {
+    if (!validarEmail(form.email)) {
+      setErrores(prev => ({ ...prev, email: 'Ingresá un correo válido (ej: usuario@mail.com)' }));
+      return;
+    }
+    setEnviandoCodigo(true);
+    try {
+      const res = await fetch(`${API_URL}/verificacion/enviar-codigo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.email.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErrores(prev => ({ ...prev, email: data.message })); return; }
+      setCodigoIngresado('');
+      setErrorCodigo('');
+      setMostrarModalCodigo(true);
+    } catch {
+      setErrores(prev => ({ ...prev, email: 'No se pudo conectar al servidor' }));
+    } finally {
+      setEnviandoCodigo(false);
+    }
   };
 
+  const verificarCodigo = async () => {
+    if (codigoIngresado.length !== 6) { setErrorCodigo('Ingresá los 6 dígitos'); return; }
+    setVerificandoCodigo(true);
+    try {
+      const res = await fetch(`${API_URL}/verificacion/verificar-codigo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.email.trim(), codigo: codigoIngresado }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErrorCodigo(data.message); return; }
+      setEmailVerificado(true);
+      setMostrarModalCodigo(false);
+      setErrores(prev => ({ ...prev, email: null }));
+    } catch {
+      setErrorCodigo('No se pudo conectar al servidor');
+    } finally {
+      setVerificandoCodigo(false);
+    }
+  };
+
+  // ── Validación final
   const validarFormulario = () => {
     const e = {};
-    if (!validarNombre(form.nombre)) e.nombre = 'Ingresá un nombre válido';
+    if (!validarNombre(form.nombre))   e.nombre   = 'Ingresá un nombre válido';
     if (!validarNombre(form.apellido)) e.apellido = 'Ingresá un apellido válido';
-    if (!validarDNI(form.dni)) e.dni = 'El DNI debe tener 7 u 8 dígitos';
-    if (!form.fechaNac) e.fechaNac = 'Seleccioná tu fecha de nacimiento';
+    if (!validarDNI(form.dni))         e.dni      = 'El DNI debe tener 7 u 8 dígitos';
+    if (!form.fechaNac)                e.fechaNac = 'Seleccioná tu fecha de nacimiento';
     else if (calcularEdad(form.fechaNac) < 18) e.fechaNac = 'Debés tener al menos 18 años';
-    if (!validarEmail(form.email)) e.email = 'Ingresá un correo válido (ej: usuario@mail.com)';
+    if (!validarEmail(form.email))     e.email    = 'Ingresá un correo válido (ej: usuario@mail.com)';
+    else if (!emailVerificado)         e.email    = 'Verificá tu correo electrónico';
     if (!validarTelefono(form.telefono)) e.telefono = 'Ingresá un teléfono válido (mínimo 10 dígitos)';
-    if (!direccionValidada) e.direccion = 'Seleccioná una dirección de la lista';
-    if (form.contrasena.length < 8) e.contrasena = 'La contraseña debe tener al menos 8 caracteres';
+    if (!direccionValidada)            e.direccion = 'Seleccioná una dirección de la lista';
+    if (form.contrasena.length < 8)   e.contrasena = 'La contraseña debe tener al menos 8 caracteres';
     if (form.contrasena !== form.repetirContrasena) e.repetirContrasena = 'Las contraseñas no coinciden';
     setErrores(e);
     return Object.keys(e).length === 0;
   };
 
+  // ── Submit
   const handleContinuar = async () => {
     if (!validarFormulario()) return;
     try {
@@ -153,16 +214,25 @@ const buscarDireccion = (texto) => {
     }
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+
+        {/* HEADER */}
         <View style={styles.header}>
           <Text style={styles.tagline}>¡Bienvenido!</Text>
           <Text style={styles.subtitle}>Creá tu cuenta</Text>
         </View>
 
         <View style={styles.card}>
-          <View style={styles.sectionHeader}><View style={styles.sectionDot} /><Text style={styles.sectionTitle}>Identidad</Text></View>
+
+          {/* ── IDENTIDAD ── */}
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionDot} />
+            <Text style={styles.sectionTitle}>Identidad</Text>
+          </View>
+
           <View style={styles.row}>
             <View style={{ flex: 1, marginRight: 10 }}>
               <InputField label="Nombre" placeholder="Juan" value={form.nombre} onChangeText={set('nombre')} error={errores.nombre} />
@@ -171,9 +241,10 @@ const buscarDireccion = (texto) => {
               <InputField label="Apellido" placeholder="García" value={form.apellido} onChangeText={set('apellido')} error={errores.apellido} />
             </View>
           </View>
+
           <InputField label="DNI / Documento" placeholder="00000000" keyboardType="numeric" value={form.dni} onChangeText={set('dni')} error={errores.dni} />
 
-          {/* FECHA CON MODAL */}
+          {/* Fecha de nacimiento */}
           <View style={inputStyles.wrapper}>
             <Text style={inputStyles.label}>Fecha de nacimiento</Text>
             <TouchableOpacity onPress={() => setMostrarPickerModal(true)} style={styles.dateButton}>
@@ -185,6 +256,7 @@ const buscarDireccion = (texto) => {
             {errores.fechaNac ? <Text style={inputStyles.errorText}>{errores.fechaNac}</Text> : null}
           </View>
 
+          {/* Modal fecha */}
           <Modal visible={mostrarPickerModal} transparent animationType="fade">
             <View style={styles.modalOverlay}>
               <View style={styles.modalCard}>
@@ -215,10 +287,102 @@ const buscarDireccion = (texto) => {
             </View>
           </Modal>
 
-          <View style={[styles.sectionHeader, { marginTop: 8 }]}><View style={styles.sectionDot} /><Text style={styles.sectionTitle}>Contacto</Text></View>
-          <InputField label="Correo electrónico" placeholder="correo@ejemplo.com" keyboardType="email-address" value={form.email} onChangeText={set('email')} error={errores.email} />
+          {/* ── CONTACTO ── */}
+          <View style={[styles.sectionHeader, { marginTop: 8 }]}>
+            <View style={styles.sectionDot} />
+            <Text style={styles.sectionTitle}>Contacto</Text>
+          </View>
+
+          {/* Email con verificación */}
+          <View style={inputStyles.wrapper}>
+            <Text style={inputStyles.label}>Correo electrónico</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <TextInput
+                placeholder="correo@ejemplo.com"
+                placeholderTextColor="#999999"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                editable={!emailVerificado}
+                value={form.email}
+                onChangeText={(v) => {
+                  set('email')(v);
+                  if (emailVerificado) setEmailVerificado(false);
+                }}
+                style={[
+                  inputStyles.input,
+                  { flex: 1 },
+                  errores.email && inputStyles.inputError,
+                  emailVerificado && { color: '#38A169' },
+                ]}
+              />
+              {emailVerificado ? (
+                <Text style={{ fontSize: 20, marginLeft: 8 }}>✅</Text>
+              ) : (
+                <TouchableOpacity
+                  onPress={enviarCodigo}
+                  disabled={enviandoCodigo}
+                  style={[styles.btnVerificar, enviandoCodigo && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.btnVerificarTexto}>
+                    {enviandoCodigo ? '...' : 'Verificar'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={[inputStyles.underline, errores.email && inputStyles.underlineError]} />
+            {errores.email
+              ? <Text style={inputStyles.errorText}>{errores.email}</Text>
+              : emailVerificado
+                ? <Text style={styles.emailOkTexto}>✓ Email verificado</Text>
+                : null
+            }
+          </View>
+
+          {/* Modal código de verificación */}
+          <Modal visible={mostrarModalCodigo} transparent animationType="fade">
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalCard}>
+                <Text style={styles.modalTitulo}>Verificá tu email</Text>
+                <Text style={styles.modalSubtitulo}>
+                  Enviamos un código de 6 dígitos a{'\n'}
+                  <Text style={{ fontWeight: '700', color: '#1A202C' }}>{form.email}</Text>
+                </Text>
+                <TextInput
+                  style={styles.inputCodigo}
+                  keyboardType="numeric"
+                  maxLength={6}
+                  placeholder="000000"
+                  placeholderTextColor="#CCC"
+                  value={codigoIngresado}
+                  onChangeText={(v) => { setCodigoIngresado(v); setErrorCodigo(''); }}
+                />
+                {errorCodigo ? (
+                  <Text style={styles.errorCodigoTexto}>{errorCodigo}</Text>
+                ) : null}
+                <TouchableOpacity onPress={enviarCodigo} style={{ marginTop: 12, alignSelf: 'center' }}>
+                  <Text style={styles.reenviarTexto}>¿No llegó? Reenviar código</Text>
+                </TouchableOpacity>
+                <View style={[styles.modalBotones, { marginTop: 20 }]}>
+                  <TouchableOpacity style={styles.modalCancelar} onPress={() => setMostrarModalCodigo(false)}>
+                    <Text style={styles.modalCancelarTexto}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalConfirmar, verificandoCodigo && { opacity: 0.6 }]}
+                    onPress={verificarCodigo}
+                    disabled={verificandoCodigo}
+                  >
+                    <Text style={styles.modalConfirmarTexto}>
+                      {verificandoCodigo ? 'Verificando...' : 'Confirmar'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+
           <InputField label="Número de teléfono" placeholder="+54 9 11 0000-0000" keyboardType="phone-pad" value={form.telefono} onChangeText={set('telefono')} error={errores.telefono} />
 
+          {/* Dirección con autocomplete */}
           <View style={inputStyles.wrapper}>
             <Text style={inputStyles.label}>Dirección</Text>
             <TextInput
@@ -242,10 +406,16 @@ const buscarDireccion = (texto) => {
             )}
           </View>
 
-          <View style={[styles.sectionHeader, { marginTop: 8 }]}><View style={styles.sectionDot} /><Text style={styles.sectionTitle}>Seguridad</Text></View>
+          {/* ── SEGURIDAD ── */}
+          <View style={[styles.sectionHeader, { marginTop: 8 }]}>
+            <View style={styles.sectionDot} />
+            <Text style={styles.sectionTitle}>Seguridad</Text>
+          </View>
+
           <InputField label="Contraseña" placeholder="Mínimo 8 caracteres" secureTextEntry value={form.contrasena} onChangeText={set('contrasena')} error={errores.contrasena} />
           <InputField label="Repetir contraseña" placeholder="Confirmá tu clave" secureTextEntry value={form.repetirContrasena} onChangeText={set('repetirContrasena')} error={errores.repetirContrasena} />
 
+          {/* Términos */}
           <View style={styles.termsContainer}>
             <Text style={styles.termsText}>Al registrarte aceptás nuestros </Text>
             <View style={styles.termsLinkRow}>
@@ -259,10 +429,12 @@ const buscarDireccion = (texto) => {
             </View>
           </View>
 
+          {/* Botón continuar */}
           <TouchableOpacity style={styles.boton} activeOpacity={0.85} onPress={handleContinuar}>
             <Text style={styles.botonTexto}>Continuar</Text>
             <Text style={styles.arrowText}>→</Text>
           </TouchableOpacity>
+
         </View>
         <StatusBar style="light" />
       </ScrollView>
@@ -280,20 +452,34 @@ const styles = StyleSheet.create({
   sectionDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#1565D8', marginRight: 8 },
   sectionTitle: { color: '#1565D8', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   row: { flexDirection: 'row' },
+  // Fecha
   dateButton: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Platform.OS === 'ios' ? 10 : 6, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.15)' },
   dateTextSelected: { color: '#1A202C', fontSize: 15 },
   dateTextPlaceholder: { color: '#999999', fontSize: 15 },
   calendarIcon: { fontSize: 16 },
+  // Email verificación
+  btnVerificar: { marginLeft: 8, backgroundColor: '#1565D8', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  btnVerificarTexto: { color: 'white', fontSize: 12, fontWeight: '700' },
+  emailOkTexto: { color: '#38A169', fontSize: 11, marginTop: 4 },
+  // Modal código
+  inputCodigo: { backgroundColor: '#F0F0F0', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 8, fontSize: 30, fontWeight: '700', color: '#1A202C', textAlign: 'center', letterSpacing: 8, width: '100%', marginTop: 8 },
+  errorCodigoTexto: { color: '#E53E3E', fontSize: 12, marginTop: 8, textAlign: 'center' },
+  reenviarTexto: { color: '#1565D8', fontSize: 12 },
+  modalSubtitulo: { color: '#4A5568', textAlign: 'center', marginBottom: 12, fontSize: 13 },
+  // Dirección
+  sugerenciasContainer: { backgroundColor: 'white', borderRadius: 8, marginTop: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3, zIndex: 999 },
+  sugerenciaItem: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  sugerenciaTexto: { color: '#1A202C', fontSize: 13 },
+  // Términos
   termsContainer: { marginBottom: 16, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 4 },
   termsText: { color: '#4A5568', fontSize: 12 },
   termsLinkRow: { flexDirection: 'row' },
   termsLink: { color: '#1565D8', fontWeight: '700', fontSize: 12, textDecorationLine: 'underline' },
+  // Botón
   boton: { backgroundColor: '#1565D8', height: 50, borderRadius: 14, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
   botonTexto: { color: 'white', fontWeight: '700', fontSize: 16, flex: 1, textAlign: 'center', marginLeft: 16 },
   arrowText: { color: 'white', fontSize: 20, fontWeight: 'bold' },
-  sugerenciasContainer: { backgroundColor: 'white', borderRadius: 8, marginTop: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3, zIndex: 999 },
-  sugerenciaItem: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
-  sugerenciaTexto: { color: '#1A202C', fontSize: 13 },
+  // Modales compartidos
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalCard: { backgroundColor: 'white', borderRadius: 20, padding: 24, width: '85%' },
   modalTitulo: { fontSize: 18, fontWeight: '700', color: '#1A202C', marginBottom: 20, textAlign: 'center' },

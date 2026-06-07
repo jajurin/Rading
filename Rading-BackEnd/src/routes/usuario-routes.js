@@ -5,11 +5,9 @@ const router = Router()
 const svc = new UsuarioServices()
 
 // POST /usuario/registrar
-// Body: { nombre, apellido, email, direccion, contrasena, telefono, fechaNac, dni }
 router.post("/registrar", async (req, res) => {
     try {
         const { nombre, apellido, email, direccion, contrasena, telefono, fechaNac, dni } = req.body
-        // IdCuentaBancaria no se valida porque es opcional
 
         if (!nombre || !apellido || !email || !direccion || !contrasena || !telefono || !fechaNac || !dni) {
             return res.status(400).json({ message: "Todos los campos son requeridos" })
@@ -19,7 +17,6 @@ router.post("/registrar", async (req, res) => {
         res.status(201).json({ message: "Usuario registrado correctamente", idUsuario })
 
     } catch (error) {
-        // Errores de duplicado los devolvemos como 409 Conflict
         if (error.message.includes("ya está registrado")) {
             return res.status(409).json({ message: error.message })
         }
@@ -32,16 +29,10 @@ router.post("/registrar", async (req, res) => {
 router.get("/buscar", async (req, res) => {
     try {
         const { email } = req.query
-
-        if (!email) {
-            return res.status(400).json({ message: "El email es requerido" })
-        }
+        if (!email) return res.status(400).json({ message: "El email es requerido" })
 
         const usuario = await svc.buscarPorEmail(email)
-
-        if (!usuario) {
-            return res.status(404).json({ message: "Usuario no encontrado" })
-        }
+        if (!usuario) return res.status(404).json({ message: "Usuario no encontrado" })
 
         res.status(200).json(usuario)
     } catch (error) {
@@ -54,14 +45,10 @@ router.get("/buscar", async (req, res) => {
 router.get("/existe", async (req, res) => {
     try {
         const { email } = req.query
-
-        if (!email) {
-            return res.status(400).json({ message: "El email es requerido" })
-        }
+        if (!email) return res.status(400).json({ message: "El email es requerido" })
 
         const existe = await svc.existeEmail(email)
         res.status(200).json({ existe })
-
     } catch (error) {
         console.error(error)
         res.status(500).json({ message: "Error al verificar email", error })
