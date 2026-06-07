@@ -2,7 +2,9 @@ import React from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Image, ScrollView, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
-export default function TipoUsuario({ navigation }) {
+export default function TipoUsuario({ route, navigation }) {
+  const { idUsuario, email } = route.params;
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
@@ -14,7 +16,7 @@ export default function TipoUsuario({ navigation }) {
         <TouchableOpacity 
           style={styles.card} 
           activeOpacity={0.85} 
-          onPress={() => navigation.navigate('RegistrarseCliente')}
+          onPress={() => navigation.navigate('RegistrarseCliente', { idUsuario, email })}
         >
           <Image source={require('./assets/seleccionarCliente.png')} style={styles.imagen} />
           <View style={styles.etiqueta}>
@@ -26,7 +28,7 @@ export default function TipoUsuario({ navigation }) {
         <TouchableOpacity 
           style={styles.card} 
           activeOpacity={0.85} 
-        onPress={() => navigation.navigate('RegistrarseTrabajador')}
+        onPress={() => navigation.navigate('RegistrarseTrabajador', { idUsuario, email })}
         >
           <Image source={require('./assets/seleccionarTrabajador.png')} style={styles.imagen} />
           <View style={styles.etiqueta}>

@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Platform, KeyboardAvoidingView, Modal } from 'react-native';
 import API_URL from './configS';
 import axios from 'axios';
+import { useRef } from 'react';
 
 function InputField({ label, placeholder, secureTextEntry, keyboardType, value, onChangeText, error }) {
   return (
@@ -72,10 +73,17 @@ export default function Registrarse({ route, navigation }) {
     setMostrarPickerModal(false);
   };
 
-  const buscarDireccion = async (texto) => {
-    set('direccion')(texto);
-    setDireccionValidada(false);
-    if (texto.length < 4) { setSugerencias([]); return; }
+  const debounceRef = useRef(null);
+
+const buscarDireccion = (texto) => {
+  set('direccion')(texto);
+  setDireccionValidada(false);
+  if (texto.length < 4) { setSugerencias([]); return; }
+
+  // Cancela la búsqueda anterior
+  if (debounceRef.current) clearTimeout(debounceRef.current);
+
+  debounceRef.current = setTimeout(async () => {
     try {
       const res = await axios.get('https://nominatim.openstreetmap.org/search', {
         params: { q: texto, format: 'json', addressdetails: 1, limit: 5, countrycodes: 'ar' },
@@ -84,7 +92,8 @@ export default function Registrarse({ route, navigation }) {
       setSugerencias(res.data);
       setMostrarSugerencias(true);
     } catch (e) { console.error(e); }
-  };
+  }, 600); // espera 600ms después de que el usuario deja de escribir
+};
 
   const elegirDireccion = (item) => {
     setForm(prev => ({ ...prev, direccion: item.display_name }));
@@ -137,7 +146,7 @@ export default function Registrarse({ route, navigation }) {
       });
       const data = await response.json();
       if (!response.ok) { alert(data.message || 'Error al registrar'); return; }
-      navigation.navigate('TipoUsuario', { idUsuario: data.idUsuario });
+      navigation.navigate('TipoUsuario', { idUsuario: data.idUsuario, email: form.email });
     } catch (error) {
       alert('No se pudo conectar al servidor');
       console.error(error);
