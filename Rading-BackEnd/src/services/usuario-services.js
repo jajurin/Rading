@@ -6,7 +6,20 @@ export default class UsuarioServices {
     constructor() {
         this.#repo = new usuarioRepository()
     }
+login = async ({ identificador, contrasena }) => {
+    // Buscar por email o DNI en Usuario base
+    let usuario = await this.#repo.buscarPorEmail(identificador)
+    if (!usuario) {
+        usuario = await this.#repo.buscarPorDni(identificador)
+    }
+    if (!usuario) throw new Error("Usuario no encontrado")
+    if (usuario.contrasena !== contrasena) throw new Error("Contraseña incorrecta")
 
+    // Ver en qué tabla está
+    const esTrabajador = await this.#repo.esTrabajador(usuario.id)
+    
+    return { ...usuario, tipo: esTrabajador ? 'trabajador' : 'cliente' }
+}
     registrarUsuario = async (body) => {
     const { nombre, apellido, email, direccion, contrasena, telefono, fechaNac, dni, IdCuentaBancaria } = body
 

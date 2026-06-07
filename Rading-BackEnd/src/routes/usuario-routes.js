@@ -24,7 +24,23 @@ router.post("/registrar", async (req, res) => {
         res.status(500).json({ message: "Error al registrar usuario", error })
     }
 })
+router.post("/login", async (req, res) => {
+    try {
+        const { identificador, contrasena } = req.body
+        if (!identificador || !contrasena)
+            return res.status(400).json({ message: "Identificador y contraseña requeridos" })
 
+        const usuario = await svc.login({ identificador, contrasena })
+        res.status(200).json({ message: "Login exitoso", usuario })
+
+    } catch (error) {
+        if (error.message === "Usuario no encontrado" || error.message === "Contraseña incorrecta") {
+            return res.status(401).json({ message: error.message })
+        }
+        console.error(error)
+        res.status(500).json({ message: "Error en login", error })
+    }
+})  
 // GET /usuario/buscar?email=ejemplo@mail.com
 router.get("/buscar", async (req, res) => {
     try {

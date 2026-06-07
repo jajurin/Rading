@@ -73,4 +73,30 @@ export default class usuarioRepository {
         const usuario = await this.buscarPorEmail(email)
         return usuario !== null
     }
+    buscarPorDni = async (dni) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        const sql = `SELECT * FROM "Usuario" WHERE "DNI" = $1 LIMIT 1`
+        const result = await client.query(sql, [dni])
+        return result.rows[0] ?? null
+    } finally {
+        await client.end()
+    }
+}
+esTrabajador = async (idUsuario) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        // Cambiá "Trabajador" por el nombre exacto de tu tabla
+        const sql = `SELECT id FROM "Trabajador" WHERE id = $1 LIMIT 1`
+        const result = await client.query(sql, [idUsuario])
+        return result.rows.length > 0
+    } catch (err) {
+        console.error('Error en esTrabajador:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
 }
