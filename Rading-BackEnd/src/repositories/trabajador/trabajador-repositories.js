@@ -179,7 +179,7 @@ export default class trabajadorRepository {
 
         return result?.rows ?? []
     }
-    buscarSolicitudes = async (texto, ids = []) => {
+   buscarSolicitudes = async (texto, ids = []) => {
     const client = new Client(config)
     try {
         await client.connect()
@@ -188,11 +188,12 @@ export default class trabajadorRepository {
             SELECT
                 ct.id,
                 ct.servicio_id,
-                ct.horario,
+                ct.horario_requerido,
                 ct.distancia,
                 ct.fijo,
+                ct.emergencia,
                 ct.estado,
-                ct."fecha_iniciado",
+                ct.fecha_iniciado,
                 u.nombre,
                 u.apellido,
                 u.email,
@@ -270,14 +271,14 @@ filtrarSolicitudes = async (estrellas, servicio_id, fijo, emergencia, distanciaM
         }
 
         // horario_requerido: filtrar por rango
-        if (horarioDesde) {
-            sql += ` AND ct.horario_requerido >= $${i++}`
-            values.push(horarioDesde)
-        }
-        if (horarioHasta) {
-            sql += ` AND ct.horario_requerido <= $${i++}`
-            values.push(horarioHasta)
-        }
+      if (horarioDesde) {
+    sql += ` AND ct.horario_requerido <= $${i++}`
+    values.push(horarioDesde)
+}
+if (horarioHasta) {
+    sql += ` AND ct.horario_finalizado <= $${i++}`
+    values.push(horarioHasta)
+}
 
         const result = await client.query(sql, values)
         return result?.rows ?? []
