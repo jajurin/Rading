@@ -179,4 +179,113 @@ export default class trabajadorRepository {
 
         return result?.rows ?? []
     }
+    buscarSolicitudes = async (texto, ids = []) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+
+        let sql = `
+            SELECT
+                ct.id,
+                ct.servicio_id,
+                ct.horario,
+                ct.distancia,
+                ct.fijo,
+                ct.estado,
+                ct."fecha_iniciado",
+                u.nombre,
+                u.apellido,
+                u.email,
+                u.telefono,
+                c.estrellas
+            FROM "Cliente-Trabajador" ct
+            INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
+            INNER JOIN "Usuario" u ON c."IdPersona" = u.id
+            WHERE ct.estado = 'PENDIENTE'
+            AND ct."IdTrabajador" IS NULL
+        `
+
+        const values = []
+
+        if (texto && texto.trim()) {
+            sql += ` AND (u.nombre ILIKE $1 OR u.apellido ILIKE $1)`
+            values.push(`%${texto.trim()}%`)
+        }
+
+        if (ids.length > 0) {
+            sql += ` AND ct.id = ANY($${values.length + 1})`
+            values.push(ids)
+        }
+
+        const result = await client.query(sql, values)
+        return result?.rows ?? []
+    } catch (err) {
+        console.error('Error en buscarSolicitudes:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
+
+filtrarSolicitudes = async (estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+
+        let sql = `
+            SELECT DISTINCT ct.id
+            FROM "Cliente-Trabajador" ct
+            INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
+            WHERE ct.estado = 'PENDIENTE'
+            AND ct."IdTrabajador" IS NULL
+        `
+
+        const values = []
+        let i = 1
+
+        if (estrellas) {
+            sql += ` AND c.estrellas >= $${i++}`
+            values.push(Number(estrellas))
+        }
+
+      if (servicio_id) {
+    sql += ` AND ct.servicio_id = $${i++}`
+    values.push(Number(servicio_id))
+}
+
+        // fijo: 'true' = fijo, 'false' = subasta
+        if (fijo !== undefined && fijo !== null && fijo !== '') {
+            sql += ` AND ct.fijo = $${i++}`
+            values.push(fijo === 'true')
+        }
+
+        if (emergencia !== undefined && emergencia !== null && emergencia !== '') {
+            sql += ` AND ct.emergencia = $${i++}`
+            values.push(emergencia === 'true')
+        }
+
+        if (distanciaMax) {
+            sql += ` AND ct.distancia <= $${i++}`
+            values.push(Number(distanciaMax))
+        }
+
+        // horario_requerido: filtrar por rango
+        if (horarioDesde) {
+            sql += ` AND ct.horario_requerido >= $${i++}`
+            values.push(horarioDesde)
+        }
+        if (horarioHasta) {
+            sql += ` AND ct.horario_requerido <= $${i++}`
+            values.push(horarioHasta)
+        }
+
+        const result = await client.query(sql, values)
+        return result?.rows ?? []
+    } catch (err) {
+        console.error('Error en filtrarSolicitudes:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
 }

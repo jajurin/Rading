@@ -14,9 +14,6 @@ router.get("/todos", async (req, res) => {
     }
 })
 
-// POST /trabajador/registrar
-// Body: { nombre, apellido, email, direccion, contrasena, telefono, fechaNac, dni, IdCuentaBancaria?,
-//         categoria, descripcion, zonaTrabajo, DispComienzo, DispFinal, foto? }
 router.post("/registrar", async (req, res) => {
     try {
         const result = await svc.registrarTrabajador(req.body)
@@ -27,19 +24,20 @@ router.post("/registrar", async (req, res) => {
     }
 })
 
-// GET /trabajador/buscarCliente?texto=&estrellas=&categoria=&distancia=&horario=&fijo=
+// GET /trabajador/buscarCliente?texto=&estrellas=&servicio_id=&fijo=&emergencia=&distanciaMax=&horarioDesde=&horarioHasta=
 router.get("/buscarCliente", async (req, res) => {
     try {
-        const { texto, estrellas, categoria, distancia, horario, fijo } = req.query
-        const resultado = await svc.buscarConFiltrosTr(texto, estrellas, categoria, distancia, horario, fijo)
+        const { texto, estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta } = req.query
+        const resultado = await svc.buscarConFiltrosTr(
+            texto, estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta
+        )
         res.status(200).json(resultado)
     } catch (error) {
         console.error(error)
-        res.status(500).json({ message: "Error al buscar clientes", error })
+        res.status(500).json({ message: "Error al buscar solicitudes", error })
     }
 })
 
-// GET /trabajador/trabajosRealizados/:id
 router.get("/trabajosRealizados/:id", async (req, res) => {
     try {
         const idTrabajador = req.params.id

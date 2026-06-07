@@ -13,38 +13,38 @@ export default class TrabajadorServices {
     }
 
     registrarTrabajador = async (body) => {
-    const trabajador = new Trabajador(
-        body.nombre,
-        body.apellido,
-        body.email,
-        body.direccion,
-        body.contrasena,
-        body.telefono,
-        body.fechaNac,
-        body.dni,
-        body.IdCuentaBancaria ?? null,
-        body.servicios,       // array de ids
-        body.descripcion ?? '',
-        body.zonaTrabajo ?? '',
-        body.DispComienzo ?? null,
-        body.DispFinal ?? null,
-        body.foto ?? null
-    )
-    return await this.#repo.registrarTrabajador(trabajador)
-}
-
-    mostrarTrabajosRealizados = async (idTrabajador) => {
-        return await this.#repo.mostrarTrabajosRealizados(idTrabajador)
+        const trabajador = new Trabajador(
+            body.nombre, body.apellido, body.email, body.direccion,
+            body.contrasena, body.telefono, body.fechaNac, body.dni,
+            body.IdCuentaBancaria ?? null, body.servicios,
+            body.descripcion ?? '', body.zonaTrabajo ?? '',
+            body.DispComienzo ?? null, body.DispFinal ?? null,
+            body.foto ?? null
+        )
+        return await this.#repo.registrarTrabajador(trabajador)
     }
 
-    buscarConFiltrosTr = async (texto, estrellas, categoria, distancia, horario, fijo) => {
-        let ids = []
-        const hayFiltros = estrellas || categoria || distancia || horario || fijo !== undefined
+    buscarConFiltrosTr = async (texto, estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta) => {
+        const hayTexto   = texto && texto.trim()
+        const hayFiltros = estrellas || servicio_id || (fijo !== undefined && fijo !== '')
+                        || emergencia || distanciaMax || horarioDesde || horarioHasta
+
+        if (!hayTexto && !hayFiltros) return []
+
+        let ids = null
+
         if (hayFiltros) {
-            const filtrados = await this.#repo.filtrarCl(estrellas, categoria, distancia, horario, fijo)
+            const filtrados = await this.#repo.filtrarSolicitudes(
+                estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta
+            )
             ids = filtrados.map(r => r.id)
             if (ids.length === 0) return []
         }
-        return await this.#repo.buscarCliente(texto ?? '', ids)
+
+        return await this.#repo.buscarSolicitudes(texto ?? '', ids ?? [])
+    }
+
+    mostrarTrabajosRealizados = async (idTrabajador) => {
+        return await this.#repo.mostrarTrabajosRealizados(idTrabajador)
     }
 }
