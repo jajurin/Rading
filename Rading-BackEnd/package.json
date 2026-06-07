@@ -1,0 +1,31 @@
+{
+  "name": "rading_backend",
+  "version": "1.0.0",
+  "description": "backend",
+  "homepage": "https://github.com/jajurin/Rading-BackEnd#readme",
+  "bugs": {
+    "url": "https://github.com/jajurin/Rading-BackEnd/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jajurin/Rading-BackEnd.git"
+  },
+  "license": "ISC",
+  "author": "Santiago Hong, Santiago Choe, Alan Laizerovich y Nicolas Jajurin",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon index.js"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.107.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "http-status-codes": "^2.3.0",
+    "nodemon": "^3.1.14",
+    "pg": "^8.21.0"
+  }
+}
