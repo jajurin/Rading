@@ -13,7 +13,7 @@ class Cliente extends Usuario {
   ) {
     super(nombre, apellido, email, direccion, contrasena, telefono, fechaNac, dni, IdCuentaBancaria);
     this.categoriaId = categoriaId ?? null;
-    this.estrellas = 0;
+    this.estrellas = 1;
     this.reseñasEnv = null;
     this.reseñasRec = null;
   }

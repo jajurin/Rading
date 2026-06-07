@@ -38,7 +38,57 @@ const SUBCATEGORIAS = {
     { id: 17, nombre: 'Ingeniero' },
   ],
 };
+const TimePicker = ({ label, value, onChange }) => {
+  const [hour, minute] = value ? value.split(':') : ['', ''];
 
+  const setHour = (h) => {
+    const hh = h.replace(/[^0-9]/g, '').slice(0, 2);
+    if (hh === '' || (Number(hh) >= 0 && Number(hh) <= 23))
+      onChange(hh + ':' + (minute || '00'));
+  };
+
+  const setMinute = (m) => {
+    const mm = m.replace(/[^0-9]/g, '').slice(0, 2);
+    if (mm === '' || (Number(mm) >= 0 && Number(mm) <= 59))
+      onChange((hour || '00') + ':' + mm);
+  };
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+      <Text style={inputStyles.label}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <TextInput
+          style={timeStyle.input}
+          value={hour}
+          onChangeText={setHour}
+          placeholder="HH"
+          placeholderTextColor="#999"
+          keyboardType="number-pad"
+          maxLength={2}
+        />
+        <Text style={{ fontSize: 20, fontWeight: '800', color: '#1A202C' }}>:</Text>
+        <TextInput
+          style={timeStyle.input}
+          value={minute}
+          onChangeText={setMinute}
+          placeholder="MM"
+          placeholderTextColor="#999"
+          keyboardType="number-pad"
+          maxLength={2}
+        />
+      </View>
+    </View>
+  );
+};
+
+const timeStyle = StyleSheet.create({
+  input: {
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    color: '#1A202C', fontSize: 18, fontWeight: '700',
+    textAlign: 'center', width: 54, paddingVertical: 8,
+    borderRadius: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.15)',
+  },
+});
 function InputField({ label, placeholder, value, onChangeText, keyboardType }) {
   return (
     <View style={inputStyles.wrapper}>
@@ -71,7 +121,8 @@ function Checkbox({ label, checked, onToggle }) {
 export default function RegistrarseTrabajador({ route, navigation }) {
   const [macroCategoria, setMacroCategoria] = useState('domesticos');
   const [serviciosSeleccionados, setServiciosSeleccionados] = useState([]);
-  const [disponibilidad, setDisponibilidad] = useState('');
+  const [dispComienzo, setDispComienzo] = useState('');
+const [dispFinal, setDispFinal]       = useState('');
   const [titular, setTitular] = useState('');
   const [banco, setBanco] = useState('');
   const [cbu, setCbu] = useState('');
@@ -103,8 +154,8 @@ export default function RegistrarseTrabajador({ route, navigation }) {
       alert('Seleccioná al menos un servicio');
       return;
     }
-    if (!disponibilidad.trim()) {
-      alert('Ingresá tu disponibilidad');
+    if (!dispComienzo || !dispFinal) {        // ← cambiado
+      alert('Ingresá tu horario de disponibilidad');
       return;
     }
     if (!mayorEdad || !terminos) {
@@ -117,10 +168,11 @@ export default function RegistrarseTrabajador({ route, navigation }) {
       const response = await fetch(`${API_URL}/trabajador/registrar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify({        // ← cambiado
           email,
           servicios: serviciosSeleccionados.map(s => s.id),
-          disponibilidad,
+          DispComienzo: dispComienzo,
+          DispFinal: dispFinal,
           titular,
           banco,
           cbu,
@@ -209,7 +261,10 @@ export default function RegistrarseTrabajador({ route, navigation }) {
             </View>
           </View>
 
-          <InputField label="Disponibilidad" placeholder="Ej: Lunes a Viernes" value={disponibilidad} onChangeText={setDisponibilidad} />
+         
+          <Text style={inputStyles.label}>Horario disponible</Text>
+          <TimePicker label="Desde" value={dispComienzo} onChange={setDispComienzo} />
+          <TimePicker label="Hasta" value={dispFinal}    onChange={setDispFinal} />
 
           <View style={[styles.sectionHeader, { marginTop: 12 }]}>
             <View style={styles.sectionDot} />

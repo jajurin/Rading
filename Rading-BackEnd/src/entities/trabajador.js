@@ -13,7 +13,7 @@ class Trabajador extends Usuario {
     this.DispComienzo = DispComienzo;
     this.DispFinal = DispFinal;
     this.foto = foto ?? null;
-    this.estrellas = 0;
+    this.estrellas = 1;
   }
 }
 

@@ -126,7 +126,7 @@ export default class trabajadorRepository {
             trabajador.DispComienzo,
             trabajador.DispFinal,
             trabajador.foto,
-            0
+            trabajador.estrellas
         ])
 
         const idTrabajador = resultTrabajador.rows[0].id

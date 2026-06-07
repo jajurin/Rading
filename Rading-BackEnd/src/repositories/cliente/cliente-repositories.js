@@ -54,7 +54,45 @@ export default class clienteRepository {
         return result?.rows ?? []
     }
 
-    filtrarTr = async (estrellas, categoria, distancia, horario) => {
+    // ← NUEVO: trae trabajadores por ids sin filtro de texto
+    buscarTrabajadorPorIds = async (ids) => {
+        if (!ids || ids.length === 0) return []
+        const client = new Client(config)
+
+        try {
+            await client.connect()
+
+            const sql = `
+                SELECT
+                    t.id,
+                    u.nombre,
+                    u.apellido,
+                    u.email,
+                    u.direccion,
+                    u.telefono,
+                    t.descripcion,
+                    t."zonaTrabajo",
+                    t."DispComienzo",
+                    t."DispFinal",
+                    t.foto,
+                    t.estrellas
+                FROM "Trabajador" t
+                INNER JOIN "Usuario" u ON t."IdPersona" = u.id
+                WHERE t.id = ANY($1)
+            `
+
+            const result = await client.query(sql, [ids])
+            return result?.rows ?? []
+
+        } catch (err) {
+            console.error('Error en buscarTrabajadorPorIds:', err)
+            throw err
+        } finally {
+            await client.end()
+        }
+    }
+
+    filtrarTr = async (estrellas, especialidad, horarioDesde, horarioHasta) => {
         const client = new Client(config)
 
         try {
@@ -78,11 +116,23 @@ export default class clienteRepository {
                 i++
             }
 
-            if (categoria) {
-                sql += ` AND cs.nombre = $${i}`
-                values.push(categoria)
+            if (especialidad) {
+                sql += ` AND s.nombre = $${i}`   // ← era cs.nombre, ahora s.nombre
+                values.push(especialidad)
                 i++
             }
+
+     if (horarioDesde) {
+    sql += ` AND t."DispComienzo" <= $${i}::time`
+    values.push(horarioDesde)
+    i++
+}
+
+if (horarioHasta) {
+    sql += ` AND t."DispFinal" >= $${i}::time`
+    values.push(horarioHasta)
+    i++
+}
 
             const result = await client.query(sql, values)
             return result?.rows ?? []
@@ -156,7 +206,7 @@ export default class clienteRepository {
             `
             const resultCliente = await client.query(sqlCliente, [
                 usuario.id,
-                0,
+                cliente.estrellas,
                 cliente.categoriaId ?? null
             ])
 
