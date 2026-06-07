@@ -27,9 +27,16 @@ router.post("/registrar", async (req, res) => {
 // GET /trabajador/buscarCliente?texto=&estrellas=&servicio_id=&fijo=&emergencia=&distanciaMax=&horarioDesde=&horarioHasta=
 router.get("/buscarCliente", async (req, res) => {
     try {
-        const { texto, estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta } = req.query
+        const {
+            texto, estrellas, servicio_id, fijo, emergencia,
+            distanciaMax, horarioDesde, horarioHasta,
+            precioMin, precioMax   // ← nuevo
+        } = req.query
+
         const resultado = await svc.buscarConFiltrosTr(
-            texto, estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta
+            texto, estrellas, servicio_id, fijo, emergencia,
+            distanciaMax, horarioDesde, horarioHasta,
+            precioMin, precioMax   // ← nuevo
         )
         res.status(200).json(resultado)
     } catch (error) {

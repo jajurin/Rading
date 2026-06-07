@@ -4,7 +4,7 @@ import {
   TouchableOpacity, ActivityIndicator, Image, SafeAreaView,
   Modal, ScrollView, TextInput,
 } from "react-native";
-import Svg, { Path, Rect, G } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import API_URL from "../configS";
 import TrabajoActivoTrabajador from "./TrabajoActivoTrabajador";
 import Search from "./Search";
@@ -29,6 +29,14 @@ const ChatIcon = () => (
   </View>
 );
 
+const SERVICIOS_MAP = {
+  1: 'Electricista', 2: 'Plomero', 3: 'Jardinero', 4: 'Gasista',
+  5: 'Limpieza', 6: 'Cerrajero', 7: 'Diseñador Gráfico', 8: 'Programador',
+  9: 'Redactor', 10: 'Editor de Video', 11: 'Community Manager',
+  12: 'Abogado', 13: 'Contador', 14: 'Arquitecto',
+  15: 'Médico', 16: 'Psicólogo', 17: 'Ingeniero',
+};
+
 const ClienteCard = ({ item, onPressChat }) => (
   <View style={styles.card}>
     <TouchableOpacity activeOpacity={0.8}>
@@ -37,16 +45,51 @@ const ClienteCard = ({ item, onPressChat }) => (
         style={styles.avatar}
       />
     </TouchableOpacity>
+
     <View style={styles.cardBody}>
+      {/* Nombre + estrellas */}
       <View style={styles.cardHeader}>
         <Text style={styles.cardName}>{item.nombre} {item.apellido}</Text>
         <RatingBadge rating={item.estrellas ?? 0} />
       </View>
-      <Text style={styles.cardZona}>📧 {item.email ?? '-'}</Text>
-      <Text style={styles.cardBio} numberOfLines={2}>
-        📞 {item.telefono ?? 'Sin teléfono'}
-      </Text>
+
+      {/* Especialidad */}
+      {(item.especialidad || item.servicio_id) ? (
+        <Text style={styles.cardTag}>
+          🔧 {item.especialidad ?? SERVICIOS_MAP[item.servicio_id] ?? 'Sin especialidad'}
+        </Text>
+      ) : null}
+
+      {/* Horario */}
+      {item.horario_requerido ? (
+        <Text style={styles.cardZona}>
+          🕐 {item.horario_requerido}{item.horario_finalizado ? ` — ${item.horario_finalizado}` : ''}
+        </Text>
+      ) : null}
+
+      {/* Distancia */}
+      {item.distancia != null ? (
+        <Text style={styles.cardZona}>📍 {item.distancia} km</Text>
+      ) : null}
+
+      {/* Badges: tipo + precio + emergencia */}
+      <View style={styles.cardFooterRow}>
+        <View style={[styles.badge, item.fijo ? styles.badgeFijo : styles.badgeSubasta]}>
+          <Text style={styles.badgeText}>{item.fijo ? 'Fijo' : 'Subasta'}</Text>
+        </View>
+        {item.fijo && item.precio != null && (
+          <View style={styles.badgePrecio}>
+            <Text style={styles.badgePrecioText}>${Number(item.precio).toLocaleString()}</Text>
+          </View>
+        )}
+        {item.emergencia && (
+          <View style={styles.badgeEmergencia}>
+            <Text style={styles.badgeText}>Urgente</Text>
+          </View>
+        )}
+      </View>
     </View>
+
     <TouchableOpacity style={styles.chatButton} onPress={() => onPressChat(item)} activeOpacity={0.8}>
       <ChatIcon />
     </TouchableOpacity>
@@ -148,11 +191,14 @@ const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
   const [distanciaMax, setDistanciaMax] = useState(initialFilters.distanciaMax ?? null)
   const [horarioDesde, setHorarioDesde] = useState(initialFilters.horarioDesde ?? '')
   const [horarioHasta, setHorarioHasta] = useState(initialFilters.horarioHasta ?? '')
+  const [precioMin,    setPrecioMin]    = useState(initialFilters.precioMin    ?? '')
+  const [precioMax,    setPrecioMax]    = useState(initialFilters.precioMax    ?? '')
 
   const handleReset = () => {
     setEstrellas(null); setServicioId(null); setFijo(null)
     setEmergencia(null); setDistanciaMax(null)
     setHorarioDesde(''); setHorarioHasta('')
+    setPrecioMin(''); setPrecioMax('')
   }
 
   return (
@@ -234,6 +280,27 @@ const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
               <TimePicker label="Hasta" value={horarioHasta} onChange={setHorarioHasta} />
             </View>
 
+            <Text style={[styles.filterLabel, { marginTop: 18 }]}>Rango de precio ($)</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <TextInput
+                style={[styles.timeInputBox, { width: 100, fontSize: 14 }]}
+                value={precioMin}
+                onChangeText={setPrecioMin}
+                placeholder="Mín"
+                placeholderTextColor="#888"
+                keyboardType="numeric"
+              />
+              <Text style={styles.timeSep}>—</Text>
+              <TextInput
+                style={[styles.timeInputBox, { width: 100, fontSize: 14 }]}
+                value={precioMax}
+                onChangeText={setPrecioMax}
+                placeholder="Máx"
+                placeholderTextColor="#888"
+                keyboardType="numeric"
+              />
+            </View>
+
           </ScrollView>
 
           <View style={styles.sheetFooter}>
@@ -243,7 +310,7 @@ const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
             <TouchableOpacity
               style={styles.applyBtn}
               onPress={() => {
-                onApply({ estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta })
+                onApply({ estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta, precioMin, precioMax })
                 onClose()
               }}
               activeOpacity={0.8}
@@ -275,6 +342,8 @@ export default function BuscadorCliente() {
     distanciaMax: null,
     horarioDesde: '',
     horarioHasta: '',
+    precioMin:    '',
+    precioMax:    '',
   });
 
   const activeFilterCount = [
@@ -284,12 +353,13 @@ export default function BuscadorCliente() {
     filters.emergencia,
     filters.distanciaMax,
     filters.horarioDesde || filters.horarioHasta,
+    filters.precioMin || filters.precioMax,
   ].filter(Boolean).length;
 
   const fetchClientes = async (texto = '', overrideFilters = null) => {
     const f = overrideFilters ?? filters;
     const hayTexto   = texto && texto.trim();
-    const hayFiltros = f.estrellas || f.servicio_id || f.fijo || f.emergencia || f.distanciaMax || f.horarioDesde || f.horarioHasta;
+    const hayFiltros = f.estrellas || f.servicio_id || f.fijo || f.emergencia || f.distanciaMax || f.horarioDesde || f.horarioHasta || f.precioMin || f.precioMax;
 
     if (!hayTexto && !hayFiltros) return;
 
@@ -308,6 +378,8 @@ export default function BuscadorCliente() {
       if (f.distanciaMax) params.append('distanciaMax', f.distanciaMax);
       if (f.horarioDesde) params.append('horarioDesde', f.horarioDesde);
       if (f.horarioHasta) params.append('horarioHasta', f.horarioHasta);
+      if (f.precioMin)    params.append('precioMin',    f.precioMin);
+      if (f.precioMax)    params.append('precioMax',    f.precioMax);
 
       const url = `${API_URL}/trabajador/buscarCliente?${params.toString()}`;
       const response = await fetch(url);
@@ -365,17 +437,17 @@ export default function BuscadorCliente() {
         </View>
       ) : !buscado ? (
         <View style={styles.centerBox}>
-          <Text style={styles.placeholderIcon}><Svg width={48} height={48} viewBox="0 0 512 512" fill="none">
-  <Path
-    fill="#A0AEC0"
-    d="M252.78 20.875c-1.302.012-2.6.03-3.905.063-37.928.974-76.148 11.153-111.28 31.437C25.164 117.285-13.41 261.322 51.5 373.75s208.946 151.036 321.375 86.125c77.7-44.86 120.1-127.513 117.47-211.406-3.563 65.847-35.898 128.573-91 169.374-10.828 9.62-22.774 18.315-35.814 25.844-103.68 59.86-235.983 24.4-295.842-79.282-59.86-103.68-24.43-235.984 79.25-295.844 35.64-20.576 74.67-29.88 112.968-29.03 63.304 1.4 124.623 30.57 165.438 82.53l-32.594 23.032c-33.27-42.835-84.01-66.6-136.063-67-.96-.008-1.91-.012-2.875 0-.964.01-1.943.038-2.906.062-28.006.717-56.222 8.215-82.156 23.188-82.99 47.914-111.508 154.322-63.594 237.312 47.914 82.99 154.32 111.51 237.313 63.594 51.37-29.66 81.862-81.724 86.28-136.78-12.53 45.37-42.32 86.745-85.438 114.186-.02.013-.043.018-.062.03l-.344.22c-3.16 2.147-6.42 4.216-9.78 6.156-74.245 42.865-168.918 17.494-211.782-56.75-42.864-74.243-17.493-168.917 56.75-211.78 23.2-13.396 48.39-20.122 73.375-20.782 47.953-1.266 95.138 19.858 125.968 59.156l-39.844 28.156c-20.232-24.32-50.055-37.79-80.594-38.03-1.17-.01-2.33 0-3.5.03-17.035.432-34.176 4.995-49.938 14.094-50.435 29.12-67.806 93.877-38.687 144.313 29.12 50.434 93.908 67.806 144.344 38.686 21.245-12.267 36.623-30.85 45.124-52.03-18.815 21.064-44.364 36.888-73.938 44.155-.04.013-.084.02-.125.033-37.507 10.787-78.796-4.816-99.217-40.188-24.07-41.688-9.845-94.712 31.843-118.78 13.028-7.523 27.143-11.314 41.156-11.69 25.66-.685 50.898 10.098 68.188 30.25l-41 28.97c-5.497-4.796-12.664-7.72-20.53-7.72-17.277 0-31.283 14.007-31.283 31.282 0 17.276 14.004 31.282 31.282 31.282 17.277 0 31.28-14.007 31.28-31.283 0-1.187-.06-2.347-.188-3.5l120.094-57.312 4.03-1.75-.06-.156 62.25-29.72 9.25-4.438-5.282-8.812-19.97-33.375-5.155-8.625-8.25 5.813-8.095 5.718c-45.9-58.864-116.14-91.053-187.844-90.405z"
-  />
-</Svg></Text>
+          <Svg width={48} height={48} viewBox="0 0 512 512" fill="none">
+            <Path
+              fill="#A0AEC0"
+              d="M252.78 20.875c-1.302.012-2.6.03-3.905.063-37.928.974-76.148 11.153-111.28 31.437C25.164 117.285-13.41 261.322 51.5 373.75s208.946 151.036 321.375 86.125c77.7-44.86 120.1-127.513 117.47-211.406-3.563 65.847-35.898 128.573-91 169.374-10.828 9.62-22.774 18.315-35.814 25.844-103.68 59.86-235.983 24.4-295.842-79.282-59.86-103.68-24.43-235.984 79.25-295.844 35.64-20.576 74.67-29.88 112.968-29.03 63.304 1.4 124.623 30.57 165.438 82.53l-32.594 23.032c-33.27-42.835-84.01-66.6-136.063-67-.96-.008-1.91-.012-2.875 0-.964.01-1.943.038-2.906.062-28.006.717-56.222 8.215-82.156 23.188-82.99 47.914-111.508 154.322-63.594 237.312 47.914 82.99 154.32 111.51 237.313 63.594 51.37-29.66 81.862-81.724 86.28-136.78-12.53 45.37-42.32 86.745-85.438 114.186-.02.013-.043.018-.062.03l-.344.22c-3.16 2.147-6.42 4.216-9.78 6.156-74.245 42.865-168.918 17.494-211.782-56.75-42.864-74.243-17.493-168.917 56.75-211.78 23.2-13.396 48.39-20.122 73.375-20.782 47.953-1.266 95.138 19.858 125.968 59.156l-39.844 28.156c-20.232-24.32-50.055-37.79-80.594-38.03-1.17-.01-2.33 0-3.5.03-17.035.432-34.176 4.995-49.938 14.094-50.435 29.12-67.806 93.877-38.687 144.313 29.12 50.434 93.908 67.806 144.344 38.686 21.245-12.267 36.623-30.85 45.124-52.03-18.815 21.064-44.364 36.888-73.938 44.155-.04.013-.084.02-.125.033-37.507 10.787-78.796-4.816-99.217-40.188-24.07-41.688-9.845-94.712 31.843-118.78 13.028-7.523 27.143-11.314 41.156-11.69 25.66-.685 50.898 10.098 68.188 30.25l-41 28.97c-5.497-4.796-12.664-7.72-20.53-7.72-17.277 0-31.283 14.007-31.283 31.282 0 17.276 14.004 31.282 31.282 31.282 17.277 0 31.28-14.007 31.28-31.283 0-1.187-.06-2.347-.188-3.5l120.094-57.312 4.03-1.75-.06-.156 62.25-29.72 9.25-4.438-5.282-8.812-19.97-33.375-5.155-8.625-8.25 5.813-8.095 5.718c-45.9-58.864-116.14-91.053-187.844-90.405z"
+            />
+          </Svg>
           <Text style={styles.placeholderText}>Escribí un nombre o aplicá filtros para buscar</Text>
         </View>
       ) : clientes.length === 0 ? (
         <View style={styles.centerBox}>
-          <Text style={styles.placeholderIcon}><RadarIcon /></Text>
+          <RadarIcon size={48} color="#A0AEC0" />
           <Text style={styles.placeholderText}>No se encontraron Trabajos</Text>
         </View>
       ) : (
@@ -383,7 +455,7 @@ export default function BuscadorCliente() {
           data={clientes}
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={styles.listContent}
-          showsVerticalScrolrlIndicator={false}
+          showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <Text style={styles.resultCount}>
               {clientes.length} resultado{clientes.length !== 1 ? 's' : ''}
@@ -447,23 +519,41 @@ const styles = StyleSheet.create({
   listContent:  { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 },
   resultCount:  { color: '#A0AEC0', fontSize: 12, fontWeight: '600', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: BLUE, borderRadius: 12, marginBottom: 10, padding: 12, gap: 10, elevation: 4 },
+  // ── Card ──
+  card: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    backgroundColor: BLUE, borderRadius: 12,
+    marginBottom: 10, padding: 12, gap: 10, elevation: 4,
+  },
   avatar: { width: 60, height: 60, borderRadius: 30, borderWidth: 2, borderColor: '#2a4fd6' },
   cardBody: { flex: 1 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 2 },
   cardName: { color: WHITE, fontWeight: '700', fontSize: 15 },
+  cardTag:  { color: WHITE, fontSize: 12, fontWeight: '700', marginBottom: 3 },
   cardZona: { color: '#c0ceff', fontSize: 11, marginBottom: 3 },
   cardBio:  { color: '#dce4ff', fontSize: 12, lineHeight: 16 },
 
+  cardFooterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 5 },
+  badge:          { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  badgeFijo:      { backgroundColor: '#5ec4ff' },
+  badgeSubasta:   { backgroundColor: '#005f57' },
+  badgeEmergencia:{ backgroundColor: '#ff0000', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  badgeText:      { color: WHITE, fontSize: 11, fontWeight: '700' },
+  badgePrecio:    { backgroundColor: GOLD, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  badgePrecioText:{ color: BLUE_DARK, fontSize: 11, fontWeight: '800' },
+
+  // ── Rating ──
   ratingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: BLUE_DARK, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, gap: 2 },
   ratingText:  { color: WHITE, fontSize: 11, fontWeight: '600' },
   ratingStar:  { color: GOLD, fontSize: 11 },
 
+  // ── Chat button ──
   chatButton: { padding: 6, justifyContent: 'center', alignItems: 'center' },
   chatBubble: { width: 28, height: 22, backgroundColor: WHITE, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
   dotsRow:    { flexDirection: 'row', gap: 3 },
   dot:        { width: 4, height: 4, borderRadius: 2, backgroundColor: BLUE_CARD },
 
+  // ── Filter modal ──
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: '#12184a',

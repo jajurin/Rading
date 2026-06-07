@@ -189,19 +189,23 @@ export default class trabajadorRepository {
                 ct.id,
                 ct.servicio_id,
                 ct.horario_requerido,
+                ct.horario_finalizado,
                 ct.distancia,
                 ct.fijo,
                 ct.emergencia,
+                ct.precio,
                 ct.estado,
                 ct.fecha_iniciado,
                 u.nombre,
                 u.apellido,
                 u.email,
                 u.telefono,
-                c.estrellas
+                c.estrellas,
+                s.nombre AS especialidad
             FROM "Cliente-Trabajador" ct
             INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
             INNER JOIN "Usuario" u ON c."IdPersona" = u.id
+            LEFT JOIN "Servicio" s ON ct.servicio_id = s.id
             WHERE ct.estado = 'PENDIENTE'
             AND ct."IdTrabajador" IS NULL
         `
@@ -228,7 +232,7 @@ export default class trabajadorRepository {
     }
 }
 
-filtrarSolicitudes = async (estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta) => {
+filtrarSolicitudes = async (estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta, precioMin, precioMax) => {
     const client = new Client(config)
     try {
         await client.connect()
@@ -278,6 +282,15 @@ filtrarSolicitudes = async (estrellas, servicio_id, fijo, emergencia, distanciaM
 if (horarioHasta) {
     sql += ` AND ct.horario_finalizado <= $${i++}`
     values.push(horarioHasta)
+}
+if (precioMin) {
+    sql += ` AND ct.precio >= $${i++}`
+    values.push(Number(precioMin))
+}
+
+if (precioMax) {
+    sql += ` AND ct.precio <= $${i++}`
+    values.push(Number(precioMax))
 }
 
         const result = await client.query(sql, values)
