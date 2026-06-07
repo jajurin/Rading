@@ -1,317 +1,174 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  ScrollView,
-  TouchableOpacity,
-  Image,
-  StyleSheet,
-  SafeAreaView,
+  View, Text, FlatList, TouchableOpacity,
+  Image, StyleSheet, SafeAreaView, ActivityIndicator,
 } from 'react-native';
-
-import TrabajoActivoCliente from './TrabajoActivoCliente';
+import API_URL from '../configS';
+import TrabajoActivoTrabajador from '../Trabajador/TrabajoActivoTrabajador';
 import Search from '../Trabajador/Search';
-
-const PROFILES = [
-  {
-    id: '1',
-    name: 'Alan',
-    jobCount: 100,
-    rating: 5.0,
-    bio: 'Nutricionista, puedo contactarme manera presencial.',
-    avatar: 'https://i.pravatar.cc/150?img=47',
-  },
-  {
-    id: '2',
-    name: 'Alan',
-    jobCount: 100,
-    rating: 5.0,
-    bio: 'Nutricionista, puedo contactarme manera presencial.',
-    avatar: 'https://i.pravatar.cc/150?img=47',
-  },
-  {
-    id: '3',
-    name: 'Alan',
-    jobCount: 100,
-    rating: 5.0,
-    bio: 'Nutricionista, puedo contactarme manera presencial.',
-    avatar: 'https://i.pravatar.cc/150?img=47',
-  },
-  {
-    id: '4',
-    name: 'Alan',
-    jobCount: 100,
-    rating: 5.0,
-    bio: 'Nutricionista, puedo contactarme manera presencial.',
-    avatar: 'https://i.pravatar.cc/150?img=47',
-  },
-];
 
 const RatingBadge = ({ rating }) => (
   <View style={styles.ratingBadge}>
-    <Text style={styles.ratingText}>{rating.toFixed(2)}</Text>
+    <Text style={styles.ratingText}>{Number(rating).toFixed(2)}</Text>
     <Text style={styles.ratingStar}>★</Text>
   </View>
 );
 
 const ChatIcon = () => (
-  <View style={styles.chatIcon}>
-    <View style={styles.chatBubble}>
-      <View style={styles.dotsRow}>
-        <View style={styles.dot} />
-        <View style={styles.dot} />
-        <View style={styles.dot} />
-      </View>
+  <View style={styles.chatBubble}>
+    <View style={styles.dotsRow}>
+      <View style={styles.dot} />
+      <View style={styles.dot} />
+      <View style={styles.dot} />
     </View>
-    <View style={styles.chatTail} />
   </View>
 );
 
-const ProfileCard = ({ profile, onPressAvatar, onPressChat }) => (
+const ClienteCard = ({ item, onPressChat }) => (
   <View style={styles.card}>
-    <TouchableOpacity
-      style={styles.avatarWrapper}
-      onPress={() => onPressAvatar(profile)}
-      activeOpacity={0.8}
-      accessibilityLabel={`Ver perfil de ${profile.name}`}
-    >
-      <Image source={{ uri: profile.avatar }} style={styles.avatar} />
+    <TouchableOpacity activeOpacity={0.8}>
+      <Image
+        source={{ uri: 'https://i.pravatar.cc/150?img=12' }}
+        style={styles.avatar}
+      />
     </TouchableOpacity>
 
     <View style={styles.cardBody}>
       <View style={styles.cardHeader}>
-        <Text style={styles.cardName}>{profile.name}</Text>
-        <Text style={styles.cardJobs}>n.° Trabajos: {profile.jobCount}</Text>
-        <RatingBadge rating={profile.rating} />
+        <Text style={styles.cardName}>{item.nombre} {item.apellido}</Text>
+        <RatingBadge rating={item.estrellas ?? 0} />
       </View>
-      <Text style={styles.cardLabel}>Sobre Mí</Text>
+      <Text style={styles.cardZona}>📧 {item.email ?? '-'}</Text>
       <Text style={styles.cardBio} numberOfLines={2}>
-        {profile.bio}
+        📞 {item.telefono ?? 'Sin teléfono'}
       </Text>
     </View>
 
-    <TouchableOpacity
-      style={styles.chatButton}
-      onPress={() => onPressChat(profile)}
-      activeOpacity={0.8}
-      accessibilityLabel={`Chatear con ${profile.name}`}
-    >
+    <TouchableOpacity style={styles.chatButton} onPress={() => onPressChat(item)} activeOpacity={0.8}>
       <ChatIcon />
     </TouchableOpacity>
   </View>
 );
 
-export default function ProfilesScreen({
-  onPressAvatar = () => {},
-  onPressChat = () => {},
-  onPressMore = () => {},
-}) {
+export default function BuscadorTrabajador() {
+  const [clientes, setClientes] = useState([]);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState(null);
+  const [buscado, setBuscado]   = useState(false);
+
+  const fetchClientes = async (texto = '') => {
+    if (!texto.trim()) return;
+    try {
+      setLoading(true);
+      setError(null);
+      setBuscado(true);
+      const url = `${API_URL}/trabajador/buscarCliente?texto=${encodeURIComponent(texto)}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Error');
+      const data = await response.json();
+      setClientes(data);
+    } catch (e) {
+      console.error(e);
+      setError('No se pudo cargar los clientes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
 
-   <Search/>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.sectionTitle}>Perfiles</Text>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Buscar Clientes</Text>
+        <Text style={styles.headerSub}>Encontrá el cliente que necesitás</Text>
+      </View>
 
-        {PROFILES.map((profile) => (
-          <ProfileCard
-            key={profile.id}
-            profile={profile}
-            onPressAvatar={onPressAvatar}
-            onPressChat={onPressChat}
-          />
-        ))}
+      <Search onSearch={fetchClientes} />
 
-        <TouchableOpacity onPress={onPressMore} style={styles.moreBtn}>
-          <Text style={styles.moreText}>Más...</Text>
-        </TouchableOpacity>
+      {loading ? (
+        <View style={styles.centerBox}>
+          <ActivityIndicator size="large" color="#1565D8" />
+          <Text style={styles.loadingText}>Buscando...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.centerBox}>
+          <Text style={styles.placeholderIcon}>⚠️</Text>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : !buscado ? (
+        <View style={styles.centerBox}>
+          <Text style={styles.placeholderIcon}>🔍</Text>
+          <Text style={styles.placeholderText}>Escribí un nombre para buscar</Text>
+        </View>
+      ) : clientes.length === 0 ? (
+        <View style={styles.centerBox}>
+          <Text style={styles.placeholderIcon}>😕</Text>
+          <Text style={styles.placeholderText}>No se encontraron clientes</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={clientes}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ListHeaderComponent={
+            <Text style={styles.resultCount}>
+              {clientes.length} resultado{clientes.length !== 1 ? 's' : ''}
+            </Text>
+          }
+          renderItem={({ item }) => (
+            <ClienteCard item={item} onPressChat={() => {}} />
+          )}
+        />
+      )}
 
-        
-      </ScrollView>
-              <TrabajoActivoCliente/>
-
+      <TrabajoActivoTrabajador />
     </SafeAreaView>
   );
 }
 
-const BLUE_DARK = '#0a0f3c';
-const BLUE_CARD = '#1e35b5';
-const BLUE_LIGHT = '#2a4fd6';
 const WHITE = '#ffffff';
 const GOLD = '#ffd700';
+const BLUE_CARD = '#1e35b5';
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: WHITE,
+  safe: { flex: 1, backgroundColor: '#F4F6FB' },
+
+  header: {
+    backgroundColor: '#1565D8',
+    paddingTop: 50,
+    paddingBottom: 8,
+    paddingHorizontal: 20,
   },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#8a8a8a',
-    marginHorizontal: 16,
-    marginVertical: 12,
-    borderRadius: 24,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
+  headerTitle: { color: WHITE, fontSize: 24, fontWeight: '800', marginBottom: 4 },
+  headerSub: { color: 'rgba(255,255,255,0.75)', fontSize: 13, marginBottom: 4 },
+
+  centerBox: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10 },
+  placeholderIcon: { fontSize: 48 },
+  placeholderText: { color: '#A0AEC0', fontSize: 15, textAlign: 'center' },
+  loadingText: { color: '#1565D8', fontSize: 14, marginTop: 8 },
+  errorText: { color: '#E53E3E', fontSize: 14 },
+
+  listContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 },
+  resultCount: {
+    color: '#A0AEC0', fontSize: 12, fontWeight: '600',
+    marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5,
   },
-  searchIconText: {
-  
-    fontSize: 16,
-    marginRight: 8,
-  },
-  searchInput: {
-    color: '#000000',
-    flex: 1,
-    fontSize: 14,
-    padding: 0,
-  },
-  filterBtn: {
-    padding: 4,
-  },
-  filterIcon: {
-    color: '#000000',
-    fontSize: 20,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-  },
-  sectionTitle: {
-    color: BLUE_LIGHT,
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: BLUE_CARD,
-    borderRadius: 12,
-    marginBottom: 10,
-    padding: 12,
-    gap: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  avatarWrapper: {
-    borderRadius: 36,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: BLUE_LIGHT,
-  },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-  },
-  cardBody: {
-    flex: 1,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-    marginBottom: 2,
-  },
-  cardName: {
-    color: WHITE,
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  cardJobs: {
-    color: '#c0ceff',
-    fontSize: 11,
-  },
-  ratingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0a0f3c',
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    gap: 2,
-  },
-  ratingText: {
-    color: WHITE,
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  ratingStar: {
-    color: GOLD,
-    fontSize: 11,
-  },
-  cardLabel: {
-    color: '#c0ceff',
-    fontSize: 10,
-    fontStyle: 'italic',
-    marginBottom: 2,
-  },
-  cardBio: {
-    color: '#dce4ff',
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  chatButton: {
-    padding: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  chatIcon: {
-    width: 32,
-    height: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  chatBubble: {
-    width: 28,
-    height: 22,
-    backgroundColor: WHITE,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dotsRow: {
-    flexDirection: 'row',
-    gap: 3,
-  },
-  dot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: BLUE_CARD,
-  },
-  chatTail: {
-    position: 'absolute',
-    bottom: 0,
-    left: 4,
-    width: 0,
-    height: 0,
-    borderTopWidth: 6,
-    borderRightWidth: 6,
-    borderTopColor: WHITE,
-    borderRightColor: 'transparent',
-  },
-  moreBtn: {
-    alignItems: 'flex-end',
-    paddingVertical: 4,
-  },
-  moreText: {
-    color: WHITE,
-    fontSize: 13,
-    textDecorationLine: 'underline',
-  },
+
+  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1565D8', borderRadius: 12, marginBottom: 10, padding: 12, gap: 10, elevation: 4 },
+  avatar: { width: 60, height: 60, borderRadius: 30, borderWidth: 2, borderColor: '#2a4fd6' },
+  cardBody: { flex: 1 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 2 },
+  cardName: { color: WHITE, fontWeight: '700', fontSize: 15 },
+  cardZona: { color: '#c0ceff', fontSize: 11, marginBottom: 3 },
+  cardBio: { color: '#dce4ff', fontSize: 12, lineHeight: 16 },
+
+  ratingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0a0f3c', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, gap: 2 },
+  ratingText: { color: WHITE, fontSize: 11, fontWeight: '600' },
+  ratingStar: { color: GOLD, fontSize: 11 },
+
+  chatButton: { padding: 6, justifyContent: 'center', alignItems: 'center' },
+  chatBubble: { width: 28, height: 22, backgroundColor: WHITE, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
+  dotsRow: { flexDirection: 'row', gap: 3 },
+  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: BLUE_CARD },
 });

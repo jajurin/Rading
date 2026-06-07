@@ -4,11 +4,8 @@ import pkg from 'pg'
 const { Client } = pkg
 
 export default class clienteRepository {
-#usuarioRepo = new usuarioRepository() 
-    /**
-     * Busca trabajadores por nombre/apellido (texto libre).
-     * Si se pasan ids, filtra solo entre esos ids (usado tras aplicar filtros).
-     */
+    #usuarioRepo = new usuarioRepository()
+
     buscarTrabajador = async (texto, ids = []) => {
         const client = new Client(config)
         let result
@@ -16,7 +13,6 @@ export default class clienteRepository {
         try {
             await client.connect()
 
-            // Trabajador hereda de Usuario mediante IdPersona
             let sql = `
                 SELECT
                     t.id,
@@ -25,7 +21,6 @@ export default class clienteRepository {
                     u.email,
                     u.direccion,
                     u.telefono,
-                    t.categoria,
                     t.descripcion,
                     t."zonaTrabajo",
                     t."DispComienzo",
@@ -59,10 +54,6 @@ export default class clienteRepository {
         return result?.rows ?? []
     }
 
-    /**
-     * Filtra trabajadores por criterios y devuelve sus ids.
-     * La tabla de unión se llama "Cliente-Trabajador" en el diagrama.
-     */
     filtrarTr = async (estrellas, categoria, distancia, horario) => {
         const client = new Client(config)
 
@@ -70,9 +61,11 @@ export default class clienteRepository {
             await client.connect()
 
             let sql = `
-              SELECT DISTINCT t.id
+                SELECT DISTINCT t.id
                 FROM "Trabajador" t
-                LEFT JOIN "Cliente-Trabajador" ct ON ct."IdTrabajador" = t.id
+                INNER JOIN "Trabajador_Servicio" ts ON ts.trabajadores_id = t.id
+                INNER JOIN "Servicio" s ON s.id = ts.servicios_id
+                INNER JOIN "CategoriaServicio" cs ON cs.id = s.categoria_id
                 WHERE 1=1
             `
 
@@ -86,20 +79,8 @@ export default class clienteRepository {
             }
 
             if (categoria) {
-                sql += ` AND t.categoria = $${i}`
+                sql += ` AND cs.nombre = $${i}`
                 values.push(categoria)
-                i++
-            }
-
-            if (distancia !== undefined && distancia !== null) {
-                sql += ` AND ct.distancia <= $${i}`
-                values.push(Number(distancia))
-                i++
-            }
-
-            if (horario) {
-                sql += ` AND ct.horario = $${i}`
-                values.push(horario)
                 i++
             }
 
@@ -113,9 +94,7 @@ export default class clienteRepository {
             await client.end()
         }
     }
-    /**
-     * Muestra los trabajos activos (EN PROCESO) de un cliente.
-     */
+
     mostrarTrabajosActivos = async (idCliente) => {
         const client = new Client(config)
         let result
@@ -127,9 +106,6 @@ export default class clienteRepository {
                 SELECT
                     u.nombre,
                     u.apellido,
-                    ct.distancia,
-                    ct.horario,
-                    ct.categoria,
                     ct.estado,
                     ct."fecha_iniciado"
                 FROM "Cliente-Trabajador" ct
@@ -151,76 +127,52 @@ export default class clienteRepository {
         return result?.rows ?? []
     }
 
-    /**
-     * Registra un cliente: inserta en Usuario y luego en Cliente.
-     * Recibe un objeto con todos los campos del modelo.
-     */
-   registrarCliente = async (cliente) => {
-    const client = new Client(config)
+    registrarCliente = async (cliente) => {
+        const client = new Client(config)
 
-    try {
-        // Buscar usuario existente
-        const usuario = await this.#usuarioRepo.buscarPorEmail(
-            cliente.email
-        )
+        try {
+            const usuario = await this.#usuarioRepo.buscarPorEmail(cliente.email)
 
-        if (!usuario) {
-            throw new Error(
-                `No existe un usuario con el email ${cliente.email}`
+            if (!usuario) {
+                throw new Error(`No existe un usuario con el email ${cliente.email}`)
+            }
+
+            await client.connect()
+
+            const existeCliente = await client.query(
+                `SELECT id FROM "Cliente" WHERE "IdPersona" = $1`,
+                [usuario.id]
             )
-        }
 
-        await client.connect()
+            if (existeCliente.rows.length > 0) {
+                throw new Error(`El usuario ${cliente.email} ya es cliente`)
+            }
 
-        // Evitar registrar dos veces al mismo cliente
-        const existeCliente = await client.query(
+            const sqlCliente = `
+                INSERT INTO "Cliente"
+                ("IdPersona", estrellas, categoria_id)
+                VALUES ($1, $2, $3)
+                RETURNING id
             `
-            SELECT id
-            FROM "Cliente"
-            WHERE "IdPersona" = $1
-            `,
-            [usuario.id]
-        )
-
-        if (existeCliente.rows.length > 0) {
-            throw new Error(
-                `El usuario ${cliente.email} ya es cliente`
-            )
-        }
-
-        const sqlCliente = `
-            INSERT INTO "Cliente"
-            (
-                "IdPersona",
-                preferencias,
-                estrellas
-            )
-            VALUES ($1,$2,$3)
-            RETURNING id
-        `
-
-        const resultCliente = await client.query(
-            sqlCliente,
-            [
+            const resultCliente = await client.query(sqlCliente, [
                 usuario.id,
-                cliente.preferencias ?? null,
-                0
-            ]
-        )
+                0,
+                cliente.categoriaId ?? null
+            ])
 
-        return {
-            success: true,
-            idUsuario: usuario.id,
-            idCliente: resultCliente.rows[0].id
+            return {
+                success: true,
+                idUsuario: usuario.id,
+                idCliente: resultCliente.rows[0].id
+            }
+
+        } catch (err) {
+            console.error('Error en registrarCliente:', err)
+            throw err
+        } finally {
+            await client.end()
         }
-
-    } catch (err) {
-        console.error('Error en registrarCliente:', err)
-        throw err
-    } finally {
-        await client.end()
     }
-}
 
     mostrarTodosLosClientes = async () => {
         const client = new Client(config)
@@ -237,8 +189,10 @@ export default class clienteRepository {
                     u.email,
                     u.direccion,
                     u.telefono,
-                    c.preferencias,
-                    c.estrellas
+                    c.categoria_id,
+                    c.estrellas,
+                    c."reseñasEnv",
+                    c."reseñasRec"
                 FROM "Cliente" c
                 INNER JOIN "Usuario" u ON c."IdPersona" = u.id
             `

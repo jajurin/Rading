@@ -1,15 +1,13 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-
-// Componentes Raíz
 import Login from './Login';
 import Registrarse from './Registrarse';
 import TipoUsuario from './TipoUsuario';
-
 import RegistrarseCliente from './Cliente/RegistrarseCliente';
 import RegistrarseTrabajador from './Trabajador/RegistrarseTrabajdor';
-
+import BuscadorCliente from './Cliente/BuscadorCliente';
+import BuscadorTrabajador from './Trabajador/BuscadorTrabajador';
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -21,6 +19,8 @@ export default function App() {
         <Stack.Screen name="Registrarse" component={Registrarse} />
         <Stack.Screen name="RegistrarseCliente" component={RegistrarseCliente} />
         <Stack.Screen name="RegistrarseTrabajador" component={RegistrarseTrabajador} />
+        <Stack.Screen name="BuscadorCliente" component={BuscadorCliente} />
+        <Stack.Screen name="BuscadorTrabajador" component={BuscadorTrabajador} />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -10,22 +10,15 @@ export default class ClienteServices {
         this.#repo = new clienteRepository()
     }
 
-    registrarCliente = async (body) => {
-        const cliente = new Cliente(
-            body.nombre,
-            body.apellido,
-            body.email,
-            body.direccion,
-            body.contrasena,
-            body.telefono,
-            body.fechaNac,
-            body.dni,
-            body.IdCuentaBancaria,
-            body.preferencias
-        )
-        return await this.#repo.registrarCliente(cliente)
-    }
-
+   registrarCliente = async (body) => {
+    const cliente = new Cliente(
+        body.nombre, body.apellido, body.email, body.direccion,
+        body.contrasena, body.telefono, body.fechaNac, body.dni,
+        body.IdCuentaBancaria,
+        body.categoriaId ?? null
+    )
+    return await this.#repo.registrarCliente(cliente)
+}
     mostrarTodosLosClientes = async () => {
         return await this.#repo.mostrarTodosLosClientes()
     }
@@ -39,18 +32,18 @@ export default class ClienteServices {
      * Si se pasan filtros, primero obtiene los ids que los cumplen
      * y luego busca por texto entre esos ids.
      */
-    buscarConFiltrosCl = async (texto, estrellas, categoria, distancia, horario) => {
-        let ids = []
+  buscarConFiltrosCl = async (texto, estrellas, categoria, distancia, horario) => {
+    // Si no hay texto ni filtros, no busca nada
+    if (!texto || !texto.trim()) return []
 
-        // Solo filtra si al menos uno de los parámetros de filtro fue enviado
-        const hayFiltros = estrellas || categoria || distancia || horario
-        if (hayFiltros) {
-            const filtrados = await this.#repo.filtrarTr(estrellas, categoria, distancia, horario)
-            ids = filtrados.map(r => r.id)
-            // Si los filtros no dieron resultados, devolver vacío directamente
-            if (ids.length === 0) return []
-        }
-
-        return await this.#repo.buscarTrabajador(texto ?? '', ids)
+    let ids = []
+    const hayFiltros = estrellas || categoria || distancia || horario
+    if (hayFiltros) {
+        const filtrados = await this.#repo.filtrarTr(estrellas, categoria, distancia, horario)
+        ids = filtrados.map(r => r.id)
+        if (ids.length === 0) return []
     }
+
+    return await this.#repo.buscarTrabajador(texto.trim(), ids)
+}
 }

@@ -1,65 +1,69 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  ScrollView,
-  TouchableOpacity,
-  Image,
-  StyleSheet,
-  SafeAreaView,
-} from 'react-native';
+import React, { useState } from 'react';
+import { View, TextInput, TouchableOpacity, Text, StyleSheet } from 'react-native';
 
-export default function Search(){
-  return(
-  <View style={styles.searchContainer}>
-         <Text style={styles.searchIconText}>🔍</Text>
-         <TextInput
-           style={styles.searchInput}
-           placeholder="¿Qué necesita? Ej: electricista, etc"
-           placeholderTextColor="#000000"
-         />
-         <TouchableOpacity style={styles.filterBtn}>
-           <Text style={styles.filterIcon}>⟨⟩</Text>
-         </TouchableOpacity>
-       </View>
-  )
+export default function Search({ onSearch }) {
+  const [texto, setTexto] = useState('');
 
- 
+  const handleBuscar = () => {
+    if (onSearch) onSearch(texto);
+  };
+
+  return (
+    <View style={styles.wrapper}>
+      <View style={styles.searchContainer}>
+        <Text style={styles.searchIcon}>🔍</Text>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Buscá por nombre..."
+          placeholderTextColor="#A0AEC0"
+          value={texto}
+          onChangeText={setTexto}
+          onSubmitEditing={handleBuscar}
+          returnKeyType="search"
+        />
+        <TouchableOpacity style={styles.filterBtn} onPress={handleBuscar}>
+          <Text style={styles.filterText}>Buscar</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 }
 
- const styles = StyleSheet.create({
-searchContainer: {
+const styles = StyleSheet.create({
+  wrapper: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#1565D8',
+  },
+  searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#8a8a8a',
-    marginHorizontal: 16,
-    marginVertical: 12,
-    borderRadius: 24,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
-     marginTop: 20,
-    marginBottom: 5
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  searchIconText: {
-  
-    fontSize: 16,
-    marginRight: 8,
-  },
+  searchIcon: { fontSize: 15, marginRight: 8 },
   searchInput: {
-    color: '#000000',
     flex: 1,
     fontSize: 14,
-    padding: 0,
+    color: '#1A202C',
+    paddingVertical: 8,
   },
   filterBtn: {
-    padding: 4,
+    backgroundColor: '#1565D8',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
-  filterIcon: {
-    color: '#000000',
-    fontSize: 20,
-  }
-
-    
-  })
+  filterText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+});

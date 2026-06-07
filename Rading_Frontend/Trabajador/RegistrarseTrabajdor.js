@@ -129,7 +129,7 @@ export default function RegistrarseTrabajador({ route, navigation }) {
       const data = await response.json();
       if (!response.ok) { alert(data.message || 'Error al registrar'); return; }
       alert('¡Registro Profesional Completo!');
-      navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+      navigation.reset({ index: 0, routes: [{ name: 'BuscadorTrabajador' }] });
     } catch (e) {
       alert('No se pudo conectar al servidor');
       console.error(e);

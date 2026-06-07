@@ -2,19 +2,18 @@ import Usuario from "./usuario.js";
 
 class Cliente extends Usuario {
   estrellas;
-  preferencias;
-  IdPersona;      // FK hacia Usuario
+  categoriaId;
   reseñasEnv;
   reseñasRec;
 
   constructor(
     nombre, apellido, email, direccion, contrasena,
     telefono, fechaNac, dni, IdCuentaBancaria,
-    preferencias
+    categoriaId
   ) {
     super(nombre, apellido, email, direccion, contrasena, telefono, fechaNac, dni, IdCuentaBancaria);
-    this.preferencias = preferencias;
-    this.estrellas = 0;        // empieza en 0 al registrar
+    this.categoriaId = categoriaId ?? null;
+    this.estrellas = 0;
     this.reseñasEnv = null;
     this.reseñasRec = null;
   }

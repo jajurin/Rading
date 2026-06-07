@@ -63,7 +63,7 @@ export default function RegistrarseCliente({ route, navigation }) {
       }
 
       alert('¡Registro de Cliente Completo!');
-      navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+      navigation.reset({ index: 0, routes: [{ name: 'BuscadorCliente' }] });
     } catch (e) {
       alert('No se pudo conectar al servidor');
       console.error(e);
