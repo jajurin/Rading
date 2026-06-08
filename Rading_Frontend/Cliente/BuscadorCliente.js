@@ -354,7 +354,9 @@ const [showOferta, setShowOferta] = useState(false);
           />
         )}
 
-<TrabajoActivoCliente onPress={() => setShowOferta(true)} />
+<View style={{ marginBottom: 30 }}>
+  <TrabajoActivoCliente onPress={() => setShowOferta(true)} />
+</View>
 <OfertaRecibidaOverlayCliente
   visible={showOferta}
   onClose={() => setShowOferta(false)}

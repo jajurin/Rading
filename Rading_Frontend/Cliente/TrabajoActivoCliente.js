@@ -7,78 +7,62 @@ export default function TrabajoActivoCliente({
   onPress,
 }) {
   return (
-    <TouchableOpacity
-      style={styles.container}
-      activeOpacity={0.9}
-      onPress={onPress}
-    >
-      <View style={styles.leftContent}>
-        <View style={styles.iconContainer}>
-          <Ionicons name="construct" size={14} color="#0D47C7" />
+    <TouchableOpacity style={styles.container} activeOpacity={0.9} onPress={onPress}>
+      <View style={styles.leftSection}>
+        <View style={styles.iconCircle}>
+          <Ionicons name="construct" size={13} color="#7a5c00" />
         </View>
-
         <View>
-          <Text style={styles.estado}>BUSCANDO...</Text>
+          <Text style={styles.estado}>Buscando...</Text>
           <Text style={styles.titulo}>{titulo}</Text>
         </View>
       </View>
-
-      <Ionicons name="chevron-up" size={24} color="#1A1A1A" />
+      <Ionicons name="chevron-up" size={20} color="#3d2e00" />
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    width: "90%",
+    width: "100%",
     height: 64,
-    backgroundColor: "#ffee00",
-    borderRadius: 12,
-    paddingHorizontal: 20,
+    backgroundColor: "#FFD600",
+    borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginLeft: 20,
-
+    paddingHorizontal: 18,
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
-    shadowRadius: 3,
-
-    elevation: 3,
+    shadowRadius: 4,
+    elevation: 4,
   },
-
-  leftContent: {
+  leftSection: {
     flexDirection: "row",
     alignItems: "center",
   },
-
-  iconContainer: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "#F8D34A",
+  iconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.08)",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 10,
+    marginRight: 12,
   },
-
   estado: {
-    fontSize: 8,
-    fontWeight: "700",
-    color: "#4A4A4A",
-    letterSpacing: 0.5,
+    fontSize: 9,
+    fontWeight: "500",
+    color: "#7a5c00",
+    letterSpacing: 1,
     textTransform: "uppercase",
-
   },
-
   titulo: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: "#111",
+    fontSize: 15,
+    fontWeight: "500",
+    color: "#1a1200",
+    textTransform: "uppercase",
     marginTop: 1,
   },
 });
