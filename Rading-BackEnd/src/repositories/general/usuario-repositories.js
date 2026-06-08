@@ -84,12 +84,26 @@ export default class usuarioRepository {
         await client.end()
     }
 }
+buscarIdTrabajador = async (idUsuario) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        const sql = `SELECT id FROM "Trabajador" WHERE "IdPersona" = $1 LIMIT 1`
+        const result = await client.query(sql, [idUsuario])
+        return result.rows[0]?.id ?? null
+    } catch (err) {
+        console.error('Error en buscarIdTrabajador:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
 esTrabajador = async (idUsuario) => {
     const client = new Client(config)
     try {
         await client.connect()
         // Cambiá "Trabajador" por el nombre exacto de tu tabla
-        const sql = `SELECT id FROM "Trabajador" WHERE id = $1 LIMIT 1`
+       const sql = `SELECT id FROM "Trabajador" WHERE "IdPersona" = $1 LIMIT 1`
         const result = await client.query(sql, [idUsuario])
         return result.rows.length > 0
     } catch (err) {

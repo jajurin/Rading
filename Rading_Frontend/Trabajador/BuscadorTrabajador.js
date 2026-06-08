@@ -6,7 +6,8 @@ import {
 } from "react-native";
 import Svg, { Path } from 'react-native-svg';
 import API_URL from "../configS";
-import TrabajoActivoTrabajador from "./TrabajoActivoTrabajador";
+import TrabajoActivoTrabajador from "./TrabajoActivoTrabajador";           // ← banner
+import TrabajoActivoOverlayTrabajador from "./TrabajoActivoOverlayTrabajador"; // ← modal (corregido)
 import Search from "./Search";
 import RadarIcon from "../assets/RadarIcon";
 
@@ -45,34 +46,24 @@ const ClienteCard = ({ item, onPressChat }) => (
         style={styles.avatar}
       />
     </TouchableOpacity>
-
     <View style={styles.cardBody}>
-      {/* Nombre + estrellas */}
       <View style={styles.cardHeader}>
         <Text style={styles.cardName}>{item.nombre} {item.apellido}</Text>
         <RatingBadge rating={item.estrellas ?? 0} />
       </View>
-
-      {/* Especialidad */}
       {(item.especialidad || item.servicio_id) ? (
         <Text style={styles.cardTag}>
           🔧 {item.especialidad ?? SERVICIOS_MAP[item.servicio_id] ?? 'Sin especialidad'}
         </Text>
       ) : null}
-
-      {/* Horario */}
       {item.horario_requerido ? (
         <Text style={styles.cardZona}>
           🕐 {item.horario_requerido}{item.horario_finalizado ? ` — ${item.horario_finalizado}` : ''}
         </Text>
       ) : null}
-
-      {/* Distancia */}
       {item.distancia != null ? (
         <Text style={styles.cardZona}>📍 {item.distancia} km</Text>
       ) : null}
-
-      {/* Badges: tipo + precio + emergencia */}
       <View style={styles.cardFooterRow}>
         <View style={[styles.badge, item.fijo ? styles.badgeFijo : styles.badgeSubasta]}>
           <Text style={styles.badgeText}>{item.fijo ? 'Fijo' : 'Subasta'}</Text>
@@ -89,7 +80,6 @@ const ClienteCard = ({ item, onPressChat }) => (
         )}
       </View>
     </View>
-
     <TouchableOpacity style={styles.chatButton} onPress={() => onPressChat(item)} activeOpacity={0.8}>
       <ChatIcon />
     </TouchableOpacity>
@@ -205,16 +195,13 @@ const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.sheet}>
-
           <View style={styles.sheetHeader}>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Text style={styles.closeBtnText}>✕</Text>
             </TouchableOpacity>
             <Text style={styles.sheetTitle}>Filtrar solicitudes</Text>
           </View>
-
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-
             <Text style={styles.filterLabel}>Rating del cliente:</Text>
             <StarSelector value={estrellas} onChange={setEstrellas} />
 
@@ -300,7 +287,6 @@ const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
                 keyboardType="numeric"
               />
             </View>
-
           </ScrollView>
 
           <View style={styles.sheetFooter}>
@@ -326,7 +312,11 @@ const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
-export default function BuscadorCliente() {
+export default function BuscadorTrabajador({ route }) {              // ← agregado { route }
+  const { usuario } = route.params;                                  // ← leer params
+  const idTrabajador = usuario.idTrabajador;                         // ← id real
+
+  const [showTrabajoActivo, setShowTrabajoActivo] = useState(false);
   const [clientes, setClientes]     = useState([]);
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState(null);
@@ -359,7 +349,9 @@ export default function BuscadorCliente() {
   const fetchClientes = async (texto = '', overrideFilters = null) => {
     const f = overrideFilters ?? filters;
     const hayTexto   = texto && texto.trim();
-    const hayFiltros = f.estrellas || f.servicio_id || f.fijo || f.emergencia || f.distanciaMax || f.horarioDesde || f.horarioHasta || f.precioMin || f.precioMax;
+    const hayFiltros = f.estrellas || f.servicio_id || f.fijo || f.emergencia
+                    || f.distanciaMax || f.horarioDesde || f.horarioHasta
+                    || f.precioMin || f.precioMax;
 
     if (!hayTexto && !hayFiltros) return;
 
@@ -467,7 +459,19 @@ export default function BuscadorCliente() {
         />
       )}
 
-      <TrabajoActivoTrabajador />
+      <TrabajoActivoTrabajador
+        onPress={() => setShowTrabajoActivo(true)}
+        expanded={showTrabajoActivo}
+      />
+
+      {showTrabajoActivo && (
+  <TrabajoActivoOverlayTrabajador
+    visible={showTrabajoActivo}
+    onClose={() => setShowTrabajoActivo(false)}
+    onChat={(trabajo) => console.log('chat con cliente:', trabajo)}
+    idTrabajador={idTrabajador}
+  />
+)}
 
       <FilterModal
         visible={showFilter}
@@ -519,7 +523,6 @@ const styles = StyleSheet.create({
   listContent:  { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 },
   resultCount:  { color: '#A0AEC0', fontSize: 12, fontWeight: '600', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  // ── Card ──
   card: {
     flexDirection: 'row', alignItems: 'flex-start',
     backgroundColor: BLUE, borderRadius: 12,
@@ -542,18 +545,15 @@ const styles = StyleSheet.create({
   badgePrecio:    { backgroundColor: GOLD, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
   badgePrecioText:{ color: BLUE_DARK, fontSize: 11, fontWeight: '800' },
 
-  // ── Rating ──
   ratingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: BLUE_DARK, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, gap: 2 },
   ratingText:  { color: WHITE, fontSize: 11, fontWeight: '600' },
   ratingStar:  { color: GOLD, fontSize: 11 },
 
-  // ── Chat button ──
   chatButton: { padding: 6, justifyContent: 'center', alignItems: 'center' },
   chatBubble: { width: 28, height: 22, backgroundColor: WHITE, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
   dotsRow:    { flexDirection: 'row', gap: 3 },
   dot:        { width: 4, height: 4, borderRadius: 2, backgroundColor: BLUE_CARD },
 
-  // ── Filter modal ──
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: '#12184a',

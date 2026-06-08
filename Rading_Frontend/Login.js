@@ -35,6 +35,7 @@ export default function Login({ navigation }) {
       }
 
       const { usuario } = data;
+      console.log('tipo de usuario:', usuario.tipo);
 
       if (usuario.tipo === 'trabajador') {
         navigation.navigate('BuscadorTrabajador', { usuario });

@@ -23,7 +23,14 @@ router.post("/registrar", async (req, res) => {
         res.status(500).json({ message: "Error al registrar trabajador", error })
     }
 })
-
+router.get("/trabajosActivos/:id", async (req, res) => {
+    try {
+        const trabajosActivos = await svc.mostrarTrabajosActivos(req.params.id)
+        res.status(200).json(trabajosActivos)
+    } catch (error) {
+        res.status(500).json({ message: "Error al obtener trabajos activos", error })
+    }
+})
 // GET /trabajador/buscarCliente?texto=&estrellas=&servicio_id=&fijo=&emergencia=&distanciaMax=&horarioDesde=&horarioHasta=
 router.get("/buscarCliente", async (req, res) => {
     try {

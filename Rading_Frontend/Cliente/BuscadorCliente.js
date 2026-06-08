@@ -5,7 +5,8 @@
     Modal, ScrollView, TextInput,
   } from 'react-native';
   import API_URL from '../configS';
-  import TrabajoActivoTrabajador from '../Trabajador/TrabajoActivoTrabajador';
+import TrabajoActivoCliente from './TrabajoActivoCliente';
+
   import Search from '../Trabajador/Search';
   import Svg, { Path, Rect, G } from 'react-native-svg';
 import OfertaRecibidaOverlayCliente from './OfertaRecibidaOverlayCliente'; import RadarIcon from '../assets/RadarIcon';
@@ -353,8 +354,7 @@ const [showOferta, setShowOferta] = useState(false);
           />
         )}
 
-        <TrabajoActivoTrabajador onPress={() => setShowOferta(true)} />
-
+<TrabajoActivoCliente onPress={() => setShowOferta(true)} />
 <OfertaRecibidaOverlayCliente
   visible={showOferta}
   onClose={() => setShowOferta(false)}

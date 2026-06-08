@@ -49,4 +49,7 @@ export default class TrabajadorServices {
     mostrarTrabajosRealizados = async (idTrabajador) => {
         return await this.#repo.mostrarTrabajosRealizados(idTrabajador)
     }
+    mostrarTrabajosActivos = async (idTrabajador) => {
+    return await this.#repo.mostrarTrabajosActivos(idTrabajador)
+}
 }

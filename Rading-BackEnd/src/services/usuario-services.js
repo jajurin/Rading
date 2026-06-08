@@ -16,13 +16,16 @@ login = async ({ identificador, contrasena }) => {
 
     const esTrabajador = await this.#repo.esTrabajador(usuario.id)
 
-    // ← NUEVO: si es cliente, buscar su idCliente
-    let idCliente = null
-    if (!esTrabajador) {
-        idCliente = await this.#repo.buscarIdCliente(usuario.id)
-    }
+let idCliente = null
+let idTrabajador = null
 
-    return { ...usuario, tipo: esTrabajador ? 'trabajador' : 'cliente', idCliente }
+if (!esTrabajador) {
+    idCliente = await this.#repo.buscarIdCliente(usuario.id)
+} else {
+    idTrabajador = await this.#repo.buscarIdTrabajador(usuario.id)
+}
+
+return { ...usuario, tipo: esTrabajador ? 'trabajador' : 'cliente', idCliente, idTrabajador }
 }
     registrarUsuario = async (body) => {
     const { nombre, apellido, email, direccion, contrasena, telefono, fechaNac, dni, IdCuentaBancaria } = body

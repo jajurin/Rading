@@ -52,7 +52,42 @@ export default class trabajadorRepository {
 
     return result?.rows ?? []
 }
- 
+ mostrarTrabajosActivos = async (idTrabajador) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        const sql = `
+            SELECT
+                ct.id,
+                u.nombre,
+                u.apellido,
+                c.estrellas,
+                ct.estado,
+                ct.fecha_iniciado,
+                ct.distancia,
+                ct.fijo,
+                ct.precio,
+                ct.servicio_id,
+                ct.emergencia,
+                ct.horario_requerido,
+                ct.horario_finalizado,
+                s.nombre AS servicio_nombre
+            FROM "Cliente-Trabajador" ct
+            INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
+            INNER JOIN "Usuario" u ON c."IdPersona" = u.id
+            LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+            WHERE ct."IdTrabajador" = $1
+            AND ct.estado = 'EN PROCESO'
+        `
+        const result = await client.query(sql, [idTrabajador])
+        return result?.rows ?? []
+    } catch (err) {
+        console.error('Error en mostrarTrabajosActivos (trabajador):', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
     /**
      * Muestra los trabajos realizados (TERMINADO o CANCELADO) de un trabajador.
      */
