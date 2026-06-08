@@ -8,7 +8,8 @@
   import TrabajoActivoTrabajador from '../Trabajador/TrabajoActivoTrabajador';
   import Search from '../Trabajador/Search';
   import Svg, { Path, Rect, G } from 'react-native-svg';
- import RadarIcon from '../assets/RadarIcon';
+import OfertaRecibidaOverlayCliente from './OfertaRecibidaOverlayCliente'; import RadarIcon from '../assets/RadarIcon';
+ 
   // ─── Sub-components ──────────────────────────────────────────────────────────
 
   const RatingBadge = ({ rating }) => (
@@ -222,14 +223,15 @@
 
   // ─── Main Screen ──────────────────────────────────────────────────────────────
 
-  export default function BuscadorTrabajador() {
+  export default function BuscadorTrabajador({ route, navigation }) {
+    const { usuario } = route.params;
     const [clientes, setClientes]     = useState([]);
     const [loading, setLoading]       = useState(false);
     const [error, setError]           = useState(null);
     const [buscado, setBuscado]       = useState(false);
     const [showFilter, setShowFilter] = useState(false);
     const [lastTexto, setLastTexto]   = useState('');
-
+const [showOferta, setShowOferta] = useState(false);
     const [filters, setFilters] = useState({
       estrellas: null,
       especialidad: null,
@@ -331,7 +333,7 @@
           </View>
         ) : clientes.length === 0 ? (
           <View style={styles.centerBox}>
-            <Text style={styles.placeholderIcon}><RadarIcon /></Text>
+            <Text style={styles.placeholderIcon}></Text>
             <Text style={styles.placeholderText}>No se encontraron trabajadores</Text>
           </View>
         ) : (
@@ -351,7 +353,17 @@
           />
         )}
 
-        <TrabajoActivoTrabajador />
+        <TrabajoActivoTrabajador onPress={() => setShowOferta(true)} />
+
+<OfertaRecibidaOverlayCliente
+  visible={showOferta}
+  onClose={() => setShowOferta(false)}
+  idCliente={usuario.idCliente}
+  onChat={(trabajo) => {
+    setShowOferta(false);
+    navigation.navigate('Chat', { trabajo });
+  }}
+/>
 
         <FilterModal
           visible={showFilter}
@@ -473,4 +485,5 @@
     resetBtnText: { color: WHITE, fontWeight: '700', fontSize: 15 },
     applyBtn: { flex: 2, paddingVertical: 14, borderRadius: 12, backgroundColor: BLUE, alignItems: 'center' },
     applyBtnText: { color: WHITE, fontWeight: '800', fontSize: 15 },
+  
   });

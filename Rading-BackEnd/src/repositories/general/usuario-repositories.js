@@ -99,4 +99,18 @@ esTrabajador = async (idUsuario) => {
         await client.end()
     }
 }
+buscarIdCliente = async (idUsuario) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        const sql = `SELECT id FROM "Cliente" WHERE "IdPersona" = $1 LIMIT 1`
+        const result = await client.query(sql, [idUsuario])
+        return result.rows[0]?.id ?? null
+    } catch (err) {
+        console.error('Error en buscarIdCliente:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
 }
