@@ -91,43 +91,42 @@ export default class trabajadorRepository {
     /**
      * Muestra los trabajos realizados (TERMINADO o CANCELADO) de un trabajador.
      */
-    mostrarTrabajosRealizados = async (idTrabajador) => {
-        const client = new Client(config)
-        let result
- 
-        try {
-            await client.connect()
- 
-            const sql = `
-                SELECT
-                    u.nombre,
-                    u.apellido,
-                    ct.distancia,
-                    ct.horario,
-                    ct.categoria,
-                    ct.fijo,
-                    ct.estado,
-                    ct."fecha_iniciado",
-                    ct."fecha_acabado"
-                FROM "Cliente-Trabajador" ct
-                INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
-                INNER JOIN "Usuario" u ON c."IdPersona" = u.id
-                WHERE ct."IdTrabajador" = $1
-                AND ct.estado IN ('TERMINADO', 'CANCELADO')
-            `
- 
-            result = await client.query(sql, [idTrabajador])
- 
-        } catch (err) {
-            console.error('Error en mostrarTrabajosRealizados:', err)
-            throw err
-        } finally {
-            await client.end()
-        }
- 
+   mostrarTrabajosRealizados = async (idTrabajador) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        const sql = `
+            SELECT
+                ct.id,
+                u.nombre,
+                u.apellido,
+                c.estrellas,
+                ct.estado,
+                ct.fecha_iniciado,
+                ct.fecha_acabado,
+                ct.distancia,
+                ct.fijo,
+                ct.precio,
+                ct.servicio_id,
+                ct.horario_requerido,
+                ct.horario_finalizado,
+                s.nombre AS servicio_nombre
+            FROM "Cliente-Trabajador" ct
+            INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
+            INNER JOIN "Usuario" u ON c."IdPersona" = u.id
+            LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+            WHERE ct."IdTrabajador" = $1
+            AND ct.estado IN ('TERMINADO', 'CANCELADO')
+        `
+        const result = await client.query(sql, [idTrabajador])
         return result?.rows ?? []
+    } catch (err) {
+        console.error('Error en mostrarTrabajosRealizados:', err)
+        throw err
+    } finally {
+        await client.end()
     }
- 
+}
     /**
      * Registra un trabajador: inserta en Usuario y luego en Trabajador.
      * Recibe un objeto con todos los campos del modelo.

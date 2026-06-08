@@ -122,7 +122,7 @@ const TrabajoDetalle = ({ trabajo, onChat }) => (
   </View>
 );
 
-export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onChat, idTrabajador }) {
+export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onChat, idTrabajador, navigation }) {
   const [trabajos, setTrabajos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [trabajoSeleccionado, setTrabajoSeleccionado] = useState(null);
@@ -177,6 +177,24 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
             </View>
           </TouchableOpacity>
 
+          {/* TABS */}
+<View style={styles.tabs}>
+  <View style={styles.tabActive}>
+    <Text style={styles.tabTextActive}>En proceso</Text>
+  </View>
+  <TouchableOpacity
+    style={styles.tabBtn}
+    activeOpacity={0.8}
+    onPress={() => {
+      onClose();
+      navigation.navigate('VerTrabajosRealizados', { idTrabajador });
+    }}
+  >
+    <Text style={styles.tabBtnText}>Realizados</Text>
+    <Ionicons name="arrow-forward" size={14} color="#FFD000" />
+  </TouchableOpacity>
+</View>
+
           {loading ? (
             <View style={styles.centerBox}>
               <ActivityIndicator size="large" color="#fff" />
@@ -228,6 +246,11 @@ const styles = StyleSheet.create({
   itemLeft: { flexDirection: "row", alignItems: "center", flex: 1, gap: 12 },
   itemAvatar: { width: 46, height: 46, borderRadius: 23, borderWidth: 2, borderColor: "rgba(255,255,255,0.3)" },
   itemInfo: { flex: 1, gap: 3 },
+  tabs: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.15)" },
+tabActive: { paddingVertical: 6, paddingHorizontal: 14, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 20 },
+tabTextActive: { color: "#fff", fontSize: 13, fontWeight: "800" },
+tabBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: 14, borderWidth: 1.5, borderColor: "#FFD000", borderRadius: 20 },
+tabBtnText: { color: "#FFD000", fontSize: 13, fontWeight: "700" },
   itemServicio: { fontSize: 14, fontWeight: "800", color: "#fff" },
   itemNombre: { fontSize: 12, color: "rgba(255,255,255,0.65)", fontWeight: "500" },
   estadoBadge: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },

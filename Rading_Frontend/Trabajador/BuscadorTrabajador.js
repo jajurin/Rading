@@ -312,7 +312,7 @@ const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
-export default function BuscadorTrabajador({ route }) {              // ← agregado { route }
+export default function BuscadorTrabajador({ route, navigation  }) {              // ← agregado { route }
   const { usuario } = route.params;                                  // ← leer params
   const idTrabajador = usuario.idTrabajador;                         // ← id real
 
@@ -470,8 +470,10 @@ export default function BuscadorTrabajador({ route }) {              // ← agre
     onClose={() => setShowTrabajoActivo(false)}
     onChat={(trabajo) => console.log('chat con cliente:', trabajo)}
     idTrabajador={idTrabajador}
+    navigation={navigation}
   />
 )}
+
 
       <FilterModal
         visible={showFilter}

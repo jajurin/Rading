@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 export default function TrabajoActivoTrabajador({
   estado = "TRABAJO EN CURSO",
-  titulo = "REPARACIÓN DE PLOMERÍA",
+  titulo = "TRABAJO...",
   expanded = false,
   onPress,
 }) {

@@ -8,6 +8,7 @@ import RegistrarseCliente from './Cliente/RegistrarseCliente';
 import RegistrarseTrabajador from './Trabajador/RegistrarseTrabajdor';
 import BuscadorCliente from './Cliente/BuscadorCliente';
 import BuscadorTrabajador from './Trabajador/BuscadorTrabajador';
+import VerTrabajosRealizados from './Trabajador/VerTrabajosRealizados';
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -21,6 +22,8 @@ export default function App() {
         <Stack.Screen name="RegistrarseTrabajador" component={RegistrarseTrabajador} />
         <Stack.Screen name="BuscadorCliente" component={BuscadorCliente} />
         <Stack.Screen name="BuscadorTrabajador" component={BuscadorTrabajador} />
+        <Stack.Screen name="VerTrabajosRealizados" component={VerTrabajosRealizados} />
+
       </Stack.Navigator>
     </NavigationContainer>
   );
