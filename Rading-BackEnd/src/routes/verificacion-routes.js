@@ -1,14 +1,21 @@
 import { Router } from "express"
 import { enviarCodigoVerificacion } from "../services/email-service.js"
+import UsuarioServices from "../services/usuario-services.js"
 
-const router = Router()
+const router = Router()  // ← esto faltaba
 const codigosPendientes = new Map()
+const svc = new UsuarioServices()
 
 // POST /verificacion/enviar-codigo
 router.post("/enviar-codigo", async (req, res) => {
     try {
         const { email } = req.body
         if (!email) return res.status(400).json({ message: "Email requerido" })
+
+        const existe = await svc.existeEmail(email)
+        if (existe) {
+            return res.status(409).json({ message: "El email ya está registrado" })
+        }
 
         const codigo = Math.floor(100000 + Math.random() * 900000).toString()
         const expira = Date.now() + 10 * 60 * 1000
