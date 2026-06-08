@@ -9,6 +9,7 @@ import RegistrarseTrabajador from './Trabajador/RegistrarseTrabajdor';
 import BuscadorCliente from './Cliente/BuscadorCliente';
 import BuscadorTrabajador from './Trabajador/BuscadorTrabajador';
 import VerTrabajosRealizados from './Trabajador/VerTrabajosRealizados';
+import BottomNavBar from './Cliente/Navegador';
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Login" component={Login} />
+             <Stack.Screen name="bottombar" component={BottomNavBar} />
         <Stack.Screen name="TipoUsuario" component={TipoUsuario} />
         <Stack.Screen name="Registrarse" component={Registrarse} />
         <Stack.Screen name="RegistrarseCliente" component={RegistrarseCliente} />
@@ -23,7 +25,6 @@ export default function App() {
         <Stack.Screen name="BuscadorCliente" component={BuscadorCliente} />
         <Stack.Screen name="BuscadorTrabajador" component={BuscadorTrabajador} />
         <Stack.Screen name="VerTrabajosRealizados" component={VerTrabajosRealizados} />
-
       </Stack.Navigator>
     </NavigationContainer>
   );
