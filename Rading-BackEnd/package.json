@@ -21,9 +21,11 @@
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.107.0",
+    "axios": "^1.18.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "groq-sdk": "^1.2.1",
     "http-status-codes": "^2.3.0",
     "nodemailer": "^8.0.10",
     "nodemon": "^3.1.14",
