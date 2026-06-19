@@ -1,32 +1,28 @@
 // src/services-ia/aiProvider.js
-//
-// Punto único de contacto con el modelo de IA.
-// Si mañana cambiás de proveedor (Gemini, OpenAI, Ollama propio), solo
-// tocás este archivo: el resto de la app llama a `generarJSON(...)`.
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-import Groq from "groq-sdk";
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const MODEL = "gemini-2.5-flash"; // modelo vigente (gemini-1.5 está dado de baja)
 
-const MODEL = "llama-3.3-70b-versatile";
-
-/**
- * @param {string} systemPrompt
- * @param {string} userPrompt
- * @returns {Promise<object>}
- */
 export async function generarJSON(systemPrompt, userPrompt) {
-    const completion = await groq.chat.completions.create({
+    const model = genAI.getGenerativeModel({
         model: MODEL,
-        temperature: 0.4,
-        response_format: { type: "json_object" },
-        messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-        ],
+        systemInstruction: systemPrompt,
+        generationConfig: {
+            temperature: 0.4,
+            responseMimeType: "application/json",
+        },
     });
 
-    const raw = completion.choices[0]?.message?.content ?? "{}";
+    let result;
+    try {
+        result = await model.generateContent(userPrompt);
+    } catch (err) {
+        throw new Error(`Error llamando a Gemini: ${err.message}`);
+    }
+
+    const raw = result.response.text() ?? "{}";
 
     try {
         return JSON.parse(raw);
