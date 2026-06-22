@@ -21,9 +21,20 @@ router.post("/analizar", async (req, res) => {
     } catch (error) {
         console.error(error)
         const esErrorDeInput = error.message?.includes("descripcionOriginal es requerida")
-        res
-            .status(esErrorDeInput ? 400 : 502)
-            .json({ ok: false, message: esErrorDeInput ? error.message : "Error al analizar la solicitud", error: error.message })
+        const status = esErrorDeInput ? 400 : 502
+        const body = {
+            ok: false,
+            message: esErrorDeInput ? error.message : "Error al analizar la solicitud",
+            error: error.message,
+        }
+
+        // Para depuración local: incluir stack/causa si está habilitado
+        if (process.env.DEBUG_AI_ERRORS === 'true' || process.env.NODE_ENV !== 'production') {
+            body.stack = error.stack
+            if (error.cause) body.cause = String(error.cause)
+        }
+
+        res.status(status).json(body)
     }
 })
 
