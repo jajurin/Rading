@@ -13,26 +13,31 @@ import BottomNavBar from './Cliente/NavegadorCliente';
 import CrearSolicitud from './Cliente/CrearSolicitud'; // <-- pantalla nueva
 import PerfilScreen from './Cliente/PerfilCliente';
 import RecibirOfertasScreen from './Cliente/RecibirOfertaScreen';
-
+import ClasificarTrabajador from './Cliente/Resenia';
 const Stack = createStackNavigator();
 
 export default function App() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-         <Stack.Screen name="RecibirOfertasScreen" component={RecibirOfertasScreen} />
-         <Stack.Screen name="PerfilScreen" component={PerfilScreen} />
+        <Stack.Screen name="ClasificarTrabajador" component={ClasificarTrabajador} />
+        <Stack.Screen name="Login" component={Login} />
+             <Stack.Screen name="RegistrarseTrabajador" component={RegistrarseTrabajador} />
+          <Stack.Screen name="Registrarse" component={Registrarse} />
+            <Stack.Screen name="VerTrabajosRealizados" component={VerTrabajosRealizados} />
+        <Stack.Screen name="RecibirOfertasScreen" component={RecibirOfertasScreen} />
+        <Stack.Screen name="PerfilScreen" component={PerfilScreen} />
         <Stack.Screen name="CrearSolicitud" component={CrearSolicitud} />
         <Stack.Screen name="navegador" component={BottomNavBar} />
-        <Stack.Screen name="Login" component={Login} />
+        
         <Stack.Screen name="bottombar" component={BottomNavBar} />
         <Stack.Screen name="TipoUsuario" component={TipoUsuario} />
-        <Stack.Screen name="Registrarse" component={Registrarse} />
+      
         <Stack.Screen name="RegistrarseCliente" component={RegistrarseCliente} />
-        <Stack.Screen name="RegistrarseTrabajador" component={RegistrarseTrabajador} />
+   
         <Stack.Screen name="BuscadorCliente" component={BuscadorCliente} />
         <Stack.Screen name="BuscadorTrabajador" component={BuscadorTrabajador} />
-        <Stack.Screen name="VerTrabajosRealizados" component={VerTrabajosRealizados} />
+    
         
       </Stack.Navigator>
     </NavigationContainer>
