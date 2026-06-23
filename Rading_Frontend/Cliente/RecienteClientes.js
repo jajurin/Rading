@@ -1,5 +1,9 @@
 import React from 'react';
+import Header from '../Header';
+import TrabajoActivoCliente from './TrabajoActivoCliente';
+import BottomNavBar from './NavegadorCliente';
 import {
+ScrollView,
  View,
  Text,
  StyleSheet,
@@ -64,6 +68,9 @@ export default function RecientesClientes() {
    const borderColor = index % 2 === 0 ? '#00FF4C' : '#FF003C';
 
    return (
+
+
+   
      <TouchableOpacity
        style={[
          styles.card,
@@ -103,34 +110,55 @@ export default function RecientesClientes() {
  };
 
  return (
-   <View style={styles.container}>
-     <Text style={styles.title}>
-       Recientes:
-     </Text>
+  <View style={styles.container}>
+    <Header />
 
-     <FlatList
-       data={DATA}
-       keyExtractor={(item) => item.id}
-       renderItem={renderItem}
-       showsVerticalScrollIndicator={false}
-     />
-   </View>
- );
+
+    <FlatList
+  data={DATA}
+  renderItem={renderItem}
+  ListHeaderComponent={<Text style={styles.title}>Recientes:</Text>}
+  ListFooterComponent={<TrabajoActivoCliente />}
+  contentContainerStyle={{
+    flexGrow: 1,
+    paddingBottom: 120,
+  }}
+/>
+
+
+    <BottomNavBar />
+  </View>
+);
 }
 
 const styles = StyleSheet.create({
  container: {
    flex: 1,
-   paddingHorizontal: 12,
-   paddingTop: 10,
+
+ },
+ FlatList:{
+    flex: 1,
+    
  },
 
+
  title: {
-   fontSize: 28,
-   color: '#333',
-   marginBottom: 15,
-   marginLeft: 10,
- },
+  fontSize: 28,
+  color: '#333',
+  marginBottom: 15,
+  marginLeft: 10,
+},
+
+listContent: {
+  paddingHorizontal: 12,
+  paddingTop: 10,
+  paddingBottom: 20,
+},
+
+content: {
+  flex: 1,
+  paddingHorizontal: 12,
+},
 
  card: {
    flexDirection: 'row',

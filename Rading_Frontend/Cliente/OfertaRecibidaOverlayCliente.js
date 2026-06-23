@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+
+
 import {
   Modal, View, Text, Image, TouchableOpacity,
   StyleSheet, ScrollView, ActivityIndicator,
@@ -140,7 +142,9 @@ export default function OfertaRecibidaOverlayCliente({
   onClose,
   onChat,
   idCliente,
+  navigation
 }) {
+  const [overlayVisible, setOverlayVisible] = useState(false);
   const [trabajos, setTrabajos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [trabajoSeleccionado, setTrabajoSeleccionado] = useState(null);
@@ -171,25 +175,46 @@ export default function OfertaRecibidaOverlayCliente({
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.overlay}>
-        <View style={styles.container}>
+        <View style={styles.container} >
  
           {/* Header */}
-          <TouchableOpacity style={styles.header} onPress={onClose} activeOpacity={0.8}>
-            <View style={styles.headerLeft}>
-              <View style={styles.iconCircle}>
-                <Ionicons name="construct" size={13} color="#7a5c00" />
-              </View>
-              <View>
-                <Text style={styles.headerLabel}>MIS TRABAJOS</Text>
-                <Text style={styles.headerTitle}>
-                  {loading ? '...' : `${trabajos.length} en proceso`}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.closeCircle}>
-              <Ionicons name="chevron-down" size={20} color="#7a5c00" />
-            </View>
-          </TouchableOpacity>
+          <TouchableOpacity 
+  style={styles.header}
+  onPress={onClose}
+  activeOpacity={0.8}
+>
+  <View style={styles.headerLeft}>
+    <View style={styles.iconCircle}>
+      <Ionicons name="construct" size={13} color="#7a5c00" />
+    </View>
+
+    <View>
+      <Text style={styles.headerLabel}>MIS TRABAJOS</Text>
+      <Text style={styles.headerTitle}>
+        {loading ? '...' : `${trabajos.length} en proceso`}
+      </Text>
+    </View>
+  </View>
+
+  {/* BOTÓN + CLOSE */}
+  <View style={styles.headerRight}>
+    
+    <TouchableOpacity
+      style={styles.recientesButton}
+      onPress={() => {
+        onClose?.();
+        navigation?.navigate('RecienteClientes');
+      }}
+    >
+      <Text style={styles.recientesText}>Recientes</Text>
+    </TouchableOpacity>
+
+    <View style={styles.closeCircle}>
+      <Ionicons name="chevron-down" size={20} color="#7a5c00" />
+    </View>
+
+  </View>
+</TouchableOpacity>
  
           {/* Contenido */}
           {loading ? (
@@ -475,4 +500,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
   },
+
+  //boton reciente
+
+  
+headerRight: {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 10,
+},
+
+recientesButton: {
+  backgroundColor: "#FFF",
+  paddingHorizontal: 10,
+  paddingVertical: 6,
+  borderRadius: 8,
+  borderWidth: 1,
+  borderColor: "rgba(0,0,0,0.15)",
+},
+
+recientesText: {
+  fontSize: 11,
+  fontWeight: "800",
+  color: "#3a2c00",
+},
 });
