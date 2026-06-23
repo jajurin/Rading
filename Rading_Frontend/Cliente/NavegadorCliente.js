@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -10,12 +11,13 @@ import {
 // 1. Importamos los componentes necesarios para el SVG
 import Svg, { G, Path } from 'react-native-svg';
 
+
 const Icons = {
   Home: ({ color, size = 22 }) => (
-    <Svg 
-      width={size} 
-      height={size} 
-      viewBox="0 0 24 24" 
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
       fill="none"
     >
       <G id="SVGRepo_bgCarrier" strokeWidth="0" />
@@ -32,59 +34,79 @@ const Icons = {
     </Svg>
   ),
 
+
   Search: ({ color, size = 22 }) => (
-    <Svg 
-      width={size} 
-      height={size} 
-      viewBox="0 0 24 24" 
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
       fill={color}
     >
       <G id="SVGRepo_bgCarrier" strokeWidth="0" />
       <G id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round" />
       <G id="SVGRepo_iconCarrier">
-        <Path 
-          d="M19.778,4.222A11,11,0,1,1,12,1a1,1,0,0,1,1,1v8.277a2,2,0,1,1-2,0V7.621a4.49,4.49,0,1,0,4.182,1.2A1,1,0,0,1,16.6,7.4,6.505,6.505,0,1,1,11,5.585V3.055a9,9,0,1,0,7.364,2.581,1,1,0,1,1,1.414-1.414Z" 
+        <Path
+          d="M19.778,4.222A11,11,0,1,1,12,1a1,1,0,0,1,1,1v8.277a2,2,0,1,1-2,0V7.621a4.49,4.49,0,1,0,4.182,1.2A1,1,0,0,1,16.6,7.4,6.505,6.505,0,1,1,11,5.585V3.055a9,9,0,1,0,7.364,2.581,1,1,0,1,1,1.414-1.414Z"
         />
       </G>
     </Svg>
   ),
 
+
   Chat: ({ color, size = 22 }) => (
-    <Svg 
-      width={size} 
-      height={size} 
-      viewBox="0 0 24 24" 
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
       fill="none"
     >
       <G id="SVGRepo_bgCarrier" strokeWidth="0" />
       <G id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round" />
       <G id="SVGRepo_iconCarrier">
-        <Path 
-          d="M8 10.5H16" 
-          stroke={color} 
-          strokeWidth="1.5" 
-          strokeLinecap="round" 
+        <Path
+          d="M8 10.5H16"
+          stroke={color}
+          strokeWidth="1.5"
+          strokeLinecap="round"
         />
-        <Path 
-          d="M8 14H13.5" 
-          stroke={color} 
-          strokeWidth="1.5" 
-          strokeLinecap="round" 
+        <Path
+          d="M8 14H13.5"
+          stroke={color}
+          strokeWidth="1.5"
+          strokeLinecap="round"
         />
-        <Path 
-          d="M17 3.33782C15.5291 2.48697 13.8214 2 12 2C6.47715 2 2 6.47715 2 12C2 13.5997 2.37562 15.1116 3.04346 16.4525C3.22094 16.8088 3.28001 17.2161 3.17712 17.6006L2.58151 19.8267C2.32295 20.793 3.20701 21.677 4.17335 21.4185L6.39939 20.8229C6.78393 20.72 7.19121 20.7791 7.54753 20.9565C8.88837 21.6244 10.4003 22 12 22C17.5228 22 22 17.5228 22 12C22 10.1786 21.513 8.47087 20.6622 7" 
-          stroke={color} 
-          strokeWidth="1.5" 
-          strokeLinecap="round" 
+        <Path
+          d="M17 3.33782C15.5291 2.48697 13.8214 2 12 2C6.47715 2 2 6.47715 2 12C2 13.5997 2.37562 15.1116 3.04346 16.4525C3.22094 16.8088 3.28001 17.2161 3.17712 17.6006L2.58151 19.8267C2.32295 20.793 3.20701 21.677 4.17335 21.4185L6.39939 20.8229C6.78393 20.72 7.19121 20.7791 7.54753 20.9565C8.88837 21.6244 10.4003 22 12 22C17.5228 22 22 17.5228 22 12C22 10.1786 21.513 8.47087 20.6622 7"
+          stroke={color}
+          strokeWidth="1.5"
+          strokeLinecap="round"
         />
       </G>
     </Svg>
   ),
 
-  Profile: ({ color, size = 22 }) => (
-    // Reemplazá esta línea con tu imagen
-    null
-  ),
+
+ Profile: ({ color, size = 22 }) => (
+  <Svg
+    width={size}
+    height={size}
+    viewBox="0 0 16 16"
+    fill="none"
+  >
+    <G id="SVGRepo_bgCarrier" strokeWidth="0" />
+    <G id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round" />
+    <G id="SVGRepo_iconCarrier">
+      <Path
+        d="M8 7C9.65685 7 11 5.65685 11 4C11 2.34315 9.65685 1 8 1C6.34315 1 5 2.34315 5 4C5 5.65685 6.34315 7 8 7Z"
+        fill={color}
+      />
+      <Path
+        d="M14 12C14 10.3431 12.6569 9 11 9H5C3.34315 9 2 10.3431 2 12V15H14V12Z"
+        fill={color}
+      />
+    </G>
+  </Svg>
+),
 };
 const THEME = {
   bg: '#e4e2e2',
@@ -97,6 +119,7 @@ const THEME = {
   fabShadow: '#004AC6',
 };
 
+
 const NAV_ITEMS = [
   { key: 'inicio',   label: 'Inicio',   Icon: Icons.Home    },
   { key: 'busqueda', label: 'Busqueda', Icon: Icons.Search  },
@@ -104,10 +127,12 @@ const NAV_ITEMS = [
   { key: 'perfil',   label: 'Perfil',   Icon: Icons.Profile },
 ];
 
+
 function NavTabItem({ item, isActive, onPress }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(isActive ? 1 : 0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
+
 
   useEffect(() => {
     Animated.parallel([
@@ -131,6 +156,7 @@ function NavTabItem({ item, isActive, onPress }) {
     ]).start();
   }, [isActive]);
 
+
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
       toValue: 0.88,
@@ -140,6 +166,7 @@ function NavTabItem({ item, isActive, onPress }) {
     }).start();
   };
 
+
   const handlePressOut = () => {
     Animated.spring(scaleAnim, {
       toValue: isActive ? 1.05 : 1,
@@ -148,6 +175,7 @@ function NavTabItem({ item, isActive, onPress }) {
       friction: 8,
     }).start();
   };
+
 
   return (
     <TouchableOpacity
@@ -168,10 +196,12 @@ function NavTabItem({ item, isActive, onPress }) {
           pointerEvents="none"
         />
 
+
         <item.Icon
           color={isActive ? THEME.accentLight : THEME.textInactive}
           size={22}
         />
+
 
         <Animated.Text
           style={[
@@ -188,15 +218,18 @@ function NavTabItem({ item, isActive, onPress }) {
           {item.label}
         </Animated.Text>
 
+
         <Animated.View style={[styles.activeDot, { opacity: opacityAnim }]} />
       </Animated.View>
     </TouchableOpacity>
   );
 }
 
+
 function FabButton({ onPress }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
+
 
   const handlePressIn = () => {
     Animated.parallel([
@@ -205,6 +238,7 @@ function FabButton({ onPress }) {
     ]).start();
   };
 
+
   const handlePressOut = () => {
     Animated.parallel([
       Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 180, friction: 8 }),
@@ -212,10 +246,12 @@ function FabButton({ onPress }) {
     ]).start();
   };
 
+
   const rotate = rotateAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['0deg', '45deg'],
   });
+
 
   return (
     <TouchableOpacity
@@ -234,11 +270,14 @@ function FabButton({ onPress }) {
   );
 }
 
+
 export default function BottomNavBar() {
   const [activeTab, setActiveTab] = useState('inicio');
 
+
   const leftItems = NAV_ITEMS.slice(0, 2);
   const rightItems = NAV_ITEMS.slice(2, 4);
+
 
   return (
     <View style={styles.container}>
@@ -255,7 +294,9 @@ export default function BottomNavBar() {
           ))}
         </View>
 
+
         <FabButton onPress={() => console.log('FAB pressed')} />
+
 
         <View style={styles.tabGroup}>
           {rightItems.map(item => (
@@ -271,6 +312,7 @@ export default function BottomNavBar() {
     </View>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {

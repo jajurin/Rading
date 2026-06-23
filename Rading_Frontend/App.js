@@ -14,12 +14,14 @@ import CrearSolicitud from './Cliente/CrearSolicitud'; // <-- pantalla nueva
 import PerfilScreen from './Cliente/PerfilCliente';
 import RecibirOfertasScreen from './Cliente/RecibirOfertaScreen';
 import ClasificarTrabajador from './Cliente/Resenia';
+import HomeCliente from './Cliente/HomeCliente';
 const Stack = createStackNavigator();
 
 export default function App() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="HomeCliente" component={HomeCliente} />
                 <Stack.Screen name="CrearSolicitud" component={CrearSolicitud} />
           <Stack.Screen name="Login" component={Login} />
         <Stack.Screen name="ClasificarTrabajador" component={ClasificarTrabajador} />
