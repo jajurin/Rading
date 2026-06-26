@@ -3,13 +3,14 @@ import Header from '../Header';
 import TrabajoActivoCliente from './TrabajoActivoCliente';
 import BottomNavBar from './NavegadorCliente';
 import {
-ScrollView,
+
  View,
  Text,
  StyleSheet,
  FlatList,
  TouchableOpacity,
  Image,
+ SafeAreaViewBase,
 } from 'react-native';
 
 const DATA = [
@@ -70,7 +71,7 @@ export default function RecientesClientes() {
    return (
 
 
-   
+
      <TouchableOpacity
        style={[
          styles.card,
@@ -110,6 +111,7 @@ export default function RecientesClientes() {
  };
 
  return (
+
   <View style={styles.container}>
     <Header />
 
@@ -128,6 +130,7 @@ export default function RecientesClientes() {
 
     <BottomNavBar />
   </View>
+  
 );
 }
 

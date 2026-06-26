@@ -1,6 +1,7 @@
 import React from 'react';
 import TrabajoActivoCliente from './TrabajoActivoCliente';
 import Header from '../Header';
+import BottomNavBar from './NavegadorCliente';
 import {
   View,
   Text,
@@ -50,13 +51,15 @@ export default function HomeCliente() {
 
   return (
     <SafeAreaView style={styles.container}>
+
+       {/* HEADER */}
+       <Header/>
       <ScrollView showsVerticalScrollIndicator={false}>
 
 
 
 
-        {/* HEADER */}
-       <Header/>
+       
 
 
 
@@ -193,7 +196,7 @@ export default function HomeCliente() {
 
       {/* TAB BAR */}
      
-
+      <BottomNavBar/>
 
 
 
