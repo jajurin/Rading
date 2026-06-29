@@ -17,6 +17,7 @@ import ClasificarTrabajador from './Cliente/Resenia';
 import HomeCliente from './Cliente/HomeCliente';
 import RecientesClientes from './Cliente/RecienteClientes';
 
+
 import OfertaRecibidaOverlayCliente from './Cliente/OfertaRecibidaOverlayCliente';
 
 
@@ -26,11 +27,9 @@ export default function App() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="CrearSolicitud" component={CrearSolicitud} />
-      <Stack.Screen name="Login" component={Login} />
-           <Stack.Screen name="Perfil" component={PerfilScreen} />   
-     <Stack.Screen name="RecienteClientes" component={RecientesClientes} />
-    
+     
+   
+      <Stack.Screen name="a" component={ClasificarTrabajador} />
       <Stack.Screen name="HomeCliente" component={HomeCliente} />
             
     

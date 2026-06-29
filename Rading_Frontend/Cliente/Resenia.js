@@ -13,15 +13,16 @@ import {
 } from "react-native";
 
 const COLORS = {
-  primary: "#1A3CFF",
-  primaryDark: "#1430CC",
+  primary: "#1565D8",
+  primaryDark: "#1565D8",
   star: "#1A3CFF",
   starEmpty: "#D0D8FF",
   background: "#F5F6FA",
   card: "#FFFFFF",
-  textPrimary: "#0D1333",
-  textSecondary: "#6B7280",
-  textMuted: "#A0A8C0",
+  descrition: "#000000",
+  textPrimary: "#1565D8",
+  textSecondary: "#1565D8",
+  textMuted: "#000000",
   border: "#E2E6F3",
   inputBg: "#F0F2FA",
   danger: "#FF3B30",
@@ -287,7 +288,7 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", backgroundColor: COLORS.card,
     borderRadius: 14, borderWidth: 1.5, borderColor: COLORS.border, paddingHorizontal: 16, paddingVertical: 14,
   },
-  pickerText: { flex: 1, fontSize: 15, color: COLORS.textPrimary },
+  pickerText: { flex: 1, fontSize: 15, color: COLORS.descrition },
   pickerChevron: { fontSize: 18, color: COLORS.primary },
   pickerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
   pickerDropdown: {
