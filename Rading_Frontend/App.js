@@ -26,13 +26,14 @@ export default function App() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-
-           <Stack.Screen name="gvffv" component={PerfilScreen} />   
+            <Stack.Screen name="CrearSolicitud" component={CrearSolicitud} />
+      <Stack.Screen name="Login" component={Login} />
+           <Stack.Screen name="Perfil" component={PerfilScreen} />   
      <Stack.Screen name="RecienteClientes" component={RecientesClientes} />
     
       <Stack.Screen name="HomeCliente" component={HomeCliente} />
-                <Stack.Screen name="CrearSolicitud" component={CrearSolicitud} />
-          <Stack.Screen name="Login" component={Login} />
+            
+    
         <Stack.Screen name="ClasificarTrabajador" component={ClasificarTrabajador} />
       
              <Stack.Screen name="RegistrarseTrabajador" component={RegistrarseTrabajador} />

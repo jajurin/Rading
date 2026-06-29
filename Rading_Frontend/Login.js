@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import API_URL from './configS';
 
+
 export default function Login({ navigation }) {
   const [identificador, setIdentificador] = useState('');
   const [contrasena, setContrasena] = useState('');
@@ -40,8 +41,7 @@ export default function Login({ navigation }) {
       if (usuario.tipo === 'trabajador') {
         navigation.navigate('BuscadorTrabajador', { usuario });
       } else if (usuario.tipo === 'cliente') {
-        navigation.navigate('BuscadorCliente', { usuario });
-      } else {
+  navigation.navigate('Perfil', { usuario });
         Alert.alert('Error', 'Tipo de usuario desconocido');
       }
 
