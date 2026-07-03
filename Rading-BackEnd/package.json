@@ -30,6 +30,7 @@
     "http-status-codes": "^2.3.0",
     "nodemailer": "^8.0.10",
     "nodemon": "^3.1.14",
+    "openai": "^6.45.0",
     "pg": "^8.21.0"
   }
 }
