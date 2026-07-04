@@ -5,6 +5,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
+  StatusBar,
 } from 'react-native';
 
 import Logoicon from './assets/Logoicon.png';
@@ -14,7 +15,7 @@ import Svg, { Path } from 'react-native-svg';
 export default function Header() {
   return (
     <View style={styles.header}>
-
+      <StatusBar backgroundColor={BLUE} barStyle="light-content" />
 
       {/* Icono Izquierdo */}
     <TouchableOpacity style={styles.iconButton}>

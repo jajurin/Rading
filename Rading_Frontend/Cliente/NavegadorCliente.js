@@ -1,15 +1,15 @@
-
 import React, { useState, useRef, useEffect } from 'react';
+
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Animated,
-  Platform,
 } from 'react-native';
 // 1. Importamos los componentes necesarios para el SVG
 import Svg, { G, Path } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
 const Icons = {
@@ -273,6 +273,7 @@ function FabButton({ onPress }) {
 
 export default function BottomNavBar() {
   const [activeTab, setActiveTab] = useState('inicio');
+  const insets = useSafeAreaInsets();
 
 
   const leftItems = NAV_ITEMS.slice(0, 2);
@@ -280,7 +281,7 @@ export default function BottomNavBar() {
 
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 12) }]}>
       <View style={styles.topBorder} />
       <View style={styles.bar}>
         <View style={styles.tabGroup}>
@@ -321,7 +322,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: THEME.bg,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
   },
   topBorder: {
     height: 1,

@@ -1,4 +1,4 @@
-    import config from '../../configs/dbconfig.js'
+import config from '../../configs/dbconfig.js'
     import usuarioRepository from '../general/usuario-repositories.js'
     import pkg from 'pg'
     const { Client } = pkg
@@ -54,7 +54,6 @@
             return result?.rows ?? []
         }
 
-        // ← NUEVO: trae trabajadores por ids sin filtro de texto
         buscarTrabajadorPorIds = async (ids) => {
             if (!ids || ids.length === 0) return []
             const client = new Client(config)
@@ -117,22 +116,22 @@
                 }
 
                 if (especialidad) {
-                    sql += ` AND s.nombre = $${i}`   // ← era cs.nombre, ahora s.nombre
+                    sql += ` AND s.nombre = $${i}`
                     values.push(especialidad)
                     i++
                 }
 
-        if (horarioDesde) {
-        sql += ` AND t."DispComienzo" <= $${i}::time`
-        values.push(horarioDesde)
-        i++
-    }
+                if (horarioDesde) {
+                    sql += ` AND t."DispComienzo" <= $${i}::time`
+                    values.push(horarioDesde)
+                    i++
+                }
 
-    if (horarioHasta) {
-        sql += ` AND t."DispFinal" >= $${i}::time`
-        values.push(horarioHasta)
-        i++
-    }
+                if (horarioHasta) {
+                    sql += ` AND t."DispFinal" >= $${i}::time`
+                    values.push(horarioHasta)
+                    i++
+                }
 
                 const result = await client.query(sql, values)
                 return result?.rows ?? []
@@ -145,47 +144,47 @@
             }
         }
 
-       mostrarTrabajosActivos = async (idCliente) => {
-    const client = new Client(config)
-    let result
+        mostrarTrabajosActivos = async (idCliente) => {
+            const client = new Client(config)
+            let result
 
-    try {
-        await client.connect()
+            try {
+                await client.connect()
 
-    const sql = `
-    SELECT
-        ct.id,
-        u.nombre,
-        u.apellido,
-        t.foto,
-        t.estrellas,
-        ct.estado,
-        ct.fecha_iniciado,
-        ct.distancia,
-        ct.fijo,
-        ct.precio,
-        ct.servicio_id,
-        ct.emergencia,
-        ct.horario_requerido,
-        ct.horario_finalizado,
-        s.nombre AS servicio_nombre
-    FROM "Cliente-Trabajador" ct
-    INNER JOIN "Trabajador" t ON ct."IdTrabajador" = t.id
-    INNER JOIN "Usuario" u ON t."IdPersona" = u.id
-    LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
-    WHERE ct."IdCliente" = $1
-    AND ct.estado = 'EN PROCESO'
-`
-        result = await client.query(sql, [idCliente])
-    } catch (err) {
-        console.error('Error en mostrarTrabajosActivos:', err)
-        throw err
-    } finally {
-        await client.end()
-    }
+                const sql = `
+                    SELECT
+                        ct.id,
+                        u.nombre,
+                        u.apellido,
+                        t.foto,
+                        t.estrellas,
+                        ct.estado,
+                        ct.fecha_iniciado,
+                        ct.distancia,
+                        ct.fijo,
+                        ct.precio,
+                        ct.servicio_id,
+                        ct.emergencia,
+                        ct.horario_requerido,
+                        ct.horario_finalizado,
+                        s.nombre AS servicio_nombre
+                    FROM "Cliente-Trabajador" ct
+                    INNER JOIN "Trabajador" t ON ct."IdTrabajador" = t.id
+                    INNER JOIN "Usuario" u ON t."IdPersona" = u.id
+                    LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+                    WHERE ct."IdCliente" = $1
+                    AND ct.estado = 'EN PROCESO'
+                `
+                result = await client.query(sql, [idCliente])
+            } catch (err) {
+                console.error('Error en mostrarTrabajosActivos:', err)
+                throw err
+            } finally {
+                await client.end()
+            }
 
-    return result?.rows ?? []
-}
+            return result?.rows ?? []
+        }
 
         registrarCliente = async (cliente) => {
             const client = new Client(config)
@@ -268,4 +267,95 @@
 
             return result?.rows ?? []
         }
+
+     // ← NUEVO: categoría preferida guardada en el Cliente
+obtenerCategoriaCliente = async (idCliente) => {
+    const client = new Client(config)
+    let result
+
+    try {
+        await client.connect()
+
+        const sql = `
+            SELECT categoria_id
+            FROM "Cliente"
+            WHERE id = $1
+        `
+
+        result = await client.query(sql, [idCliente])
+
+    } catch (err) {
+        console.error('Error en obtenerCategoriaCliente:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+
+    return result?.rows[0]?.categoria_id ?? null
+}
+        mostrarServiciosPorCategoria = async (categoriaId) => {
+            const client = new Client(config)
+            let result
+
+            try {
+                await client.connect()
+
+                const sql = `
+                    SELECT id, nombre, categoria_id
+                    FROM "Servicio"
+                    WHERE categoria_id = $1
+                    ORDER BY nombre
+                `
+
+                result = await client.query(sql, [categoriaId])
+
+            } catch (err) {
+                console.error('Error en mostrarServiciosPorCategoria:', err)
+                throw err
+            } finally {
+                await client.end()
+            }
+
+            return result?.rows ?? []
+        }
+
+        mostrarRecientes = async (idCliente, limite = 6) => {
+    const client = new Client(config)
+    let result
+
+    try {
+        await client.connect()
+
+        const sql = `
+            SELECT * FROM (
+                SELECT DISTINCT ON (t.id)
+                    t.id,
+                    u.nombre,
+                    u.apellido,
+                    t.foto,
+                    ct.estado,
+                    ct.fecha_iniciado,
+                    ct.horario_finalizado
+                FROM "Cliente-Trabajador" ct
+                INNER JOIN "Trabajador" t ON ct."IdTrabajador" = t.id
+                INNER JOIN "Usuario" u ON t."IdPersona" = u.id
+                WHERE ct."IdCliente" = $1
+                  AND ct.estado <> 'EN PROCESO'
+                ORDER BY t.id, ct.fecha_iniciado DESC
+            ) sub
+            ORDER BY fecha_iniciado DESC
+            LIMIT $2
+        `
+
+        result = await client.query(sql, [idCliente, limite])
+
+    } catch (err) {
+        console.error('Error en mostrarRecientes:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+
+    return result?.rows ?? []
+}
     }

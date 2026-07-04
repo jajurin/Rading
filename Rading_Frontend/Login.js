@@ -21,7 +21,7 @@ export default function Login({ navigation }) {
     }
 
     setLoading(true);
-    try {
+    try { 
       const response = await fetch(`${API_URL}/usuario/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -38,12 +38,13 @@ export default function Login({ navigation }) {
       const { usuario } = data;
       console.log('tipo de usuario:', usuario.tipo);
 
-      if (usuario.tipo === 'trabajador') {
-        navigation.navigate('BuscadorTrabajador', { usuario });
-      } else if (usuario.tipo === 'cliente') {
-  navigation.navigate('Perfil', { usuario });
-        Alert.alert('Error', 'Tipo de usuario desconocido');
-      }
+    if (usuario.tipo === 'trabajador') {
+  navigation.navigate('BuscadorTrabajador', { usuario });
+} else if (usuario.tipo === 'cliente') {
+  navigation.navigate('HomeCliente', { usuario });
+} else {
+  Alert.alert('Error', 'Tipo de usuario desconocido');
+}
 
     } catch (error) {
       Alert.alert('Error de conexión', 'No se pudo conectar al servidor.');

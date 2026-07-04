@@ -63,7 +63,7 @@
         }
 
         alert('¡Registro de Cliente Completo!');
-        navigation.reset({ index: 0, routes: [{ name: 'BuscadorCliente' }] });
+        navigation.reset({ index: 0, routes: [{ name: 'HomeCliente' }] });
       } catch (e) {
         alert('No se pudo conectar al servidor');
         console.error(e);

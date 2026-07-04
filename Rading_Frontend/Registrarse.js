@@ -62,13 +62,13 @@ export default function Registrarse({ route, navigation }) {
   const [mesTemp, setMesTemp] = useState('');
   const [anioTemp, setAnioTemp] = useState('');
 
-  // ── Verificación de email
-  const [emailVerificado, setEmailVerificado] = useState(false);
-  const [mostrarModalCodigo, setMostrarModalCodigo] = useState(false);
-  const [codigoIngresado, setCodigoIngresado] = useState('');
-  const [enviandoCodigo, setEnviandoCodigo] = useState(false);
-  const [verificandoCodigo, setVerificandoCodigo] = useState(false);
-  const [errorCodigo, setErrorCodigo] = useState('');
+  // ── Verificación de email (DESACTIVADA para pruebas)
+  // const [emailVerificado, setEmailVerificado] = useState(false);
+  // const [mostrarModalCodigo, setMostrarModalCodigo] = useState(false);
+  // const [codigoIngresado, setCodigoIngresado] = useState('');
+  // const [enviandoCodigo, setEnviandoCodigo] = useState(false);
+  // const [verificandoCodigo, setVerificandoCodigo] = useState(false);
+  // const [errorCodigo, setErrorCodigo] = useState('');
 
   // ── Helpers
   const set = (campo) => (valor) => {
@@ -127,51 +127,51 @@ export default function Registrarse({ route, navigation }) {
     setDireccionValidada(true);
   };
 
-  // ── Verificación email
-  const enviarCodigo = async () => {
-    if (!validarEmail(form.email)) {
-      setErrores(prev => ({ ...prev, email: 'Ingresá un correo válido (ej: usuario@mail.com)' }));
-      return;
-    }
-    setEnviandoCodigo(true);
-    try {
-      const res = await fetch(`${API_URL}/verificacion/enviar-codigo`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: form.email.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setErrores(prev => ({ ...prev, email: data.message })); return; }
-      setCodigoIngresado('');
-      setErrorCodigo('');
-      setMostrarModalCodigo(true);
-    } catch {
-      setErrores(prev => ({ ...prev, email: 'No se pudo conectar al servidor' }));
-    } finally {
-      setEnviandoCodigo(false);
-    }
-  };
+  // ── Verificación email (DESACTIVADA para pruebas)
+  // const enviarCodigo = async () => {
+  //   if (!validarEmail(form.email)) {
+  //     setErrores(prev => ({ ...prev, email: 'Ingresá un correo válido (ej: usuario@mail.com)' }));
+  //     return;
+  //   }
+  //   setEnviandoCodigo(true);
+  //   try {
+  //     const res = await fetch(`${API_URL}/verificacion/enviar-codigo`, {
+  //       method: 'POST',
+  //       headers: { 'Content-Type': 'application/json' },
+  //       body: JSON.stringify({ email: form.email.trim() }),
+  //     });
+  //     const data = await res.json();
+  //     if (!res.ok) { setErrores(prev => ({ ...prev, email: data.message })); return; }
+  //     setCodigoIngresado('');
+  //     setErrorCodigo('');
+  //     setMostrarModalCodigo(true);
+  //   } catch {
+  //     setErrores(prev => ({ ...prev, email: 'No se pudo conectar al servidor' }));
+  //   } finally {
+  //     setEnviandoCodigo(false);
+  //   }
+  // };
 
-  const verificarCodigo = async () => {
-    if (codigoIngresado.length !== 6) { setErrorCodigo('Ingresá los 6 dígitos'); return; }
-    setVerificandoCodigo(true);
-    try {
-      const res = await fetch(`${API_URL}/verificacion/verificar-codigo`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: form.email.trim(), codigo: codigoIngresado }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setErrorCodigo(data.message); return; }
-      setEmailVerificado(true);
-      setMostrarModalCodigo(false);
-      setErrores(prev => ({ ...prev, email: null }));
-    } catch {
-      setErrorCodigo('No se pudo conectar al servidor');
-    } finally {
-      setVerificandoCodigo(false);
-    }
-  };
+  // const verificarCodigo = async () => {
+  //   if (codigoIngresado.length !== 6) { setErrorCodigo('Ingresá los 6 dígitos'); return; }
+  //   setVerificandoCodigo(true);
+  //   try {
+  //     const res = await fetch(`${API_URL}/verificacion/verificar-codigo`, {
+  //       method: 'POST',
+  //       headers: { 'Content-Type': 'application/json' },
+  //       body: JSON.stringify({ email: form.email.trim(), codigo: codigoIngresado }),
+  //     });
+  //     const data = await res.json();
+  //     if (!res.ok) { setErrorCodigo(data.message); return; }
+  //     setEmailVerificado(true);
+  //     setMostrarModalCodigo(false);
+  //     setErrores(prev => ({ ...prev, email: null }));
+  //   } catch {
+  //     setErrorCodigo('No se pudo conectar al servidor');
+  //   } finally {
+  //     setVerificandoCodigo(false);
+  //   }
+  // };
 
   // ── Validación final
   const validarFormulario = () => {
@@ -182,7 +182,7 @@ export default function Registrarse({ route, navigation }) {
     if (!form.fechaNac)                e.fechaNac = 'Seleccioná tu fecha de nacimiento';
     else if (calcularEdad(form.fechaNac) < 18) e.fechaNac = 'Debés tener al menos 18 años';
     if (!validarEmail(form.email))     e.email    = 'Ingresá un correo válido (ej: usuario@mail.com)';
-    else if (!emailVerificado)         e.email    = 'Verificá tu correo electrónico';
+    // else if (!emailVerificado)         e.email    = 'Verificá tu correo electrónico';
     if (!validarTelefono(form.telefono)) e.telefono = 'Ingresá un teléfono válido (mínimo 10 dígitos)';
     if (!direccionValidada)            e.direccion = 'Seleccioná una dirección de la lista';
     if (form.contrasena.length < 8)   e.contrasena = 'La contraseña debe tener al menos 8 caracteres';
@@ -293,7 +293,16 @@ export default function Registrarse({ route, navigation }) {
             <Text style={styles.sectionTitle}>Contacto</Text>
           </View>
 
-          {/* Email con verificación */}
+          {/* Email (verificación desactivada para pruebas) */}
+          <InputField
+            label="Correo electrónico"
+            placeholder="correo@ejemplo.com"
+            keyboardType="email-address"
+            value={form.email}
+            onChangeText={set('email')}
+            error={errores.email}
+          />
+          {/*
           <View style={inputStyles.wrapper}>
             <Text style={inputStyles.label}>Correo electrónico</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -337,8 +346,9 @@ export default function Registrarse({ route, navigation }) {
                 : null
             }
           </View>
+          */}
 
-          {/* Modal código de verificación */}
+          {/* Modal código de verificación (DESACTIVADO para pruebas)
           <Modal visible={mostrarModalCodigo} transparent animationType="fade">
             <View style={styles.modalOverlay}>
               <View style={styles.modalCard}>
@@ -379,6 +389,7 @@ export default function Registrarse({ route, navigation }) {
               </View>
             </View>
           </Modal>
+          */}
 
           <InputField label="Número de teléfono" placeholder="+54 9 11 0000-0000" keyboardType="phone-pad" value={form.telefono} onChangeText={set('telefono')} error={errores.telefono} />
 

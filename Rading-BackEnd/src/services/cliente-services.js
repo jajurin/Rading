@@ -7,7 +7,27 @@ export default class ClienteServices {
     constructor() {
         this.#repo = new clienteRepository()
     }
+mostrarCategorias = async () => {
+    return await this.#repo.mostrarCategorias()
+}
+mostrarCategorias = async () => {
+    return await this.#repo.mostrarCategorias()
+}
 
+mostrarServiciosPorCategoria = async (categoriaId) => {
+    return await this.#repo.mostrarServiciosPorCategoria(categoriaId)
+}
+mostrarServiciosPreferidos = async (idCliente) => {
+    const categoriaId = await this.#repo.obtenerCategoriaCliente(idCliente)
+    if (!categoriaId) return []
+    return await this.#repo.mostrarServiciosPorCategoria(categoriaId)
+}
+mostrarRecientes = async (idCliente) => {
+    return await this.#repo.mostrarRecientes(idCliente)
+}
+mostrarRecientes = async (idCliente) => {
+    return await this.#repo.mostrarRecientes(idCliente)
+}
     registrarCliente = async (body) => {
         const cliente = new Cliente(
             body.nombre, body.apellido, body.email, body.direccion,

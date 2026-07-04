@@ -62,5 +62,68 @@ router.get("/trabajosActivos/:id", async (req, res) => {
         res.status(500).json({ message: "Error al obtener trabajos activos", error })
     }
 })
+// GET /cliente/categorias
+router.get("/categorias", async (req, res) => {
+    try {
+        const categorias = await svc.mostrarCategorias()
+        res.status(200).json(categorias)
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: "Error al obtener categorías", error })
+    }
+})
 
+// GET /cliente/recientes/:id
+router.get("/recientes/:id", async (req, res) => {
+    try {
+        const idCliente = req.params.id
+        const recientes = await svc.mostrarRecientes(idCliente)
+        res.status(200).json(recientes)
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: "Error al obtener recientes", error })
+    }
+})
+// GET /cliente/categorias
+router.get("/categorias", async (req, res) => {
+    try {
+        const categorias = await svc.mostrarCategorias()
+        res.status(200).json(categorias)
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: "Error al obtener categorías", error })
+    }
+})
+
+// GET /cliente/servicios/:categoriaId
+router.get("/servicios/:categoriaId", async (req, res) => {
+    try {
+        const servicios = await svc.mostrarServiciosPorCategoria(req.params.categoriaId)
+        res.status(200).json(servicios)
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: "Error al obtener servicios", error })
+    }
+})
+// GET /cliente/servicios-preferidos/:idCliente
+router.get("/servicios-preferidos/:idCliente", async (req, res) => {
+    try {
+        const servicios = await svc.mostrarServiciosPreferidos(req.params.idCliente)
+        res.status(200).json(servicios)
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: "Error al obtener servicios preferidos", error })
+    }
+})
+
+// GET /cliente/recientes/:id
+router.get("/recientes/:id", async (req, res) => {
+    try {
+        const recientes = await svc.mostrarRecientes(req.params.id)
+        res.status(200).json(recientes)
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: "Error al obtener recientes", error })
+    }
+})
 export default router

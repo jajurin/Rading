@@ -1,12 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, forwardRef, useImperativeHandle } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity,
-  Image, StyleSheet, SafeAreaView, ActivityIndicator,
-  Modal, ScrollView, TextInput,
+  View, Text, TouchableOpacity, Image, StyleSheet,
+  ActivityIndicator, Modal, ScrollView, TextInput,
 } from 'react-native';
 import API_URL from '../configS';
-
-import Search from '../Trabajador/Search';
 import Svg, { Path } from 'react-native-svg';
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -221,19 +218,25 @@ const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
   );
 };
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
-// Esta pantalla ahora es EXCLUSIVAMENTE búsqueda + filtro.
-// El bloque de "trabajo activo / oferta recibida" se movió a
-// TrabajoActivoWidget.js y ya no se renderiza acá.
+// ─── Widget principal ──────────────────────────────────────────────────────────
+// Reutilizable: se puede meter dentro de un ScrollView (ej. HomeCliente) o
+// usar como pantalla completa (ej. BuscadorTrabajador). No usa FlatList
+// a propósito, para poder vivir dentro de otro ScrollView sin el warning
+// de "VirtualizedLists should never be nested inside plain ScrollViews".
+//
+// Expone un ref con `buscar(texto)` para poder dispararlo desde afuera
+// (por ejemplo, al tocar una categoría en la Home).
 
-export default function BuscadorTrabajador({ route, navigation }) {
-  const { usuario } = route.params;
+const BuscadorTrabajadorWidget = forwardRef(function BuscadorTrabajadorWidget(
+  { usuario, navigation, initialTexto = '' },
+  ref
+) {
+  const [texto, setTexto]           = useState(initialTexto);
   const [clientes, setClientes]     = useState([]);
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState(null);
   const [buscado, setBuscado]       = useState(false);
   const [showFilter, setShowFilter] = useState(false);
-  const [lastTexto, setLastTexto]   = useState('');
   const [filters, setFilters] = useState({
     estrellas: null,
     especialidad: null,
@@ -247,22 +250,20 @@ export default function BuscadorTrabajador({ route, navigation }) {
     filters.horarioDesde || filters.horarioHasta,
   ].filter(Boolean).length;
 
-  const fetchTrabajadores = async (texto = '', overrideFilters = null) => {
+  const fetchTrabajadores = async (textoBusqueda = '', overrideFilters = null) => {
     const f = overrideFilters ?? filters;
-    const hayTexto   = texto && texto.trim();
+    const hayTexto   = textoBusqueda && textoBusqueda.trim();
     const hayFiltros = f.estrellas || f.especialidad || f.horarioDesde || f.horarioHasta;
 
-    // Sin texto ni filtros → no buscar
     if (!hayTexto && !hayFiltros) return;
 
     try {
       setLoading(true);
       setError(null);
       setBuscado(true);
-      if (hayTexto) setLastTexto(texto);
 
       const params = new URLSearchParams();
-      if (hayTexto)       params.append('texto', texto.trim());
+      if (hayTexto)       params.append('texto', textoBusqueda.trim());
       if (f.estrellas)    params.append('estrellas', f.estrellas);
       if (f.especialidad) params.append('especialidad', f.especialidad);
       if (f.horarioDesde) params.append('horarioDesde', f.horarioDesde);
@@ -283,36 +284,58 @@ export default function BuscadorTrabajador({ route, navigation }) {
 
   const handleApplyFilters = (newFilters) => {
     setFilters(newFilters);
-    // Relanzar con el último texto (puede ser vacío si solo se usaron filtros)
-    fetchTrabajadores(lastTexto, newFilters);
+    fetchTrabajadores(texto, newFilters);
   };
 
-  return (
-    <SafeAreaView style={styles.safe}>
+  const handleSubmit = () => fetchTrabajadores(texto);
 
-      <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.headerTitle}>Buscar Trabajadores</Text>
-            <Text style={styles.headerSub}>Encontrá el profesional que necesitás</Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.filterIconBtn, activeFilterCount > 0 && styles.filterIconBtnActive]}
-            onPress={() => setShowFilter(true)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.filterIconText}>⚙</Text>
-            {activeFilterCount > 0 && (
-              <View style={styles.filterBadge}>
-                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+  // Permite disparar una búsqueda desde afuera, ej: buscadorRef.current.buscar('Plomero')
+useImperativeHandle(ref, () => ({
+  buscar: (nuevoTexto) => {
+    setTexto(nuevoTexto);
+    fetchTrabajadores(nuevoTexto);
+  },
+  // ← NUEVO: busca por especialidad (filtro), no por texto libre
+  buscarPorEspecialidad: (especialidad) => {
+    const newFilters = { ...filters, especialidad };
+    setFilters(newFilters);
+    setTexto('');
+    fetchTrabajadores('', newFilters);
+  },
+}));
+
+  return (
+    <View>
+      {/* Search + Filtro, uno al lado del otro */}
+      <View style={styles.searchRow}>
+        <View style={styles.searchBox}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="¿Qué necesitás? Ej: electricista"
+            placeholderTextColor="#A0AEC0"
+            value={texto}
+            onChangeText={setTexto}
+            onSubmitEditing={handleSubmit}
+            returnKeyType="search"
+          />
         </View>
+
+        <TouchableOpacity
+          style={[styles.filterIconBtn, activeFilterCount > 0 && styles.filterIconBtnActive]}
+          onPress={() => setShowFilter(true)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.filterIconText}>⚙</Text>
+          {activeFilterCount > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
-      <Search onSearch={(t) => fetchTrabajadores(t)} />
-
+      {/* Resultados */}
       {loading ? (
         <View style={styles.centerBox}>
           <ActivityIndicator size="large" color="#1565D8" />
@@ -325,7 +348,7 @@ export default function BuscadorTrabajador({ route, navigation }) {
         </View>
       ) : !buscado ? (
         <View style={styles.centerBox}>
-          <Svg width={48} height={48} viewBox="0 0 512 512" fill="none">
+          <Svg width={44} height={44} viewBox="0 0 512 512" fill="none">
             <Path
               fill="#A0AEC0"
               d="M252.78 20.875c-1.302.012-2.6.03-3.905.063-37.928.974-76.148 11.153-111.28 31.437C25.164 117.285-13.41 261.322 51.5 373.75s208.946 151.036 321.375 86.125c77.7-44.86 120.1-127.513 117.47-211.406-3.563 65.847-35.898 128.573-91 169.374-10.828 9.62-22.774 18.315-35.814 25.844-103.68 59.86-235.983 24.4-295.842-79.282-59.86-103.68-24.43-235.984 79.25-295.844 35.64-20.576 74.67-29.88 112.968-29.03 63.304 1.4 124.623 30.57 165.438 82.53l-32.594 23.032c-33.27-42.835-84.01-66.6-136.063-67-.96-.008-1.91-.012-2.875 0-.964.01-1.943.038-2.906.062-28.006.717-56.222 8.215-82.156 23.188-82.99 47.914-111.508 154.322-63.594 237.312 47.914 82.99 154.32 111.51 237.313 63.594 51.37-29.66 81.862-81.724 86.28-136.78-12.53 45.37-42.32 86.745-85.438 114.186-.02.013-.043.018-.062.03l-.344.22c-3.16 2.147-6.42 4.216-9.78 6.156-74.245 42.865-168.918 17.494-211.782-56.75-42.864-74.243-17.493-168.917 56.75-211.78 23.2-13.396 48.39-20.122 73.375-20.782 47.953-1.266 95.138 19.858 125.968 59.156l-39.844 28.156c-20.232-24.32-50.055-37.79-80.594-38.03-1.17-.01-2.33 0-3.5.03-17.035.432-34.176 4.995-49.938 14.094-50.435 29.12-67.806 93.877-38.687 144.313 29.12 50.434 93.908 67.806 144.344 38.686 21.245-12.267 36.623-30.85 45.124-52.03-18.815 21.064-44.364 36.888-73.938 44.155-.04.013-.084.02-.125.033-37.507 10.787-78.796-4.816-99.217-40.188-24.07-41.688-9.845-94.712 31.843-118.78 13.028-7.523 27.143-11.314 41.156-11.69 25.66-.685 50.898 10.098 68.188 30.25l-41 28.97c-5.497-4.796-12.664-7.72-20.53-7.72-17.277 0-31.283 14.007-31.283 31.282 0 17.276 14.004 31.282 31.282 31.282 17.277 0 31.28-14.007 31.28-31.283 0-1.187-.06-2.347-.188-3.5l120.094-57.312 4.03-1.75-.06-.156 62.25-29.72 9.25-4.438-5.282-8.812-19.97-33.375-5.155-8.625-8.25 5.813-8.095 5.718c-45.9-58.864-116.14-91.053-187.844-90.405z"
@@ -338,20 +361,14 @@ export default function BuscadorTrabajador({ route, navigation }) {
           <Text style={styles.placeholderText}>No se encontraron trabajadores</Text>
         </View>
       ) : (
-        <FlatList
-          data={clientes}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          ListHeaderComponent={
-            <Text style={styles.resultCount}>
-              {clientes.length} resultado{clientes.length !== 1 ? 's' : ''}
-            </Text>
-          }
-          renderItem={({ item }) => (
-            <ClienteCard item={item} onPressChat={() => {}} />
-          )}
-        />
+        <View style={styles.listContent}>
+          <Text style={styles.resultCount}>
+            {clientes.length} resultado{clientes.length !== 1 ? 's' : ''}
+          </Text>
+          {clientes.map((item) => (
+            <ClienteCard key={item.id.toString()} item={item} onPressChat={() => {}} />
+          ))}
+        </View>
       )}
 
       <FilterModal
@@ -360,50 +377,75 @@ export default function BuscadorTrabajador({ route, navigation }) {
         onApply={handleApplyFilters}
         initialFilters={filters}
       />
-    </SafeAreaView>
+    </View>
   );
-}
+});
+
+export default BuscadorTrabajadorWidget;
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const WHITE    = '#ffffff';
-const GOLD     = '#ffd700';
-const BLUE     = '#1565D8';
+const WHITE     = '#ffffff';
+const GOLD      = '#ffd700';
+const BLUE      = '#1565D8';
 const BLUE_DARK = '#0a0f3c';
 const BLUE_CARD = '#1e35b5';
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F4F6FB' },
-
-  // Header
-  header: { backgroundColor: BLUE, paddingTop: 50, paddingBottom: 12, paddingHorizontal: 20 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  headerTitle: { color: WHITE, fontSize: 24, fontWeight: '800', marginBottom: 2 },
-  headerSub:   { color: 'rgba(255,255,255,0.75)', fontSize: 13 },
+  // Search + filtro
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 16,
+  },
+  searchBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    height: 52,
+    paddingHorizontal: 16,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  searchIcon: { fontSize: 16 },
+  searchInput: { flex: 1, fontSize: 14, color: '#1A202C' },
 
   filterIconBtn: {
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 52, height: 52, borderRadius: 18,
+    backgroundColor: BLUE,
     justifyContent: 'center', alignItems: 'center',
+    shadowColor: BLUE,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  filterIconBtnActive: { backgroundColor: WHITE },
-  filterIconText: { fontSize: 20 },
+  filterIconBtnActive: { backgroundColor: BLUE_DARK },
+  filterIconText: { fontSize: 20, color: WHITE },
   filterBadge: {
-    position: 'absolute', top: -2, right: -2,
-    width: 16, height: 16, borderRadius: 8,
+    position: 'absolute', top: -4, right: -4,
+    width: 18, height: 18, borderRadius: 9,
     backgroundColor: GOLD, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: WHITE,
   },
   filterBadgeText: { color: BLUE_DARK, fontSize: 9, fontWeight: '800' },
 
   // States
-  centerBox:       { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10 },
+  centerBox:       { justifyContent: 'center', alignItems: 'center', gap: 10, paddingVertical: 40, paddingHorizontal: 20 },
   placeholderIcon: { fontSize: 48 },
   placeholderText: { color: '#A0AEC0', fontSize: 15, textAlign: 'center' },
   loadingText:     { color: BLUE, fontSize: 14, marginTop: 8 },
   errorText:       { color: '#E53E3E', fontSize: 14 },
 
   // List
-  listContent:  { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 },
+  listContent:  { paddingHorizontal: 16, paddingTop: 18 },
   resultCount:  { color: '#A0AEC0', fontSize: 12, fontWeight: '600', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
 
   // Card
