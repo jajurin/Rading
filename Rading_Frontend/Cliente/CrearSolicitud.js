@@ -1,12 +1,17 @@
 // Cliente/CrearSolicitud.js
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   View, Text, TextInput, Pressable, ScrollView,
   ActivityIndicator, StyleSheet, Platform, Animated, KeyboardAvoidingView,
 } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import API_URL from "../configS";
 
-const API_BASE_URL = "http://localhost:3000";
-const ID_CLIENTE_TEMPORAL = 1;
+const API_BASE_URL = API_URL;
+
+// Valor especial usado internamente para representar "el cliente prefiere
+// escribir su propia respuesta" en vez de tocar uno de los chips de la IA.
+const OPCION_OTRO = "__otro__";
 
 const COLORS = {
   bg: "#F0F0F0",
@@ -23,7 +28,31 @@ const COLORS = {
   warnBg: "#FFF8EC",
   error: "#C0392B",
   errorBg: "#FDF0EF",
+  emergency: "#C0392B",
+  emergencyBg: "#FDECEA",
 };
+
+/* ── Cálculo de urgencia a partir de la fecha/hora elegida ───────────
+   Esto se calcula acá (JS), no se le pide a la IA que haga cuentas con
+   fechas: le pasamos ya la categoría resuelta como texto, más precisa. ── */
+function calcularCategoriaUrgencia(fechaLimite) {
+  if (!fechaLimite) return null;
+  const ahora = new Date();
+  const diffHoras = (fechaLimite.getTime() - ahora.getTime()) / (1000 * 60 * 60);
+
+  if (diffHoras <= 12) return "Muy urgente, dentro de las próximas 12hs";
+  if (diffHoras <= 24) return "Urgente, dentro de las próximas 24hs";
+  if (diffHoras <= 48) return "Mañana o en las próximas 48hs";
+  if (diffHoras <= 24 * 7) return "Dentro de esta semana";
+  return "Sin apuro, más de una semana";
+}
+
+function formatearFechaHora(fecha) {
+  if (!fecha) return "";
+  const fechaStr = fecha.toLocaleDateString("es-AR");
+  const horaStr = fecha.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  return `${fechaStr} ${horaStr}`;
+}
 
 /* ── Selector tipo pastilla animada ─────────────────────────────────── */
 function SegmentedToggle({ options, selectedIndex, onChange }) {
@@ -61,31 +90,84 @@ function SectionHeader({ label }) {
   );
 }
 
-/* ── Bloque de aclaración ────────────────────────────────────────────── */
-function AclaracionBox({ pregunta, valor, onChange, onReanalizar, analizando }) {
+/* ── Una sola pregunta dentro del bloque de aclaración ──────────────── */
+// Muestra la pregunta + sus chips de opciones. Si el usuario toca el chip
+// "Otro", se abre un input de texto libre solo para esta pregunta.
+function PreguntaItem({ pregunta, opciones, seleccion, textoOtro, onSeleccionar, onCambiarTexto, deshabilitado }) {
+  const eligioOtro = seleccion === OPCION_OTRO;
+
+  return (
+    <View style={styles.preguntaItem}>
+      <Text style={styles.preguntaTexto}>{pregunta}</Text>
+      <View style={styles.chipsRow}>
+        {opciones.map((opcion) => {
+          const activo = seleccion === opcion;
+          return (
+            <Pressable
+              key={opcion}
+              style={[styles.chip, activo && styles.chipActivo]}
+              onPress={() => onSeleccionar(opcion)}
+              disabled={deshabilitado}
+            >
+              <Text style={[styles.chipText, activo && styles.chipTextActivo]}>{opcion}</Text>
+            </Pressable>
+          );
+        })}
+        <Pressable
+          style={[styles.chip, styles.chipOtro, eligioOtro && styles.chipActivo]}
+          onPress={() => onSeleccionar(OPCION_OTRO)}
+          disabled={deshabilitado}
+        >
+          <Text style={[styles.chipText, eligioOtro && styles.chipTextActivo]}>✏️ Otro</Text>
+        </Pressable>
+      </View>
+
+      {eligioOtro && (
+        <TextInput
+          style={styles.otroInput}
+          placeholder="Escribí tu respuesta..."
+          placeholderTextColor={COLORS.inkSoft}
+          value={textoOtro}
+          onChangeText={onCambiarTexto}
+          editable={!deshabilitado}
+        />
+      )}
+    </View>
+  );
+}
+
+/* ── Bloque de aclaración (puede traer 1, 2 o 3 preguntas juntas) ────── */
+function AclaracionBox({ preguntas, respuestas, textosOtro, onSeleccionar, onCambiarTexto, onConfirmar, todasRespondidas, analizando }) {
   return (
     <View style={styles.aclaracionBox}>
       <View style={styles.aclaracionIconRow}>
         <Text style={styles.aclaracionIcon}>🤔</Text>
-        <Text style={styles.aclaracionTitulo}>Necesitamos un poco más de info</Text>
+        <Text style={styles.aclaracionTitulo}>
+          {preguntas.length > 1 ? "Necesitamos un poco más de info" : "Necesitamos un dato más"}
+        </Text>
       </View>
-      <Text style={styles.aclaracionPregunta}>{pregunta}</Text>
-      <TextInput
-        style={styles.aclaracionInput}
-        placeholder="Escribí tu respuesta acá..."
-        placeholderTextColor={COLORS.inkSoft}
-        value={valor}
-        onChangeText={onChange}
-        multiline
-      />
+
+      {preguntas.map((p, idx) => (
+        <PreguntaItem
+          key={idx}
+          pregunta={p.pregunta}
+          opciones={p.opciones}
+          seleccion={respuestas[idx]}
+          textoOtro={textosOtro[idx] || ""}
+          onSeleccionar={(valor) => onSeleccionar(idx, valor)}
+          onCambiarTexto={(texto) => onCambiarTexto(idx, texto)}
+          deshabilitado={analizando}
+        />
+      ))}
+
       <Pressable
-        style={[styles.aiButton, (!valor.trim() || analizando) && styles.aiButtonDisabled]}
-        onPress={onReanalizar}
-        disabled={!valor.trim() || analizando}
+        style={[styles.aiButton, (!todasRespondidas || analizando) && styles.aiButtonDisabled]}
+        onPress={onConfirmar}
+        disabled={!todasRespondidas || analizando}
       >
         {analizando
           ? <ActivityIndicator color="#fff" />
-          : <Text style={styles.aiButtonText}>✨ Reanalizar con esta info</Text>
+          : <Text style={styles.aiButtonText}>✨ Continuar con esta info</Text>
         }
       </Pressable>
     </View>
@@ -93,18 +175,45 @@ function AclaracionBox({ pregunta, valor, onChange, onReanalizar, analizando }) 
 }
 
 /* ── Pantalla principal ──────────────────────────────────────────────── */
-export default function CrearSolicitud({ navigation }) {
+export default function CrearSolicitud({ route, navigation }) {
+  const usuario = route?.params?.usuario;
   const [descripcionOriginal, setDescripcionOriginal] = useState("");
-  const [aclaracion, setAclaracion]                   = useState("");
+
+  // 👇 Plazo/fecha límite: dato ESTRUCTURADO (Date real), no texto libre,
+  // porque se guarda como atributo de la solicitud (horario_requerido /
+  // fecha_iniciado en la base) y se puede mostrar después tal cual.
+  const [tienePlazo, setTienePlazo] = useState(false);
+  const [fechaLimite, setFechaLimite] = useState(null); // Date | null
+  const [mostrarPickerFecha, setMostrarPickerFecha] = useState(false);
+  const [mostrarPickerHora, setMostrarPickerHora] = useState(false);
+
+  // 👇 guarda el texto COMPLETO (original + plazo + emergencia + TODAS las
+  // aclaraciones acumuladas) que se mandó a la IA en el último análisis
+  // exitoso. Sin esto, al responder una segunda tanda de preguntas se
+  // perdía el contexto de la primera, porque siempre se reconstruía el
+  // texto solo desde descripcionOriginal.
+  const [contextoActual, setContextoActual] = useState("");
 
   const [analizando,  setAnalizando]  = useState(false);
   const [errorIA,     setErrorIA]     = useState(null);
   const [analisis,    setAnalisis]    = useState(null);
 
+  // 👇 Estado de las respuestas a la tanda de preguntas actual. "respuestas"
+  // guarda, por índice de pregunta, el chip elegido (o OPCION_OTRO).
+  // "textosOtro" guarda el texto libre cuando se elige "Otro" en esa pregunta.
+  const [respuestas,  setRespuestas]  = useState({});
+  const [textosOtro,  setTextosOtro]  = useState({});
+
   const [descripcionFinal, setDescripcionFinal] = useState("");
   const [servicioId,       setServicioId]       = useState(null);
   const [precioFinal,      setPrecioFinal]      = useState("");
   const [fijo,             setFijo]             = useState(true);
+
+  // 👇 Ahora "emergencia" se elige ANTES de analizar (botón junto a la
+  // descripción), no se le pregunta más al cliente después de la IA.
+  // Igual la dejamos sumarse con lo que la IA detecte por su cuenta (por
+  // ejemplo si describe una pérdida de agua activa sin haber tocado el
+  // botón), pero nunca se la bajamos si el cliente ya la marcó a mano.
   const [emergencia,       setEmergencia]       = useState(false);
   const [selectorAbierto,  setSelectorAbierto]  = useState(false);
 
@@ -114,16 +223,125 @@ export default function CrearSolicitud({ navigation }) {
   const descripcionValida = descripcionOriginal.trim().length >= 10;
   // Solo depende de lo que dijo la IA, no del servicioId
   const necesitaAclaracion = analisis !== null && analisis?.necesitaAclaracion === true && !analisis?.servicioId;
+  const preguntasActuales = necesitaAclaracion ? (analisis?.preguntas || []) : [];
 
-  // Llama a /analizar concatenando la aclaración si existe
+  // Se puede confirmar la tanda cuando TODAS las preguntas tienen una
+  // respuesta válida: o bien un chip normal, o "Otro" con texto no vacío.
+  const todasRespondidas = useMemo(() => {
+    if (preguntasActuales.length === 0) return false;
+    return preguntasActuales.every((_, idx) => {
+      const r = respuestas[idx];
+      if (!r) return false;
+      if (r === OPCION_OTRO) return !!(textosOtro[idx] && textosOtro[idx].trim());
+      return true;
+    });
+  }, [preguntasActuales, respuestas, textosOtro]);
+
+  // Se invalida el análisis anterior si el cliente todavía no analizó y
+  // cambia cualquier dato de entrada (descripción, plazo o emergencia).
+  const invalidarAnalisisPrevio = useCallback(() => {
+    if (analisis) {
+      setAnalisis(null);
+      setRespuestas({});
+      setTextosOtro({});
+      setContextoActual("");
+    }
+  }, [analisis]);
+
+  const seleccionarRespuesta = useCallback((idx, valor) => {
+    setRespuestas((prev) => ({ ...prev, [idx]: valor }));
+  }, []);
+
+  const cambiarTextoOtro = useCallback((idx, texto) => {
+    setTextosOtro((prev) => ({ ...prev, [idx]: texto }));
+  }, []);
+
+  // 👇 Toggle de emergencia: se elige ANTES de analizar. Si se marca que sí,
+  // forzamos el plazo a "hoy mismo" (una emergencia no se agenda para otro
+  // día) y ya no hace falta pedirle fecha/hora por separado.
+  const onCambiarEmergencia = useCallback((esEmergencia) => {
+    setEmergencia(esEmergencia);
+    if (esEmergencia) {
+      setTienePlazo(true);
+      setFechaLimite(new Date());
+    }
+    invalidarAnalisisPrevio();
+  }, [invalidarAnalisisPrevio]);
+
+  // Maneja el picker nativo de fecha (Android cierra solo, iOS queda inline).
+  const onCambiarFecha = useCallback((event, fechaSeleccionada) => {
+    setMostrarPickerFecha(Platform.OS === "ios"); // en iOS se mantiene abierto hasta que el usuario confirme
+    if (event.type === "dismissed" || !fechaSeleccionada) return;
+    setFechaLimite((prev) => {
+      const base = prev ? new Date(prev) : new Date();
+      base.setFullYear(fechaSeleccionada.getFullYear(), fechaSeleccionada.getMonth(), fechaSeleccionada.getDate());
+      return base;
+    });
+    invalidarAnalisisPrevio();
+  }, [invalidarAnalisisPrevio]);
+
+  const onCambiarHora = useCallback((event, horaSeleccionada) => {
+    setMostrarPickerHora(Platform.OS === "ios");
+    if (event.type === "dismissed" || !horaSeleccionada) return;
+    setFechaLimite((prev) => {
+      const base = prev ? new Date(prev) : new Date();
+      base.setHours(horaSeleccionada.getHours(), horaSeleccionada.getMinutes(), 0, 0);
+      return base;
+    });
+    invalidarAnalisisPrevio();
+  }, [invalidarAnalisisPrevio]);
+
+  // Arma el texto base (descripción + plazo + emergencia, si corresponde)
+  // que se manda a la IA en el PRIMER análisis. La categoría de urgencia
+  // se calcula en JS a partir de la fecha/hora elegida en el picker (no es
+  // texto libre); la emergencia es un flag que el cliente marcó a mano
+  // ANTES de analizar, con su propio marcador de texto para el backend.
+  const construirTextoBase = useCallback(() => {
+    const desc = descripcionOriginal.trim();
+    let texto = desc;
+
+    if (tienePlazo && fechaLimite) {
+      const categoria = calcularCategoriaUrgencia(fechaLimite);
+      texto += ` — Urgencia según plazo elegido: ${categoria} (fecha y hora elegida: ${formatearFechaHora(fechaLimite)})`;
+    }
+
+    if (emergencia) {
+      texto += ` — Emergencia: el cliente marcó explícitamente, con un botón en la pantalla y antes de cualquier análisis, que este pedido es una emergencia`;
+    }
+
+    return texto;
+  }, [descripcionOriginal, tienePlazo, fechaLimite, emergencia]);
+
+  // Junta pregunta+respuesta de toda la tanda en un solo texto legible,
+  // para mandarlo como "Aclaración" al backend.
+  const construirTextoAclaracion = useCallback(() => {
+    return preguntasActuales
+      .map((p, idx) => {
+        const r = respuestas[idx];
+        const valor = r === OPCION_OTRO ? (textosOtro[idx] || "").trim() : r;
+        return `${p.pregunta} → ${valor}`;
+      })
+      .join(" | ");
+  }, [preguntasActuales, respuestas, textosOtro]);
+
+  // Llama a /analizar concatenando la(s) aclaración(es) si existen.
+  // Usa contextoActual (todo lo acumulado hasta ahora) como base cuando
+  // viene de una aclaración, en vez de descripcionOriginal a secas.
   const analizarConIA = useCallback(async (descripcionExtra = "") => {
     if (!descripcionValida) return;
     setAnalizando(true);
     setErrorIA(null);
 
+    // Base sobre la que se construye el texto: si ya hay contexto acumulado
+    // (de una tanda de aclaraciones previa), se sigue sumando sobre ESE; si
+    // es el primer análisis, se arranca desde descripción + plazo + emergencia.
+    const base = descripcionExtra
+      ? (contextoActual || construirTextoBase())
+      : construirTextoBase();
+
     const textoFinal = descripcionExtra
-      ? `${descripcionOriginal.trim()} — Aclaración: ${descripcionExtra.trim()}`
-      : descripcionOriginal.trim();
+      ? `${base} — Aclaración: ${descripcionExtra.trim()}`
+      : base;
 
     try {
       const resp = await fetch(`${API_BASE_URL}/solicitud/analizar`, {
@@ -137,18 +355,36 @@ export default function CrearSolicitud({ navigation }) {
 
       const data = json.data;
       setAnalisis(null);         // limpia el análisis anterior primero
-      setAclaracion("");         // limpia el campo de aclaración
+      setRespuestas({});         // limpia las respuestas de la tanda anterior
+      setTextosOtro({});
       setAnalisis(data);
       setDescripcionFinal(data.descripcionMejorada);
       setServicioId(data.servicioId);
       setPrecioFinal(String(data.precioSugerido));
-      setEmergencia(!!data.emergencia);
+      // 👇 Nunca "bajamos" la emergencia si el cliente ya la marcó a mano;
+      // solo la subimos si la IA detecta una emergencia real que el
+      // cliente no había tildado (ej: describe una pérdida de agua activa
+      // sin haber tocado el botón).
+      setEmergencia((prev) => prev || !!data.emergencia);
+
+      // 👇 guarda el texto completo que efectivamente se usó,
+      // para que la PRÓXIMA tanda de aclaraciones (si la hay) se acumule
+      // sobre esto.
+      setContextoActual(textoFinal);
     } catch (err) {
       setErrorIA(err.message || "Ocurrió un error analizando tu solicitud");
     } finally {
       setAnalizando(false);
     }
-  }, [descripcionOriginal, descripcionValida]);
+  }, [descripcionValida, contextoActual, construirTextoBase]);
+
+  // 👇 Se dispara al tocar "Continuar con esta info": junta las respuestas
+  // de todas las preguntas de la tanda actual y reanaliza con eso.
+  const confirmarRespuestas = useCallback(() => {
+    const texto = construirTextoAclaracion();
+    if (!texto.trim()) return;
+    analizarConIA(texto);
+  }, [construirTextoAclaracion, analizarConIA]);
 
   const enviarSolicitud = useCallback(async () => {
     if (!analisis || !servicioId || necesitaAclaracion) return;
@@ -160,13 +396,29 @@ export default function CrearSolicitud({ navigation }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          idCliente: ID_CLIENTE_TEMPORAL,
+          idCliente: usuario?.idCliente,
           servicioId,
           descripcion: descripcionFinal,
-          descripcionOriginal,
+          // 👇 Se manda el contexto completo (con plazo, emergencia y
+          // aclaraciones) en vez del texto original puro, para que quede
+          // guardado con todo el detalle que usó la IA para cotizar.
+          descripcionOriginal: contextoActual || descripcionOriginal,
           precio: Number(precioFinal),
           fijo,
           emergencia,
+          // 👇 Dato ESTRUCTURADO real (no texto libre) para guardar como
+          // atributo de la solicitud, tal como está tipado en la base:
+          // fecha (date) + hora (time) del plazo elegido por el cliente.
+          // Si es una emergencia, tienePlazo/fechaLimite ya quedaron
+          // forzados a "ahora" apenas se tildó el botón. Si no eligió
+          // plazo, se manda null y el backend lo interpreta como "sin
+          // plazo particular".
+          fechaRequerida: tienePlazo && fechaLimite
+            ? fechaLimite.toISOString().slice(0, 10)   // YYYY-MM-DD
+            : null,
+          horarioRequerido: tienePlazo && fechaLimite
+            ? fechaLimite.toTimeString().slice(0, 5)   // HH:mm
+            : null,
         }),
       });
 
@@ -179,7 +431,7 @@ export default function CrearSolicitud({ navigation }) {
     } finally {
       setEnviando(false);
     }
-  }, [analisis, servicioId, necesitaAclaracion, descripcionFinal, descripcionOriginal, precioFinal, fijo, emergencia, navigation]);
+  }, [analisis, servicioId, necesitaAclaracion, descripcionFinal, descripcionOriginal, contextoActual, precioFinal, fijo, emergencia, tienePlazo, fechaLimite, usuario, navigation]);
 
   const servicioElegido = analisis?.servicios?.find((s) => s.id === servicioId);
 
@@ -216,10 +468,80 @@ export default function CrearSolicitud({ navigation }) {
             value={descripcionOriginal}
             onChangeText={(t) => {
               setDescripcionOriginal(t);
-              if (analisis) { setAnalisis(null); setAclaracion(""); }
+              invalidarAnalisisPrevio();
             }}
             editable={!analizando}
           />
+
+          {/* 👇 Emergencia: se elige ACÁ, antes de mandarle nada a la IA */}
+          <Text style={styles.label}>¿Es una emergencia?</Text>
+          <Text style={styles.helperText}>
+            Pérdida de agua activa, corte de luz total, olor a gas, riesgo estructural, etc.
+          </Text>
+          <SegmentedToggle
+            options={["No", "Sí, es urgente"]}
+            selectedIndex={emergencia ? 1 : 0}
+            onChange={(i) => onCambiarEmergencia(i === 1)}
+          />
+
+          {emergencia ? (
+            <View style={styles.emergenciaAviso}>
+              <Text style={styles.emergenciaAvisoText}>
+                🚨 Como marcaste que es una emergencia, el plazo se toma como "hoy mismo" y la IA va a
+                aplicar el recargo correspondiente al cotizar.
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Text style={styles.label}>¿Tenés un plazo o fecha límite para este trabajo?</Text>
+              <SegmentedToggle
+                options={["No, sin apuro", "Sí, elegir fecha"]}
+                selectedIndex={tienePlazo ? 1 : 0}
+                onChange={(i) => {
+                  const activar = i === 1;
+                  setTienePlazo(activar);
+                  if (activar && !fechaLimite) setFechaLimite(new Date());
+                  invalidarAnalisisPrevio();
+                }}
+              />
+
+              {tienePlazo && (
+                <View style={styles.plazoRow}>
+                  <Pressable style={styles.plazoBox} onPress={() => setMostrarPickerFecha(true)}>
+                    <Text style={styles.plazoBoxLabel}>Fecha</Text>
+                    <Text style={styles.plazoBoxValue}>
+                      {fechaLimite ? fechaLimite.toLocaleDateString("es-AR") : "Elegir"}
+                    </Text>
+                  </Pressable>
+                  <Pressable style={styles.plazoBox} onPress={() => setMostrarPickerHora(true)}>
+                    <Text style={styles.plazoBoxLabel}>Hora</Text>
+                    <Text style={styles.plazoBoxValue}>
+                      {fechaLimite ? fechaLimite.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : "Elegir"}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {tienePlazo && mostrarPickerFecha && (
+                <DateTimePicker
+                  value={fechaLimite || new Date()}
+                  mode="date"
+                  minimumDate={new Date()}
+                  display={Platform.OS === "ios" ? "inline" : "default"}
+                  onChange={onCambiarFecha}
+                />
+              )}
+
+              {tienePlazo && mostrarPickerHora && (
+                <DateTimePicker
+                  value={fechaLimite || new Date()}
+                  mode="time"
+                  display={Platform.OS === "ios" ? "spinner" : "default"}
+                  onChange={onCambiarHora}
+                />
+              )}
+            </>
+          )}
 
           <Pressable
             style={[styles.aiButton, (!descripcionValida || analizando) && styles.aiButtonDisabled]}
@@ -238,13 +560,16 @@ export default function CrearSolicitud({ navigation }) {
           {errorIA && <Text style={styles.errorText}>{errorIA}</Text>}
         </View>
 
-        {/* ── Bloque de aclaración (se muestra cuando la IA pide más info) ── */}
-        {analisis && necesitaAclaracion && (
+        {/* ── Bloque de aclaración (puede traer varias preguntas juntas) ── */}
+        {analisis && necesitaAclaracion && preguntasActuales.length > 0 && (
           <AclaracionBox
-            pregunta={analisis.preguntaAclaracion || "¿Podés darnos más detalles?"}
-            valor={aclaracion}
-            onChange={setAclaracion}
-            onReanalizar={() => analizarConIA(aclaracion)}
+            preguntas={preguntasActuales}
+            respuestas={respuestas}
+            textosOtro={textosOtro}
+            onSeleccionar={seleccionarRespuesta}
+            onCambiarTexto={cambiarTextoOtro}
+            onConfirmar={confirmarRespuestas}
+            todasRespondidas={todasRespondidas}
             analizando={analizando}
           />
         )}
@@ -252,8 +577,15 @@ export default function CrearSolicitud({ navigation }) {
         {/* ── Resultado del análisis (solo si NO necesita aclaración) ── */}
         {analisis && !necesitaAclaracion && (
           <View style={styles.card}>
-            <View style={styles.resultBadge}>
-              <Text style={styles.resultBadgeText}>Sugerido por IA · editable</Text>
+            <View style={styles.resultBadgeRow}>
+              <View style={styles.resultBadge}>
+                <Text style={styles.resultBadgeText}>Sugerido por IA · editable</Text>
+              </View>
+              {emergencia && (
+                <View style={styles.emergenciaBadge}>
+                  <Text style={styles.emergenciaBadgeText}>🚨 Emergencia</Text>
+                </View>
+              )}
             </View>
             <SectionHeader label="Revisá la propuesta" />
 
@@ -286,14 +618,16 @@ export default function CrearSolicitud({ navigation }) {
               </View>
             )}
 
-            <View style={styles.divider} />
+            {tienePlazo && fechaLimite && (
+              <>
+                <Text style={styles.label}>Plazo elegido</Text>
+                <Text style={styles.plazoResumen}>
+                  {emergencia ? "Hoy mismo (emergencia)" : formatearFechaHora(fechaLimite)}
+                </Text>
+              </>
+            )}
 
-            <Text style={styles.label}>¿Es una emergencia?</Text>
-            <SegmentedToggle
-              options={["No", "Sí"]}
-              selectedIndex={emergencia ? 1 : 0}
-              onChange={(i) => setEmergencia(i === 1)}
-            />
+            <View style={styles.divider} />
 
             <Text style={styles.label}>Modalidad</Text>
             <SegmentedToggle
@@ -338,7 +672,7 @@ export default function CrearSolicitud({ navigation }) {
                 {!analisis
                   ? "Analizá la descripción primero"
                   : necesitaAclaracion
-                  ? "Respondé la pregunta primero"
+                  ? "Respondé las preguntas primero"
                   : "Enviar solicitud"}
               </Text>
           }
@@ -379,6 +713,15 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.cardBorder,
   },
 
+  // Aviso de emergencia (reemplaza al selector de plazo cuando está activo)
+  emergenciaAviso: {
+    marginTop: 10,
+    backgroundColor: COLORS.emergencyBg,
+    borderWidth: 1, borderColor: COLORS.emergency,
+    borderRadius: 14, padding: 12,
+  },
+  emergenciaAvisoText: { fontSize: 13, color: COLORS.emergency, lineHeight: 18, fontWeight: "600" },
+
   // Bloque de aclaración
   aclaracionBox: {
     marginHorizontal: 16, marginTop: 20,
@@ -386,17 +729,33 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.warnBg,
     borderWidth: 1.5, borderColor: "#F5A623",
   },
-  aclaracionIconRow: { flexDirection: "row", alignItems: "center", marginBottom: 8, gap: 8 },
+  aclaracionIconRow: { flexDirection: "row", alignItems: "center", marginBottom: 14, gap: 8 },
   aclaracionIcon: { fontSize: 22 },
   aclaracionTitulo: { fontSize: 15, fontWeight: "700", color: COLORS.warn },
-  aclaracionPregunta: { fontSize: 14, color: COLORS.ink, lineHeight: 20, marginBottom: 14 },
-  aclaracionInput: {
+
+  // Cada pregunta individual dentro de la tanda
+  preguntaItem: { marginBottom: 18 },
+  preguntaTexto: { fontSize: 14, color: COLORS.ink, lineHeight: 20, marginBottom: 10, fontWeight: "600" },
+
+  // Chips de respuesta rápida
+  chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
+    backgroundColor: COLORS.card,
+    borderWidth: 1.5, borderColor: COLORS.primary,
+    borderRadius: 999,
+    paddingHorizontal: 14, paddingVertical: 9,
+  },
+  chipActivo: { backgroundColor: COLORS.primary },
+  chipOtro: { borderColor: COLORS.inkSoft },
+  chipText: { fontSize: 13, fontWeight: "700", color: COLORS.primary },
+  chipTextActivo: { color: "#fff" },
+
+  otroInput: {
     backgroundColor: COLORS.card,
     borderWidth: 1, borderColor: "#F5A623",
-    borderRadius: 14, padding: 14,
+    borderRadius: 12, padding: 12,
     fontSize: 14, color: COLORS.ink,
-    minHeight: 80, textAlignVertical: "top",
-    marginBottom: 14,
+    marginTop: 10,
   },
 
   sectionHeader: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
@@ -412,6 +771,16 @@ const styles = StyleSheet.create({
     minHeight: 96, textAlignVertical: "top",
   },
 
+  // Selector de fecha/hora del plazo
+  plazoRow: { flexDirection: "row", gap: 10, marginTop: 10 },
+  plazoBox: {
+    flex: 1, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
+  },
+  plazoBoxLabel: { fontSize: 11, color: COLORS.inkSoft, fontWeight: "700", textTransform: "uppercase" },
+  plazoBoxValue: { fontSize: 15, color: COLORS.ink, fontWeight: "700", marginTop: 4 },
+  plazoResumen: { fontSize: 14, color: COLORS.ink, fontWeight: "600" },
+
   aiButton: {
     marginTop: 16, backgroundColor: COLORS.primary, borderRadius: 14,
     paddingVertical: 15, alignItems: "center", justifyContent: "center",
@@ -422,11 +791,17 @@ const styles = StyleSheet.create({
   errorText: { color: COLORS.error, fontSize: 13, marginTop: 8 },
   errorTextOutside: { marginHorizontal: 16, marginTop: 16 },
 
+  resultBadgeRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
   resultBadge: {
     alignSelf: "flex-start", backgroundColor: COLORS.primaryDark,
-    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, marginBottom: 12,
+    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
   },
   resultBadgeText: { color: "#fff", fontSize: 11, fontWeight: "700" },
+  emergenciaBadge: {
+    alignSelf: "flex-start", backgroundColor: COLORS.emergency,
+    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
+  },
+  emergenciaBadgeText: { color: "#fff", fontSize: 11, fontWeight: "700" },
 
   selectBox: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",

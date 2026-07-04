@@ -26,6 +26,12 @@ export default class SolicitudServices {
             idCliente: body.idCliente,
             servicioId: body.servicioId,
             distancia: body.distancia ?? null,
+            // 👇 Plazo elegido por el cliente con el selector de fecha/hora.
+            // Vienen como dato estructurado (no texto libre): "fechaRequerida"
+            // en formato YYYY-MM-DD (columna date) y "horarioRequerido" en
+            // formato HH:mm (columna time). Si el cliente no eligió plazo,
+            // ambos llegan en null.
+            fechaRequerida: body.fechaRequerida ?? null,
             horarioRequerido: body.horarioRequerido ?? null,
             fijo: body.fijo,
             precio: body.precio,

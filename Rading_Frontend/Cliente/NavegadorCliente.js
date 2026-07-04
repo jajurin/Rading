@@ -10,6 +10,7 @@ import {
 // 1. Importamos los componentes necesarios para el SVG
 import Svg, { G, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native'; // 👈 NUEVO
 
 
 const Icons = {
@@ -271,9 +272,10 @@ function FabButton({ onPress }) {
 }
 
 
-export default function BottomNavBar() {
+export default function BottomNavBar({ usuario }) {  
   const [activeTab, setActiveTab] = useState('inicio');
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation(); // 👈 NUEVO
 
 
   const leftItems = NAV_ITEMS.slice(0, 2);
@@ -296,7 +298,7 @@ export default function BottomNavBar() {
         </View>
 
 
-        <FabButton onPress={() => console.log('FAB pressed')} />
+  <FabButton onPress={() => navigation.navigate('CrearSolicitud', { usuario })} />
 
 
         <View style={styles.tabGroup}>

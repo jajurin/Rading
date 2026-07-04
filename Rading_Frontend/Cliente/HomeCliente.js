@@ -196,7 +196,7 @@ const buscarServicio = (nombreServicio) => {
         />
       )}
 
-      <BottomNavBar />
+<BottomNavBar usuario={usuario} />
     </SafeAreaView>
   );
 }
