@@ -142,8 +142,9 @@ export default function OfertaRecibidaOverlayCliente({
   onClose,
   onChat,
   idCliente,
+  usuario,
   navigation
-}) {
+}) { 
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [trabajos, setTrabajos] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -203,7 +204,8 @@ export default function OfertaRecibidaOverlayCliente({
       style={styles.recientesButton}
       onPress={() => {
         onClose?.();
-        navigation?.navigate('RecienteClientes');
+       navigation?.navigate('RecienteClientes', { usuario });
+
       }}
     >
       <Text style={styles.recientesText}>Recientes</Text>

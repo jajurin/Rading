@@ -319,7 +319,7 @@ obtenerCategoriaCliente = async (idCliente) => {
             return result?.rows ?? []
         }
 
-        mostrarRecientes = async (idCliente, limite = 6) => {
+      mostrarRecientes = async (idCliente, limite = 6) => {
     const client = new Client(config)
     let result
 
@@ -335,7 +335,8 @@ obtenerCategoriaCliente = async (idCliente) => {
                     t.foto,
                     ct.estado,
                     ct.fecha_iniciado,
-                    ct.horario_finalizado
+                    ct.fecha_acabado,
+                    ct.precio
                 FROM "Cliente-Trabajador" ct
                 INNER JOIN "Trabajador" t ON ct."IdTrabajador" = t.id
                 INNER JOIN "Usuario" u ON t."IdPersona" = u.id

@@ -3,74 +3,124 @@ import API_URL from '../configS'
 
 import {
   View, Text, StyleSheet, ScrollView,
-  StatusBar, ActivityIndicator, TouchableOpacity,
+  StatusBar, ActivityIndicator, TouchableOpacity, Alert,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context' // 👈 cross-platform (iOS/Android), no la de 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { Ionicons } from '@expo/vector-icons'
 import BottomNavBar from './NavegadorCliente'
-import Header from '../Header' // 👈 ajustá esta ruta si Header.js no está en la raíz
+import Header from '../Header'
 import FotoPerfilCliente from './FotoPerfilCliente'
 import EditarDescripcionPerfilCliente from './EditarDescripcionPerfilCliente'
 import TarjetaPerfilCliente from './TarjetaPerfilCliente'
 
-// Las direcciones geocodificadas vienen completas (calle, barrio, comuna,
-// ciudad, cod. postal, país...). Para mostrar arriba nos quedamos solo con
-// "Calle Número" para que no rompa el diseño del header ni de la tarjeta.
 function direccionCorta(direccionCompleta) {
   if (!direccionCompleta) return 'Sin dirección'
   const partes = direccionCompleta.split(',').map(p => p.trim())
-  // Formato típico de geocoding: "2625, Avenida Nazca, Villa del Parque, ..."
   if (partes.length >= 2) return `${partes[1]} ${partes[0]}`
   return partes[0]
 }
 
-const BASE_URL = API_URL
-const BLUE     = '#1565D8'
-const GRAY     = '#6b7280'
-const BG       = '#e4e2e2'
+function EstrellasRating({ valor = 0, size = 16, showNumber = true }) {
+  const estrellas = Math.max(0, Math.min(5, Number(valor) || 0))
+  const llenas = Math.floor(estrellas)
+  const decimal = estrellas - llenas
+  const media = decimal >= 0.25 && decimal < 0.75
+  const extraLlena = decimal >= 0.75
+  const totalLlenas = llenas + (extraLlena ? 1 : 0)
+  const vacias = 5 - totalLlenas - (media ? 1 : 0)
+
+  return (
+    <View style={styles.ratingRow}>
+      <View style={styles.starsRow}>
+        {Array.from({ length: totalLlenas }).map((_, i) => (
+          <Ionicons key={`f${i}`} name="star" size={size} color="#F5A623" />
+        ))}
+        {media && <Ionicons name="star-half" size={size} color="#F5A623" />}
+        {Array.from({ length: vacias }).map((_, i) => (
+          <Ionicons key={`e${i}`} name="star-outline" size={size} color="#F5A623" />
+        ))}
+      </View>
+      {showNumber && (
+        <Text style={styles.ratingNumero}>{estrellas.toFixed(1)}</Text>
+      )}
+    </View>
+  )
+}
+
+function InfoBadge({ mensaje }) {
+  return (
+    <TouchableOpacity
+      style={styles.infoBadge}
+      onPress={() => Alert.alert('¿Por qué tengo este puntaje?', mensaje)}
+      activeOpacity={0.6}
+      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+    >
+      <Text style={styles.infoBadgeText}>?</Text>
+    </TouchableOpacity>
+  )
+}
+
+const BASE_URL   = API_URL
+const BLUE       = '#1565D8'
+const BLUE_DARK  = '#0d4bb8'
+const STATUS_BAR = '#0D4FD7'
+const GRAY       = '#6b7280'
+const BG         = '#F2F4F8'
 
 export default function PerfilClienteScreen({ navigation, route }) {
-  const { usuario } = route.params          // viene del Login
-  const ID_CLIENTE  = usuario.idCliente     // id real del cliente logueado
+  const { usuario } = route.params
+  const ID_CLIENTE  = usuario.idCliente
 
   const [cliente,  setCliente]  = useState(null)
   const [trabajos, setTrabajos] = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [error,    setError]    = useState(null)
 
-  useEffect(() => { fetchDatos() }, [])
+  // 👇 loadings separados: cada sección carga (y muestra) de forma independiente
+  const [loadingCliente,  setLoadingCliente]  = useState(true)
+  const [loadingTrabajos, setLoadingTrabajos] = useState(true)
 
-  const fetchDatos = async () => {
-    setLoading(true)
-    setError(null)
+  const [errorCliente,  setErrorCliente]  = useState(null)
+  const [errorTrabajos, setErrorTrabajos] = useState(null)
+
+  useEffect(() => {
+    fetchCliente()
+    fetchTrabajos()
+  }, [])
+
+  const fetchCliente = async () => {
+    setLoadingCliente(true)
+    setErrorCliente(null)
     try {
-      // 1) Perfil del cliente
       const resClientes = await fetch(`${BASE_URL}/cliente/todos`)
       if (!resClientes.ok) throw new Error(`Error ${resClientes.status} al obtener clientes`)
       const clientes = await resClientes.json()
       const clienteEncontrado = clientes.find(c => c.id === ID_CLIENTE)
       if (!clienteEncontrado) throw new Error('Cliente no encontrado en la base de datos')
       setCliente(clienteEncontrado)
-
-      // 2) Trabajos activos (trabajadores contratados)
-      const resTrabajos = await fetch(`${BASE_URL}/cliente/trabajosActivos/${ID_CLIENTE}`)
-      if (!resTrabajos.ok) throw new Error(`Error ${resTrabajos.status} al obtener trabajos activos`)
-      setTrabajos(await resTrabajos.json())
-
     } catch (err) {
-      console.error('fetchDatos error:', err)
-      setError(err.message)
+      console.error('fetchCliente error:', err)
+      setErrorCliente(err.message)
     } finally {
-      setLoading(false)
+      setLoadingCliente(false)
     }
   }
 
-  // Guarda un campo editable (preferencias / descripción) local y en el back.
-  // OJO: la ruta '/cliente/actualizar/:id' es un supuesto, cambiala por la
-  // que tengas en tu backend, y "preferencias"/"descripcion" por los nombres
-  // reales de columna si son distintos.
-  const actualizarCampo = async (campo, valor) => {
-    setCliente(prev => ({ ...prev, [campo]: valor })) // actualiza al toque en pantalla
+  const fetchTrabajos = async () => {
+    setLoadingTrabajos(true)
+    setErrorTrabajos(null)
+    try {
+      const resTrabajos = await fetch(`${BASE_URL}/cliente/trabajosActivos/${ID_CLIENTE}`)
+      if (!resTrabajos.ok) throw new Error(`Error ${resTrabajos.status} al obtener trabajos activos`)
+      setTrabajos(await resTrabajos.json())
+    } catch (err) {
+      console.error('fetchTrabajos error:', err)
+      setErrorTrabajos(err.message)
+    } finally {
+      setLoadingTrabajos(false)
+    }
+  }
 
+  const actualizarCampo = async (campo, valor) => {
+    setCliente(prev => ({ ...prev, [campo]: valor }))
     try {
       const res = await fetch(`${BASE_URL}/cliente/actualizar/${ID_CLIENTE}`, {
         method: 'PATCH',
@@ -80,48 +130,22 @@ export default function PerfilClienteScreen({ navigation, route }) {
       if (!res.ok) throw new Error(`Error ${res.status} al guardar ${campo}`)
     } catch (err) {
       console.error('actualizarCampo error:', err)
-      // Si falla el guardado en el back, lo avisamos pero dejamos el valor
-      // en pantalla para no perder lo que el usuario escribió.
-      setError(`No se pudo guardar el cambio (${campo}). Reintentá más tarde.`)
+      setErrorCliente(`No se pudo guardar el cambio (${campo}). Reintentá más tarde.`)
     }
   }
 
-  // Stub para cambiar la foto de perfil. Vos enganchás acá tu image picker
-  // (expo-image-picker, etc). Cuando tengas la uri, hacé:
-  // setCliente(prev => ({ ...prev, foto: uriNueva }))
   const editarFoto = () => {
     console.log('TODO: abrir selector de imagen para cambiar la foto')
   }
 
-  // ── Loading ──────────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <SafeAreaView style={[styles.safe, styles.center]}>
-        <ActivityIndicator size="large" color="#fff" />
-        <Text style={styles.loadingText}>Cargando perfil…</Text>
-      </SafeAreaView>
-    )
-  }
-
-  // ── Error ────────────────────────────────────────────────────────────
-  if (error && !cliente) {
-    return (
-      <SafeAreaView style={[styles.safe, styles.center]}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={fetchDatos}>
-          <Text style={styles.retryText}>Reintentar</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
-    )
-  }
-
-  // ── Render ───────────────────────────────────────────────────────────
-  const nombreCompleto = `${cliente.nombre} ${cliente.apellido}`
-  const ubicacion = direccionCorta(cliente.direccion)
+  const nombreCompleto = cliente ? `${cliente.nombre} ${cliente.apellido}` : ''
+  const ubicacion = cliente ? direccionCorta(cliente.direccion) : ''
+  const trabajosActivosCount = trabajos.length
 
   return (
+    
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={BLUE} />
+      <StatusBar barStyle="dark-content" backgroundColor={STATUS_BAR} />
 
       <Header
         direccion={ubicacion}
@@ -134,60 +158,114 @@ export default function PerfilClienteScreen({ navigation, route }) {
 
       <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
 
-        {/* Aviso no bloqueante si falló guardar algún campo */}
-        {error && cliente && (
-          <View style={styles.avisoBox}>
-            <Text style={styles.avisoTexto}>{error}</Text>
-          </View>
-        )}
-
-        {/* Tarjeta perfil */}
+        {/* ── Sección PERFIL ─────────────────────────────────────────── */}
         <View style={styles.perfilCard}>
-          <View style={styles.perfilRow}>
-            <View>
-              <FotoPerfilCliente
-                nombre={nombreCompleto}
-                foto={cliente.foto}
-                size={78}
-                editable
-                onEditarFoto={editarFoto}
-              />
-              <Text style={styles.ubicacionTexto} numberOfLines={2} ellipsizeMode="tail">{ubicacion}</Text>
+          {loadingCliente ? (
+            <View style={styles.inlineLoadingBox}>
+              <ActivityIndicator size="small" color={BLUE} />
+              <Text style={styles.inlineLoadingText}>Cargando perfil…</Text>
             </View>
-
-            <View style={styles.perfilInfo}>
-              <Text style={styles.nombre}>{nombreCompleto}</Text>
-
-              <EditarDescripcionPerfilCliente
-                etiqueta="Preferencias personales de servicio:"
-                valor={cliente.preferencias}
-                onGuardar={(v) => actualizarCampo('preferencias', v)}
-              />
-
-              <EditarDescripcionPerfilCliente
-                etiqueta="Descripción del usuario:"
-                valor={cliente.descripcion}
-                onGuardar={(v) => actualizarCampo('descripcion', v)}
-              />
+          ) : errorCliente && !cliente ? (
+            <View style={styles.errorInlineBox}>
+              <Ionicons name="alert-circle-outline" size={30} color="#B9C2D0" />
+              <Text style={styles.emptyText}>{errorCliente}</Text>
+              <TouchableOpacity style={styles.retryBtnInline} onPress={fetchCliente} activeOpacity={0.85}>
+                <Text style={styles.retryTextInline}>Reintentar</Text>
+              </TouchableOpacity>
             </View>
-          </View>
+          ) : (
+            <>
+              {errorCliente && (
+                <View style={styles.avisoBox}>
+                  <Ionicons name="warning-outline" size={16} color="#B00020" />
+                  <Text style={styles.avisoTexto}>{errorCliente}</Text>
+                </View>
+              )}
+
+              <View style={styles.perfilRow}>
+                <View style={styles.perfilFotoCol}>
+                  <FotoPerfilCliente
+                    nombre={nombreCompleto}
+                    foto={cliente.foto}
+                    size={82}
+                    editable
+                    onEditarFoto={editarFoto}
+                  />
+                  <View style={styles.ubicacionPill}>
+                    <Ionicons name="location-outline" size={12} color={BLUE} style={{ marginTop: 1 }} />
+                    <Text style={styles.ubicacionTexto} numberOfLines={2} ellipsizeMode="tail">
+                      {ubicacion}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.perfilInfo}>
+                  <Text style={styles.nombre} numberOfLines={1}>{nombreCompleto}</Text>
+
+                  <View style={styles.ratingWithInfo}>
+                    <EstrellasRating valor={cliente.estrellas} size={15} />
+                    <InfoBadge mensaje="Este puntaje se calcula con las reseñas que te dejaron los trabajadores luego de cada servicio contratado." />
+                  </View>
+
+                  <View style={styles.divisor} />
+
+                  <EditarDescripcionPerfilCliente
+                    etiqueta="Preferencias personales de servicio:"
+                    valor={cliente.preferencias}
+                    onGuardar={(v) => actualizarCampo('preferencias', v)}
+                  />
+
+                  <EditarDescripcionPerfilCliente
+                    etiqueta="Descripción del usuario:"
+                    valor={cliente.descripcion}
+                    onGuardar={(v) => actualizarCampo('descripcion', v)}
+                  />
+                </View>
+              </View>
+            </>
+          )}
         </View>
 
-        {/* Trabajadores contratados */}
+        {/* ── Sección TRABAJOS ───────────────────────────────────────── */}
         <View style={styles.seccionHeader}>
-          <Text style={styles.seccionTitulo}>Trabajadores contratados</Text>
-          <TouchableOpacity>
+          <View style={styles.seccionTituloRow}>
+            <Text style={styles.seccionTitulo}>Trabajadores contratados</Text>
+            {!loadingTrabajos && trabajosActivosCount > 0 && (
+              <View style={styles.contadorBadge}>
+                <Text style={styles.contadorTexto}>{trabajosActivosCount}</Text>
+              </View>
+            )}
+          </View>
+          <TouchableOpacity activeOpacity={0.7}>
             <Text style={styles.verTodos}>Ver todos</Text>
           </TouchableOpacity>
         </View>
 
-        {trabajos.length === 0 ? (
+        {loadingTrabajos ? (
+          <View style={styles.inlineLoadingBox}>
+            <ActivityIndicator size="small" color={BLUE} />
+            <Text style={styles.inlineLoadingText}>Cargando trabajos…</Text>
+          </View>
+        ) : errorTrabajos ? (
           <View style={styles.emptyBox}>
+            <Ionicons name="alert-circle-outline" size={36} color="#B9C2D0" />
+            <Text style={styles.emptyText}>{errorTrabajos}</Text>
+            <TouchableOpacity style={styles.retryBtnInline} onPress={fetchTrabajos} activeOpacity={0.85}>
+              <Text style={styles.retryTextInline}>Reintentar</Text>
+            </TouchableOpacity>
+          </View>
+        ) : trabajos.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Ionicons name="briefcase-outline" size={36} color="#B9C2D0" />
             <Text style={styles.emptyText}>No tenés trabajos activos</Text>
           </View>
         ) : (
           trabajos.map((item, idx) => (
-            <TarjetaPerfilCliente key={item.id ?? idx} item={item} />
+            <TarjetaPerfilCliente
+              key={item.id ?? idx}
+              item={item}
+              onPressChat={(trabajo) => navigation?.navigate('Chat', { trabajo })}
+            />
           ))
         )}
 
@@ -200,23 +278,75 @@ export default function PerfilClienteScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  safe:             { flex: 1, backgroundColor: BLUE },
-  center:           { alignItems: 'center', justifyContent: 'center' },
-  loadingText:      { color: '#fff', marginTop: 12, fontSize: 15 },
-  errorText:        { color: '#fff', marginTop: 12, fontSize: 14, textAlign: 'center', paddingHorizontal: 24 },
-  retryBtn:         { marginTop: 16, backgroundColor: '#fff', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 28 },
-  retryText:        { color: BLUE, fontWeight: '700', fontSize: 15 },
+  safe: { flex: 1, backgroundColor: STATUS_BAR },
+
   body:             { flex: 1, backgroundColor: BG, paddingHorizontal: 16, paddingTop: 16 },
-  avisoBox:         { backgroundColor: '#FDECEC', borderRadius: 10, padding: 10, marginBottom: 12 },
-  avisoTexto:       { color: '#B00020', fontSize: 12 },
-  perfilCard:       { backgroundColor: '#fff', borderRadius: 20, padding: 18, marginBottom: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 3 },
+
+  inlineLoadingBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 20, justifyContent: 'center',
+  },
+  inlineLoadingText: { color: GRAY, fontSize: 13 },
+
+  errorInlineBox:   { alignItems: 'center', justifyContent: 'center', paddingVertical: 20, gap: 8 },
+
+  retryBtnInline:   { marginTop: 10, backgroundColor: BLUE, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 20 },
+  retryTextInline:  { color: '#fff', fontWeight: '700', fontSize: 13 },
+
+  avisoBox:         {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FDECEC', borderRadius: 12, padding: 12, marginBottom: 14,
+  },
+  avisoTexto:       { color: '#B00020', fontSize: 12, flex: 1 },
+
+  perfilCard:       {
+    backgroundColor: '#fff', borderRadius: 22, padding: 18, marginBottom: 26,
+    shadowColor: '#0d4bb8', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08, shadowRadius: 14, elevation: 3,
+  },
   perfilRow:        { flexDirection: 'row' },
-  ubicacionTexto:   { fontSize: 11, color: '#7A9AE8', textAlign: 'center', marginTop: 8, width: 90 },
-  perfilInfo:       { flex: 1, marginLeft: 14 },
-  nombre:           { fontSize: 24, fontWeight: '800', color: BLUE, marginBottom: 10 },
-  seccionHeader:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  seccionTitulo:    { fontSize: 18, fontWeight: '700', color: BLUE },
-  verTodos:         { fontSize: 13, color: BLUE, fontWeight: '600' },
-  emptyBox:         { alignItems: 'center', justifyContent: 'center', paddingVertical: 32, gap: 10 },
-  emptyText:        { color: GRAY, fontSize: 14 },
+  perfilFotoCol:    { alignItems: 'center' },
+
+  ubicacionPill: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 4,
+    backgroundColor: 'rgba(21,101,216,0.08)', borderRadius: 12,
+    paddingHorizontal: 9, paddingVertical: 6, marginTop: 10,
+    maxWidth: 110, alignSelf: 'center',
+  },
+  ubicacionTexto:   { fontSize: 10.5, color: BLUE_DARK, fontWeight: '600', flexShrink: 1, lineHeight: 13 },
+
+  perfilInfo:       { flex: 1, marginLeft: 16 },
+  nombre:           { fontSize: 22, fontWeight: '800', color: '#1A2233', marginBottom: 6 },
+
+  ratingWithInfo:   { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  infoBadge: {
+    width: 17, height: 17, borderRadius: 9,
+    backgroundColor: 'rgba(21,101,216,0.12)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  infoBadgeText:    { color: BLUE, fontSize: 10.5, fontWeight: '800' },
+
+  ratingRow:        { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  starsRow:         { flexDirection: 'row', gap: 1 },
+  ratingNumero:     { fontSize: 13, fontWeight: '700', color: '#8A94A6' },
+
+  divisor:          { height: 1, backgroundColor: '#EEF1F6', marginVertical: 12 },
+
+  seccionHeader:    {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14,
+  },
+  seccionTituloRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  seccionTitulo:    { fontSize: 17, fontWeight: '800', color: '#1A2233' },
+  contadorBadge:    {
+    backgroundColor: BLUE, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 1,
+    minWidth: 20, alignItems: 'center',
+  },
+  contadorTexto:    { color: '#fff', fontSize: 11, fontWeight: '800' },
+  verTodos:         { fontSize: 13, color: BLUE, fontWeight: '700' },
+
+  emptyBox:         {
+    alignItems: 'center', justifyContent: 'center', paddingVertical: 36, gap: 10,
+    backgroundColor: '#fff', borderRadius: 18,
+  },
+  emptyText:        { color: GRAY, fontSize: 14, textAlign: 'center', paddingHorizontal: 20 },
 })

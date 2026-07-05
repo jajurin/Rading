@@ -11,19 +11,22 @@ import {
   TouchableOpacity,
   ScrollView,
   Image,
+  StatusBar,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+;
 
 const BLUE       = '#1565D8';
 const BLUE_DARK  = '#0d47a8';
 const BLUE_LIGHT = '#3b7ff0';
+const STATUS_BAR = '#0D4FD7'
 const BG         = '#F3F5FA';
 
 export default function HomeCliente({ route, navigation }) {
   const usuario = route?.params?.usuario;
   const buscadorRef = useRef(null);
-
+const insets = useSafeAreaInsets()
   const [servicios, setServicios] = useState([]);
   const [cargandoServicios, setCargandoServicios] = useState(true);
 
@@ -80,6 +83,8 @@ const buscarServicio = (nombreServicio) => {
 
   return (
     <SafeAreaView style={styles.container}>
+      
+    <StatusBar barStyle="light-content" backgroundColor={STATUS_BAR} />
       <Header />
 
       <ScrollView
@@ -189,12 +194,13 @@ const buscarServicio = (nombreServicio) => {
         )}
       </ScrollView>
 
-      {usuario?.idCliente != null && (
-        <TrabajoActivoWidget
-          idCliente={usuario.idCliente}
-          navigation={navigation}
-        />
-      )}
+     {usuario?.idCliente != null && (
+  <TrabajoActivoWidget
+    idCliente={usuario.idCliente}
+    usuario={usuario}
+    navigation={navigation}
+  />
+)}
 
 <BottomNavBar usuario={usuario} />
     </SafeAreaView>
@@ -202,6 +208,7 @@ const buscarServicio = (nombreServicio) => {
 }
 
 const styles = StyleSheet.create({
+  
   container: { flex: 1, backgroundColor: BG },
   scrollContent: {  paddingBottom: 180 },
   emptyText: { marginTop: 14, marginHorizontal: 16, color: '#8A94A6', fontSize: 13 },
