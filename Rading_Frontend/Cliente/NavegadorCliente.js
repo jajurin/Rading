@@ -121,11 +121,13 @@ const THEME = {
 };
 
 
+// Cada tab define a qué pantalla del Stack.Navigator (App.js) navega.
+// Si el nombre de alguna pantalla en tu Stack es distinto, cambialo acá.
 const NAV_ITEMS = [
-  { key: 'inicio',   label: 'Inicio',   Icon: Icons.Home    },
-  { key: 'busqueda', label: 'Busqueda', Icon: Icons.Search  },
-  { key: 'chats',    label: 'Chats',    Icon: Icons.Chat    },
-  { key: 'perfil',   label: 'Perfil',   Icon: Icons.Profile },
+  { key: 'inicio',   label: 'Inicio',   Icon: Icons.Home,    screen: 'HomeCliente' },
+  { key: 'busqueda', label: 'Busqueda', Icon: Icons.Search,  screen: 'BuscadorCliente' },
+  { key: 'chats',    label: 'Chats',    Icon: Icons.Chat,    screen: 'Chats' }, // 👈 todavía no existe esta pantalla en App.js, hay que crearla
+  { key: 'perfil',   label: 'Perfil',   Icon: Icons.Profile, screen: 'PerfilScreen' },
 ];
 
 
@@ -272,14 +274,32 @@ function FabButton({ onPress }) {
 }
 
 
-export default function BottomNavBar({ usuario }) {  
-  const [activeTab, setActiveTab] = useState('inicio');
+/**
+ * Barra de navegación inferior.
+ *
+ * Props:
+ * - usuario: objeto del usuario logueado (se lo pasamos a las pantallas
+ *   a las que navegamos, porque varias lo necesitan, ej. PerfilScreen).
+ * - pantallaActiva: opcional. Le decís desde qué pantalla la estás
+ *   renderizando ('inicio' | 'busqueda' | 'chats' | 'perfil') para que
+ *   se marque el tab correcto como activo. Si no lo pasás, arranca en 'inicio'.
+ */
+export default function BottomNavBar({ usuario, pantallaActiva }) {
+  const [activeTab, setActiveTab] = useState(pantallaActiva || 'inicio');
   const insets = useSafeAreaInsets();
   const navigation = useNavigation(); // 👈 NUEVO
 
+  useEffect(() => {
+    if (pantallaActiva) setActiveTab(pantallaActiva);
+  }, [pantallaActiva]);
 
   const leftItems = NAV_ITEMS.slice(0, 2);
   const rightItems = NAV_ITEMS.slice(2, 4);
+
+  const irA = (item) => {
+    setActiveTab(item.key);
+    navigation.navigate(item.screen, { usuario });
+  };
 
 
   return (
@@ -292,7 +312,7 @@ export default function BottomNavBar({ usuario }) {
               key={item.key}
               item={item}
               isActive={activeTab === item.key}
-              onPress={() => setActiveTab(item.key)}
+              onPress={() => irA(item)}
             />
           ))}
         </View>
@@ -307,7 +327,7 @@ export default function BottomNavBar({ usuario }) {
               key={item.key}
               item={item}
               isActive={activeTab === item.key}
-              onPress={() => setActiveTab(item.key)}
+              onPress={() => irA(item)}
             />
           ))}
         </View>

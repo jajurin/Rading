@@ -11,14 +11,38 @@ import {
 import Logoicon from './assets/Logoicon.png';
 
 import Svg, { Path } from 'react-native-svg';
+import { useNavigation } from '@react-navigation/native';
 
-export default function Header() {
+/**
+ * Props (todos opcionales, si no los pasás queda como antes):
+ * - direccion: texto de la dirección (ej. cliente.direccion)
+ * - tipoDireccion: texto del botón "Casa ▼"
+ * - onSettings, onCambiarDireccion, onLogo: callbacks de los 3 botones
+ */
+export default function Header({
+  direccion = 'Av. Nazca 2625',
+  tipoDireccion = 'Casa',
+  usuario,
+  onSettings,
+  onCambiarDireccion,
+  onLogo,
+}) {
+  const navigation = useNavigation();
+
+  // El logo/maleta SIEMPRE lleva a Home, sin importar desde qué pantalla
+  // se toque. Si además le pasaste un onLogo (por si querés lógica extra
+  // en algún lado), se ejecuta antes de navegar.
+  const irAHome = () => {
+    onLogo?.();
+    navigation.navigate('HomeCliente', { usuario });
+  };
+
   return (
     <View style={styles.header}>
       <StatusBar backgroundColor={BLUE} barStyle="light-content" />
 
       {/* Icono Izquierdo */}
-    <TouchableOpacity style={styles.iconButton}>
+    <TouchableOpacity style={styles.iconButton} onPress={onSettings}>
   <Svg
     width={24}
     height={24}
@@ -34,21 +58,21 @@ export default function Header() {
 
       {/* Dirección */}
       <View style={styles.centerContainer}>
-        <Text style={styles.address}>
-          Av. Nazca 2625
+        <Text style={styles.address} numberOfLines={1} ellipsizeMode="tail">
+          {direccion}
         </Text>
 
 
-        <TouchableOpacity style={styles.homeButton}>
+        <TouchableOpacity style={styles.homeButton} onPress={onCambiarDireccion}>
           <Text style={styles.homeText}>
-            Casa ▼
+            {tipoDireccion} ▼
           </Text>
         </TouchableOpacity>
       </View>
 
 
       {/* Icono Derecho */}
-      <TouchableOpacity style={styles.iconButton}>
+      <TouchableOpacity style={styles.iconButton} onPress={irAHome}>
   <Image
     source={Logoicon}
     style={styles.rightIcon}
@@ -97,6 +121,8 @@ const styles = StyleSheet.create({
 
   centerContainer: {
     alignItems: 'center',
+    flex: 1,
+    marginHorizontal: 8,
   },
 
 
@@ -104,6 +130,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11,
     marginBottom: 2,
+    textAlign: 'center',
+    maxWidth: '100%',
   },
 
 
