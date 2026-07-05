@@ -25,6 +25,7 @@
     "axios": "^1.18.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
+    "expo": "^57.0.2",
     "express": "^5.2.1",
     "groq-sdk": "^1.2.1",
     "http-status-codes": "^2.3.0",
