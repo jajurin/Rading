@@ -137,4 +137,39 @@ router.post("/resenia", async (req, res) => {
         res.status(500).json({ message: "Error al crear reseña", error: error.message })
     }
 })
+// GET /cliente/ofertas/:idTrabajo
+// GET /cliente/ofertas/pendientes/:idCliente  👈 AHORA VA PRIMERO
+router.get('/ofertas/pendientes/:idCliente', async (req, res) => {
+    console.log('🔵 ENTRÓ a /ofertas/pendientes/:idCliente con idCliente =', req.params.idCliente)
+    try {
+        const data = await svc.contarOfertasPendientes(req.params.idCliente)
+        console.log('🟢 pendientes encontradas:', data)
+        res.json(data)
+    } catch (err) {
+        console.log('🔴 ERROR COMPLETO:', err)
+        res.status(500).json({ message: err.message })
+    }
+})
+
+// GET /cliente/ofertas/:idTrabajo  👈 AHORA VA DESPUÉS
+router.get('/ofertas/:idTrabajo', async (req, res) => {
+    console.log('🔵 ENTRÓ a /ofertas/:idTrabajo con idTrabajo =', req.params.idTrabajo)
+    try {
+        const ofertas = await svc.buscarOfertasPorTrabajo(req.params.idTrabajo)
+        console.log('🟢 ofertas encontradas:', ofertas)
+        res.json(ofertas)
+    } catch (err) {
+        console.log('🔴 ERROR COMPLETO:', err)
+        res.status(500).json({ message: err.message })
+    }
+})
+
+router.post('/ofertas/:idOferta/aceptar', async (req, res) => {
+    try {
+        const resultado = await svc.aceptarOferta(req.params.idOferta)
+        res.json(resultado)
+    } catch (err) {
+        res.status(400).json({ message: err.message })
+    }
+})
 export default router

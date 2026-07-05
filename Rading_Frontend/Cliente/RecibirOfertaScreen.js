@@ -1,14 +1,14 @@
 // RecibirOfertasScreen.js
-// Pantalla "Recibir ofertas". Importa la tarjeta desde su propio archivo
-// (OfertaCard.js) para mantenerla como componente aparte.
-
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, SafeAreaView, StatusBar, Modal, Platform,
+  ActivityIndicator, Alert,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { useFocusEffect } from '@react-navigation/native'
 import OfertaCard from './OfertaCard'
+import API_URL from '../configS'
 
 const COLORS = {
   blue:   '#1a3a8f',
@@ -26,22 +26,8 @@ const shadow = (elevation = 6) => ({
   shadowOffset: { width: 0, height: elevation / 1.5 },
   shadowOpacity: 0.16,
   shadowRadius: elevation,
-  elevation, // Android
+  elevation,
 })
-
-// --- DATA FALSA, reemplaza con tu fetch ---
-const solicitud = {
-  titulo: 'Reparación de Heladera',
-  servicio: 'Reparación de Plomería',
-}
-
-const ofertas = [
-  { id: 1, nombre: 'Jonatan Naifeld', rating: 5.0, distancia: 5.7, costoExtraMin: 0,    costoExtraMax: 20000, precio: 100000 },
-  { id: 2, nombre: 'Jonatan Naifeld', rating: 5.0, distancia: 5.7, costoExtraMin: 0,    costoExtraMax: 20000, precio: 110000 },
-  { id: 3, nombre: 'Carlos Mendez',   rating: 4.8, distancia: 3.2, costoExtraMin: 0,    costoExtraMax: 15000, precio: 120000 },
-  { id: 4, nombre: 'Sofia Romero',    rating: 4.2, distancia: 7.1, costoExtraMin: 5000, costoExtraMax: 25000, precio: 130000 },
-]
-// ------------------------------------------
 
 function Iniciales({ nombre, size = 48, bg = '#b0b8c8' }) {
   const ini = nombre.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
@@ -67,7 +53,7 @@ function Estrellas({ rating, size = 12 }) {
   )
 }
 
-function ModalOfertaAceptada({ oferta, onClose }) {
+function ModalOfertaAceptada({ oferta, servicioNombre, onClose }) {
   if (!oferta) return null
   return (
     <Modal transparent animationType="slide" visible={!!oferta} statusBarTranslucent>
@@ -80,7 +66,7 @@ function ModalOfertaAceptada({ oferta, onClose }) {
           <View style={styles.modalHeaderRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.modalChip}>TRABAJO EN CURSO</Text>
-              <Text style={styles.modalTitulo}>{solicitud.servicio}</Text>
+              <Text style={styles.modalTitulo}>{servicioNombre || 'Servicio'}</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="close" size={18} color={COLORS.blue} />
@@ -93,9 +79,11 @@ function ModalOfertaAceptada({ oferta, onClose }) {
               <Text style={styles.modalNombre}>{oferta.nombre}</Text>
               <View style={styles.modalMetaRow}>
                 <Estrellas rating={oferta.rating} size={14} />
-                <Text style={styles.modalRating}>{oferta.rating.toFixed(1)}</Text>
+                <Text style={styles.modalRating}>{Number(oferta.rating ?? 0).toFixed(1)}</Text>
               </View>
-              <Text style={styles.modalDistancia}>{oferta.distancia} km de distancia</Text>
+              {oferta.distancia != null && (
+                <Text style={styles.modalDistancia}>{oferta.distancia} km de distancia</Text>
+              )}
             </View>
           </View>
 
@@ -104,12 +92,12 @@ function ModalOfertaAceptada({ oferta, onClose }) {
           <View style={styles.modalPrecioRow}>
             <View>
               <Text style={styles.modalPrecioLabel}>Precio acordado</Text>
-              <Text style={styles.modalPrecio}>${oferta.precio.toLocaleString()}</Text>
+              <Text style={styles.modalPrecio}>${Number(oferta.precio).toLocaleString()}</Text>
             </View>
             <View>
               <Text style={styles.modalPrecioLabel}>Costo extra posible</Text>
               <Text style={styles.modalExtra}>
-                ${oferta.costoExtraMin.toLocaleString()} – ${oferta.costoExtraMax.toLocaleString()}
+                ${Number(oferta.costoExtraMin ?? 0).toLocaleString()} – ${Number(oferta.costoExtraMax ?? 0).toLocaleString()}
               </Text>
             </View>
           </View>
@@ -132,9 +120,83 @@ function ModalOfertaAceptada({ oferta, onClose }) {
   )
 }
 
-export default function RecibirOfertasScreen({ navigation }) {
+export default function RecibirOfertasScreen({ route, navigation }) {
+  // 👇 esperamos idTrabajo (id de la fila Cliente-Trabajador "abierta") y
+  // opcionalmente servicioNombre para el título del header/modal.
+  const { idTrabajo, servicioNombre, tituloSolicitud } = route?.params || {}
+
+  const [ofertas, setOfertas] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [ofertaAceptada, setOfertaAceptada] = useState(null)
-  const mejorOferta = ofertas.reduce((a, b) => a.precio < b.precio ? a : b)
+  const [aceptando, setAceptando] = useState(false)
+
+  const fetchOfertas = useCallback(async () => {
+  console.log('🔵 idTrabajo recibido en la screen:', idTrabajo)
+  if (!idTrabajo) {
+    setLoading(false)
+    setError('No se encontró el trabajo')
+    return
+  }
+  try {
+    setLoading(true)
+    setError(null)
+    const res = await fetch(`${API_URL}/cliente/ofertas/${idTrabajo}`)
+    if (!res.ok) throw new Error(`Error ${res.status} al obtener ofertas`)
+    const data = await res.json()
+
+    const mapeadas = (Array.isArray(data) ? data : []).map(o => ({
+      id: o.id,
+      idTrabajador: o.idTrabajador,
+      nombre: `${o.nombre ?? ''} ${o.apellido ?? ''}`.trim(),
+      rating: Number(o.estrellas ?? 0),
+      distancia: o.distancia ?? null,
+      costoExtraMin: Number(o.costoExtraMin ?? 0),
+      costoExtraMax: Number(o.costoExtraMax ?? 0),
+      precio: Number(o.precio ?? o.precioSolicitud ?? 0),
+    }))
+
+    setOfertas(mapeadas)
+  } catch (e) {
+    console.error('Error al cargar ofertas:', e)
+    setError('No se pudieron cargar las ofertas')
+    setOfertas([])
+  } finally {
+    setLoading(false)
+  }
+}, [idTrabajo])
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchOfertas()
+    }, [fetchOfertas])
+  )
+
+  const handleAceptar = async (item) => {
+    try {
+      setAceptando(true)
+      const res = await fetch(`${API_URL}/cliente/ofertas/${item.id}/aceptar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.message ?? `Error ${res.status} al aceptar la oferta`)
+      }
+
+      setOfertaAceptada(item)
+    } catch (err) {
+      console.error('Error al aceptar oferta:', err)
+      Alert.alert('Error', err.message ?? 'No se pudo aceptar la oferta. Intentá de nuevo.')
+    } finally {
+      setAceptando(false)
+    }
+  }
+
+  const mejorOferta = ofertas.length > 0
+    ? ofertas.reduce((a, b) => (a.precio < b.precio ? a : b))
+    : null
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -143,43 +205,72 @@ export default function RecibirOfertasScreen({ navigation }) {
       <View style={styles.header}>
         <View>
           <Text style={styles.headerSub}>Solicitud activa</Text>
-          <Text style={styles.headerTitulo}>{solicitud.titulo}</Text>
+          <Text style={styles.headerTitulo}>{tituloSolicitud || servicioNombre || 'Tu solicitud'}</Text>
         </View>
         <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.headerBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Ionicons name="chevron-down" size={20} color={COLORS.gray} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.body} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
+      {loading ? (
+        <View style={styles.centerBox}>
+          <ActivityIndicator size="large" color={COLORS.blue} />
+          <Text style={styles.loadingText}>Cargando ofertas...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.centerBox}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={fetchOfertas}>
+            <Text style={styles.retryText}>Reintentar</Text>
+          </TouchableOpacity>
+        </View>
+      ) : ofertas.length === 0 ? (
+        <View style={styles.centerBox}>
+          <Ionicons name="mail-open-outline" size={48} color={COLORS.grayLight} />
+          <Text style={styles.emptyText}>Todavía no recibiste ofertas</Text>
+        </View>
+      ) : (
+        <ScrollView style={styles.body} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
 
-        <View style={styles.seccionRow}>
-          <Text style={styles.seccionLabel}>Ofertas recibidas</Text>
-          <View style={styles.contadorPill}>
-            <Text style={styles.contadorText}>{ofertas.length}</Text>
+          <View style={styles.seccionRow}>
+            <Text style={styles.seccionLabel}>Ofertas recibidas</Text>
+            <View style={styles.contadorPill}>
+              <Text style={styles.contadorText}>{ofertas.length}</Text>
+            </View>
           </View>
+
+          {ofertas.map(item => (
+            <OfertaCard
+              key={item.id}
+              item={item}
+              esMejor={mejorOferta?.id === item.id}
+              onAceptar={() => handleAceptar(item)}
+            />
+          ))}
+
+          <View style={styles.avisoCard}>
+            <Ionicons name="lock-closed-outline" size={16} color={COLORS.gray} style={{ marginTop: 1 }} />
+            <Text style={styles.avisoTexto}>
+              El pago queda retenido en la app hasta que confirmes que el trabajo fue completado
+            </Text>
+          </View>
+
+        </ScrollView>
+      )}
+
+      {aceptando && (
+        <View style={styles.overlayLoading}>
+          <ActivityIndicator size="large" color={COLORS.white} />
         </View>
-
-        {ofertas.map(item => (
-          <OfertaCard
-            key={item.id}
-            item={item}
-            esMejor={item.id === mejorOferta.id}
-            onAceptar={setOfertaAceptada}
-          />
-        ))}
-
-        <View style={styles.avisoCard}>
-          <Ionicons name="lock-closed-outline" size={16} color={COLORS.gray} style={{ marginTop: 1 }} />
-          <Text style={styles.avisoTexto}>
-            El pago queda retenido en la app hasta que confirmes que el trabajo fue completado
-          </Text>
-        </View>
-
-      </ScrollView>
+      )}
 
       <ModalOfertaAceptada
         oferta={ofertaAceptada}
-        onClose={() => setOfertaAceptada(null)}
+        servicioNombre={tituloSolicitud || servicioNombre}
+        onClose={() => {
+          setOfertaAceptada(null)
+          navigation?.goBack()
+        }}
       />
     </SafeAreaView>
   )
@@ -196,6 +287,18 @@ const styles = StyleSheet.create({
   headerSub:    { fontSize: 11, color: COLORS.grayLight, marginBottom: 1 },
   headerTitulo: { fontSize: 16, fontWeight: '600', color: COLORS.blue },
   headerBtn:    { width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center' },
+
+  centerBox: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10, paddingHorizontal: 24 },
+  loadingText: { color: COLORS.blue, fontSize: 14 },
+  errorText: { color: '#E53E3E', fontSize: 14, textAlign: 'center' },
+  retryBtn: { marginTop: 4, backgroundColor: COLORS.blue, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 28 },
+  retryText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  emptyText: { color: COLORS.grayLight, fontSize: 15, textAlign: 'center' },
+
+  overlayLoading: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center',
+  },
 
   body: { flex: 1, paddingHorizontal: 16, paddingTop: 18 },
 

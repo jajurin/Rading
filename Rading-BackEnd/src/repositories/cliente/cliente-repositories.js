@@ -421,4 +421,133 @@ crearReseñaCliente = async (reseña) => {
         await client.end()
     }
 }
+// Cliente ve todas las ofertas pendientes de un trabajo (Cliente-Trabajador)
+// Cliente ve todas las ofertas pendientes de un trabajo (Cliente-Trabajador)
+buscarOfertasPorTrabajo = async (idTrabajo) => {
+    const client = new Client(config)
+    let result
+
+    try {
+        await client.connect()
+        console.log('🔵 Ejecutando query con idTrabajo =', idTrabajo, typeof idTrabajo)
+
+        const sql = `
+            SELECT
+                o.id,
+                o."idTrabajador",
+                o.precio,
+                o."costoExtraMin",
+                o."costoExtraMax",
+                o.mensaje,
+                o."ESTADO_OFERTA" AS estado,
+                u.nombre,
+                u.apellido,
+                t.foto,
+                t.estrellas,
+                ct.precio AS "precioSolicitud"
+            FROM "Oferta" o
+            INNER JOIN "Trabajador" t ON t.id = o."idTrabajador"
+            INNER JOIN "Usuario" u ON u.id = t."IdPersona"
+            INNER JOIN "Cliente-Trabajador" ct ON ct.id = o."idTrabajo"
+            WHERE o."idTrabajo" = $1
+              AND o."ESTADO_OFERTA" = 'PENDIENTE'
+            ORDER BY o.fecha_creado ASC
+        `
+        result = await client.query(sql, [idTrabajo])
+ console.log('🟢 Filas devueltas:', result.rows)
+    } catch (err) {
+                console.log('🔴 ERROR EN POSTGRES:', err.message)
+                        console.log('🔴 DETALLE:', err.detail, err.position, err.code)
+
+        console.error('Error en buscarOfertasPorTrabajo:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+
+    return result?.rows ?? []
+}
+
+// Cliente acepta una oferta → completa el Cliente-Trabajador que ya existía "abierto"
+aceptarOferta = async (idOferta) => {
+    const client = new Client(config)
+
+    try {
+        await client.connect()
+        await client.query('BEGIN')
+
+        const ofertaResult = await client.query(
+            `SELECT o.*, ct.precio AS "precioSolicitud"
+             FROM "Oferta" o
+             INNER JOIN "Cliente-Trabajador" ct ON ct.id = o."idTrabajo"
+             WHERE o.id = $1`,
+            [idOferta]
+        )
+        const oferta = ofertaResult.rows[0]
+        if (!oferta) throw new Error('Oferta no encontrada')
+        if (oferta.ESTADO_OFERTA !== 'PENDIENTE') throw new Error('Esta oferta ya fue procesada')
+
+        const precioFinal = oferta.precio ?? oferta.precioSolicitud
+
+        await client.query(
+            `UPDATE "Cliente-Trabajador"
+             SET "IdTrabajador" = $1, precio = $2, estado = 'EN PROCESO', fecha_iniciado = now()
+             WHERE id = $3`,
+            [oferta.idTrabajador, precioFinal, oferta.idTrabajo]
+        )
+
+        await client.query(
+            `UPDATE "Oferta" SET "ESTADO_OFERTA" = 'ACEPTADA' WHERE id = $1`,
+            [idOferta]
+        )
+        await client.query(
+            `UPDATE "Oferta" SET "ESTADO_OFERTA" = 'RECHAZADA' WHERE "idTrabajo" = $1 AND id <> $2`,
+            [oferta.idTrabajo, idOferta]
+        )
+
+        await client.query('COMMIT')
+        return { idTrabajo: oferta.idTrabajo, precioFinal }
+
+    } catch (err) {
+        await client.query('ROLLBACK')
+        console.error('Error en aceptarOferta:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
+// Agrupa ofertas pendientes por cada trabajo "abierto" del cliente
+contarOfertasPendientes = async (idCliente) => {
+    const client = new Client(config)
+    let result
+
+    try {
+        await client.connect()
+
+        const sql = `
+            SELECT
+                ct.id AS "idTrabajo",
+                s.nombre AS servicio_nombre,
+                COUNT(o.id) AS "cantidadOfertas"
+            FROM "Cliente-Trabajador" ct
+            LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+            INNER JOIN "Oferta" o ON o."idTrabajo" = ct.id
+                AND o."ESTADO_OFERTA" = 'PENDIENTE'
+            WHERE ct."IdCliente" = $1
+              AND ct."IdTrabajador" IS NULL
+            GROUP BY ct.id, s.nombre
+            ORDER BY ct.id DESC
+        `
+        result = await client.query(sql, [idCliente])
+
+    } catch (err) {
+        console.error('Error en contarOfertasPendientes:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+
+   console.log('🟢 [contarOfertasPendientes] idCliente:', idCliente, 'filas:', result?.rows)
+    return result?.rows ?? []
+}
     }

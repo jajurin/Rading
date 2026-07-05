@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 
 import {
   Modal, View, Text, Image, TouchableOpacity,
-  StyleSheet, ScrollView, ActivityIndicator,
+  StyleSheet, ScrollView, ActivityIndicator, Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import API_URL from '../configS';
@@ -149,9 +149,17 @@ export default function OfertaRecibidaOverlayCliente({
   const [trabajos, setTrabajos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [trabajoSeleccionado, setTrabajoSeleccionado] = useState(null);
+
+  // Ofertas pendientes agrupadas por trabajo "abierto"
+  const [ofertasPendientes, setOfertasPendientes] = useState([]);
+  const [loadingOfertas, setLoadingOfertas] = useState(false);
+  const [errorOfertas, setErrorOfertas] = useState(false);
  
   useEffect(() => {
-    if (visible && idCliente) fetchTrabajos();
+    if (visible && idCliente) {
+      fetchTrabajos();
+      fetchOfertasPendientes();
+    }
   }, [visible, idCliente]);
  
   const fetchTrabajos = async () => {
@@ -168,9 +176,56 @@ export default function OfertaRecibidaOverlayCliente({
       setLoading(false);
     }
   };
+
+  const fetchOfertasPendientes = async () => {
+    try {
+      setLoadingOfertas(true);
+      setErrorOfertas(false);
+      const url = `${API_URL}/cliente/ofertas/pendientes/${idCliente}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json();
+      setOfertasPendientes(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Error al cargar ofertas pendientes:', e);
+      setErrorOfertas(true);
+      setOfertasPendientes([]);
+    } finally {
+      setLoadingOfertas(false);
+    }
+  };
  
   const handleSelect = (trabajo) => {
     setTrabajoSeleccionado(prev => prev?.id === trabajo.id ? null : trabajo);
+  };
+
+  // Total de ofertas sumando todos los trabajos "abiertos"
+  const totalOfertas = ofertasPendientes.reduce(
+    (acc, o) => acc + Number(o.cantidadOfertas || 0),
+    0
+  );
+
+  const irAOfertas = () => {
+    // 👇 evita navegar mientras todavía está cargando (race condition fix)
+    if (loadingOfertas) return;
+
+    onClose?.();
+
+    if (ofertasPendientes.length > 0) {
+      // Si hay más de un trabajo esperando ofertas, por ahora abrimos
+      // el primero (el más reciente); más adelante se puede armar
+      // una pantalla intermedia para elegir cuál ver.
+      const primero = ofertasPendientes[0];
+      navigation?.navigate('RecibirOfertasScreen', {
+        idTrabajo: primero.idTrabajo,
+        servicioNombre: primero.servicio_nombre,
+        usuario,
+      });
+    } else if (errorOfertas) {
+      Alert.alert('Error', 'No se pudieron cargar tus ofertas. Probá de nuevo en un momento.');
+    } else {
+      Alert.alert('Sin ofertas', 'Todavía no tenés ofertas pendientes de trabajadores.');
+    }
   };
  
   return (
@@ -199,7 +254,25 @@ export default function OfertaRecibidaOverlayCliente({
 
   {/* BOTÓN + CLOSE */}
   <View style={styles.headerRight}>
-    
+
+    {/* Botón Ofertas con badge azul */}
+    <TouchableOpacity
+      style={[styles.ofertasButton, loadingOfertas && styles.ofertasButtonDisabled]}
+      onPress={irAOfertas}
+      disabled={loadingOfertas}
+    >
+      <Text style={styles.ofertasText}>
+        {loadingOfertas ? '...' : 'Ofertas'}
+      </Text>
+      {!loadingOfertas && (totalOfertas > 0 || errorOfertas) && (
+        <View style={styles.ofertasBadge}>
+          <Text style={styles.ofertasBadgeText}>
+            {errorOfertas ? '!' : totalOfertas}
+          </Text>
+        </View>
+      )}
+    </TouchableOpacity>
+
     <TouchableOpacity
       style={styles.recientesButton}
       onPress={() => {
@@ -526,4 +599,39 @@ recientesText: {
   fontWeight: "800",
   color: "#3a2c00",
 },
+
+  // Botón Ofertas + badge
+  ofertasButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FFF",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.15)",
+  },
+  ofertasButtonDisabled: {
+    opacity: 0.5,
+  },
+  ofertasText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#3a2c00",
+  },
+  ofertasBadge: {
+    backgroundColor: "#0D47C7",
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  ofertasBadgeText: {
+    color: "#FFF",
+    fontSize: 10,
+    fontWeight: "900",
+  },
 });

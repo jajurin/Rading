@@ -34,6 +34,17 @@ crearReseñaCliente = async (body) => {
     }
     return await this.#repo.crearReseñaCliente(body)
 }
+buscarOfertasPorTrabajo = async (idTrabajo) => {
+    return await this.#repo.buscarOfertasPorTrabajo(idTrabajo)
+}
+
+aceptarOferta = async (idOferta) => {
+    return await this.#repo.aceptarOferta(idOferta)
+}
+
+contarOfertasPendientes = async (idCliente) => {
+    return await this.#repo.contarOfertasPendientes(idCliente)
+}
 mostrarRecientes = async (idCliente) => {
     return await this.#repo.mostrarRecientes(idCliente)
 }
