@@ -12,6 +12,8 @@ import {
   ActivityIndicator,
 } from "react-native";
 import API_URL from '../configS';
+import Header from '../Header';
+import BottomNavBar from './NavegadorCliente';
 
 const COLORS = {
   primary: "#1565D8",
@@ -111,7 +113,7 @@ const LowReviewModal = ({ visible, onClose, onSubmit }) => {
           </Text>
           <TextInput
             style={styles.modalInput}
-            placeholder="Conta\u0301nos tu experiencia con detalle..."
+            placeholder="Contanos tu experiencia con detalle..."
             placeholderTextColor={COLORS.textMuted}
             multiline
             numberOfLines={4}
@@ -212,6 +214,8 @@ export default function ClasificarTrabajador({ route, navigation }) {
 
   return (
     <>
+      <Header usuario={usuario} />
+
       <ScrollView style={styles.screen} contentContainerStyle={styles.screenContent} keyboardShouldPersistTaps="handled">
         <Text style={styles.pageTitle}>Clasificar trabajador</Text>
 
@@ -260,7 +264,7 @@ export default function ClasificarTrabajador({ route, navigation }) {
           <Text style={styles.fieldLabel}>{"Descripci\u00f3n"}</Text>
           <TextInput
             style={styles.descInput}
-            placeholder="Conta\u0301nos tu experiencia..."
+            placeholder="Contanos tu experiencia..."
             placeholderTextColor={COLORS.textMuted}
             multiline
             numberOfLines={4}
@@ -300,8 +304,6 @@ export default function ClasificarTrabajador({ route, navigation }) {
             <Text style={styles.btnPrimaryText}>{"Enviar calificaci\u00f3n"}</Text>
           )}
         </TouchableOpacity>
-
-        <View style={{ height: 32 }} />
       </ScrollView>
 
       <LowReviewModal
@@ -309,13 +311,15 @@ export default function ClasificarTrabajador({ route, navigation }) {
         onClose={() => setShowLowModal(false)}
         onSubmit={handleLowSubmit}
       />
+
+      <BottomNavBar usuario={usuario} />
     </>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
-  screenContent: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16 },
+  screenContent: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 120 },
   pageTitle: { fontSize: 22, fontWeight: "700", color: COLORS.textPrimary, marginBottom: 20, letterSpacing: -0.3 },
   workerCard: {
     backgroundColor: COLORS.card, borderRadius: 20, padding: 24, alignItems: "center", marginBottom: 24,

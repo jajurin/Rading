@@ -14,6 +14,7 @@ import {
   StatusBar,
   ActivityIndicator,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 ;
 
@@ -23,15 +24,25 @@ const BLUE_LIGHT = '#3b7ff0';
 const STATUS_BAR = '#0D4FD7'
 const BG         = '#F3F5FA';
 
+const CARD_WIDTH = 92;
+const CARD_GAP = 12;
+const SCROLL_STEP = (CARD_WIDTH + CARD_GAP) * 2; // avanza de a 2 tarjetas por click
+
 export default function HomeCliente({ route, navigation }) {
   const usuario = route?.params?.usuario;
   const buscadorRef = useRef(null);
+  const serviciosScrollRef = useRef(null);
 const insets = useSafeAreaInsets()
   const [servicios, setServicios] = useState([]);
   const [cargandoServicios, setCargandoServicios] = useState(true);
 
   const [recientes, setRecientes] = useState([]);
   const [cargandoRecientes, setCargandoRecientes] = useState(true);
+
+  // Estado del carrusel de servicios: cuánto se scrolleó y si hay más contenido
+  const [serviciosScrollX, setServiciosScrollX] = useState(0);
+  const [serviciosContentWidth, setServiciosContentWidth] = useState(0);
+  const [serviciosContainerWidth, setServiciosContainerWidth] = useState(0);
 
   // Trae los servicios de la categoría preferida del cliente
   const cargarServicios = useCallback(async () => {
@@ -80,6 +91,19 @@ const insets = useSafeAreaInsets()
 const buscarServicio = (nombreServicio) => {
   buscadorRef.current?.buscarPorEspecialidad(nombreServicio);
 };
+
+  const scrollServicios = (direccion) => {
+    const nuevoX = direccion === 'right'
+      ? serviciosScrollX + SCROLL_STEP
+      : serviciosScrollX - SCROLL_STEP;
+    serviciosScrollRef.current?.scrollTo({ x: Math.max(0, nuevoX), animated: true });
+  };
+
+  // Solo mostramos flechas si el contenido es más ancho que el contenedor visible
+  const hayOverflowServicios = serviciosContentWidth > serviciosContainerWidth;
+  const puedeIrIzquierda = hayOverflowServicios && serviciosScrollX > 4;
+  const puedeIrDerecha = hayOverflowServicios &&
+    serviciosScrollX < (serviciosContentWidth - serviciosContainerWidth - 4);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -131,27 +155,56 @@ const buscarServicio = (nombreServicio) => {
         ) : servicios.length === 0 ? (
           <Text style={styles.emptyText}>No hay servicios disponibles para tu categoría</Text>
         ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.horizontalContainer}
+          <View
+            style={styles.carruselWrapper}
+            onLayout={(e) => setServiciosContainerWidth(e.nativeEvent.layout.width)}
           >
-            {servicios.map((s) => (
+            <ScrollView
+              ref={serviciosScrollRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalContainer}
+              scrollEventThrottle={16}
+              onScroll={(e) => setServiciosScrollX(e.nativeEvent.contentOffset.x)}
+              onContentSizeChange={(w) => setServiciosContentWidth(w)}
+            >
+              {servicios.map((s) => (
+                <TouchableOpacity
+                  key={s.id}
+                  style={styles.categoryCard}
+                  activeOpacity={0.85}
+                  onPress={() => buscarServicio(s.nombre)}
+                >
+                  <View style={styles.categoryIconWrap}>
+                    <Text style={styles.categoryIcon}>🛠️</Text>
+                  </View>
+                  <Text style={styles.categoryText} numberOfLines={2}>
+                    {s.nombre}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {puedeIrIzquierda && (
               <TouchableOpacity
-                key={s.id}
-                style={styles.categoryCard}
-                activeOpacity={0.85}
-                onPress={() => buscarServicio(s.nombre)}
+                style={[styles.carruselArrow, styles.carruselArrowLeft]}
+                onPress={() => scrollServicios('left')}
+                activeOpacity={0.8}
               >
-                <View style={styles.categoryIconWrap}>
-                  <Text style={styles.categoryIcon}>🛠️</Text>
-                </View>
-                <Text style={styles.categoryText} numberOfLines={2}>
-                  {s.nombre}
-                </Text>
+                <Ionicons name="chevron-back" size={18} color={BLUE_DARK} />
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            )}
+
+            {puedeIrDerecha && (
+              <TouchableOpacity
+                style={[styles.carruselArrow, styles.carruselArrowRight]}
+                onPress={() => scrollServicios('right')}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="chevron-forward" size={18} color={BLUE_DARK} />
+              </TouchableOpacity>
+            )}
+          </View>
         )}
 
         {/* RECIENTES */}
@@ -245,4 +298,32 @@ const styles = StyleSheet.create({
   avatarPlaceholder: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#EDF1F7', justifyContent: 'center', alignItems: 'center' },
   avatarPlaceholderText: { fontSize: 20 },
   recentName: { color: '#4A5568', marginTop: 8, fontSize: 12, fontWeight: '600' },
+
+  // Carrusel de servicios con flechas
+  carruselWrapper: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  carruselArrow: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -18,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  carruselArrowLeft: {
+    left: 4,
+  },
+  carruselArrowRight: {
+    right: 4,
+  },
 });

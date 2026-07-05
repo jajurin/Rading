@@ -9,6 +9,8 @@ import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import OfertaCard from './OfertaCard'
 import API_URL from '../configS'
+import Header from '../Header'
+import BottomNavBar from './NavegadorCliente'
 
 const COLORS = {
   blue:   '#1a3a8f',
@@ -123,7 +125,7 @@ function ModalOfertaAceptada({ oferta, servicioNombre, onClose }) {
 export default function RecibirOfertasScreen({ route, navigation }) {
   // 👇 esperamos idTrabajo (id de la fila Cliente-Trabajador "abierta") y
   // opcionalmente servicioNombre para el título del header/modal.
-  const { idTrabajo, servicioNombre, tituloSolicitud } = route?.params || {}
+  const { idTrabajo, servicioNombre, tituloSolicitud, usuario } = route?.params || {}
 
   const [ofertas, setOfertas] = useState([])
   const [loading, setLoading] = useState(true)
@@ -132,39 +134,39 @@ export default function RecibirOfertasScreen({ route, navigation }) {
   const [aceptando, setAceptando] = useState(false)
 
   const fetchOfertas = useCallback(async () => {
-  console.log('🔵 idTrabajo recibido en la screen:', idTrabajo)
-  if (!idTrabajo) {
-    setLoading(false)
-    setError('No se encontró el trabajo')
-    return
-  }
-  try {
-    setLoading(true)
-    setError(null)
-    const res = await fetch(`${API_URL}/cliente/ofertas/${idTrabajo}`)
-    if (!res.ok) throw new Error(`Error ${res.status} al obtener ofertas`)
-    const data = await res.json()
+    console.log('🔵 idTrabajo recibido en la screen:', idTrabajo)
+    if (!idTrabajo) {
+      setLoading(false)
+      setError('No se encontró el trabajo')
+      return
+    }
+    try {
+      setLoading(true)
+      setError(null)
+      const res = await fetch(`${API_URL}/cliente/ofertas/${idTrabajo}`)
+      if (!res.ok) throw new Error(`Error ${res.status} al obtener ofertas`)
+      const data = await res.json()
 
-    const mapeadas = (Array.isArray(data) ? data : []).map(o => ({
-      id: o.id,
-      idTrabajador: o.idTrabajador,
-      nombre: `${o.nombre ?? ''} ${o.apellido ?? ''}`.trim(),
-      rating: Number(o.estrellas ?? 0),
-      distancia: o.distancia ?? null,
-      costoExtraMin: Number(o.costoExtraMin ?? 0),
-      costoExtraMax: Number(o.costoExtraMax ?? 0),
-      precio: Number(o.precio ?? o.precioSolicitud ?? 0),
-    }))
+      const mapeadas = (Array.isArray(data) ? data : []).map(o => ({
+        id: o.id,
+        idTrabajador: o.idTrabajador,
+        nombre: `${o.nombre ?? ''} ${o.apellido ?? ''}`.trim(),
+        rating: Number(o.estrellas ?? 0),
+        distancia: o.distancia ?? null,
+        costoExtraMin: Number(o.costoExtraMin ?? 0),
+        costoExtraMax: Number(o.costoExtraMax ?? 0),
+        precio: Number(o.precio ?? o.precioSolicitud ?? 0),
+      }))
 
-    setOfertas(mapeadas)
-  } catch (e) {
-    console.error('Error al cargar ofertas:', e)
-    setError('No se pudieron cargar las ofertas')
-    setOfertas([])
-  } finally {
-    setLoading(false)
-  }
-}, [idTrabajo])
+      setOfertas(mapeadas)
+    } catch (e) {
+      console.error('Error al cargar ofertas:', e)
+      setError('No se pudieron cargar las ofertas')
+      setOfertas([])
+    } finally {
+      setLoading(false)
+    }
+  }, [idTrabajo])
 
   useFocusEffect(
     useCallback(() => {
@@ -201,6 +203,8 @@ export default function RecibirOfertasScreen({ route, navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
+
+      <Header usuario={usuario} />
 
       <View style={styles.header}>
         <View>
@@ -272,6 +276,8 @@ export default function RecibirOfertasScreen({ route, navigation }) {
           navigation?.goBack()
         }}
       />
+
+      <BottomNavBar usuario={usuario} />
     </SafeAreaView>
   )
 }
@@ -352,4 +358,4 @@ const styles = StyleSheet.create({
     ...shadow(6),
   },
   chatBtnText: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
-})
+})  
