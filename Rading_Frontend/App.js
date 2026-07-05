@@ -28,7 +28,10 @@ export default function App() {
     <SafeAreaProvider>
       <NavigationContainer>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Login" component={Login} />
+  <Stack.Screen name="Login" component={Login} />
+
+    <Stack.Screen name="ClasificarTrabajador" component={ClasificarTrabajador} />
+
 
         <Stack.Screen name="PerfilScreen" component={PerfilScreen} />
 
@@ -39,7 +42,6 @@ export default function App() {
           <Stack.Screen name="a" component={ClasificarTrabajador} />
           <Stack.Screen name="HomeCliente" component={HomeCliente} />
 
-          <Stack.Screen name="ClasificarTrabajador" component={ClasificarTrabajador} />
 
           <Stack.Screen name="RegistrarseTrabajador" component={RegistrarseTrabajador} />
           <Stack.Screen name="Registrarse" component={Registrarse} />

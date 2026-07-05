@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList,
-  TouchableOpacity, ActivityIndicator,
+  TouchableOpacity, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import API_URL from '../configS';
 import Header from '../Header';
 import BottomNavBar from './NavegadorCliente';
@@ -30,6 +31,25 @@ const formatDate = (dateStr) => {
   });
 };
 
+const RatingBadge = ({ estrellas }) => {
+  const calificado = estrellas != null;
+  return (
+    <View style={[styles.ratingBadge, calificado ? styles.ratingBadgeDone : styles.ratingBadgePending]}>
+      {calificado ? (
+        <>
+          <Ionicons name="star" size={12} color="#3B6D11" />
+          <Text style={styles.ratingBadgeTextDone}>Calificado · {Number(estrellas).toFixed(1)}</Text>
+        </>
+      ) : (
+        <>
+          <Ionicons name="time-outline" size={12} color="#B45309" />
+          <Text style={styles.ratingBadgeTextPending}>Pendiente de calificar</Text>
+        </>
+      )}
+    </View>
+  );
+};
+
 const TrabajadorRecienteCard = ({ item, onPress }) => {
   const terminado = item.estado && item.estado !== 'EN PROCESO';
   const initials = getInitials(item.nombre, item.apellido);
@@ -46,7 +66,6 @@ const TrabajadorRecienteCard = ({ item, onPress }) => {
         <View style={styles.avatarWrapper}>
           {item.foto ? (
             <View style={[styles.avatarCircle, { backgroundColor: avatarColor.bg }]}>
-              {/* Si querés mostrar la foto real, reemplazá este bloque por <Image source={{ uri: item.foto }} style={styles.avatarImg} /> */}
               <Text style={[styles.avatarText, { color: avatarColor.text }]}>{initials}</Text>
             </View>
           ) : (
@@ -78,6 +97,8 @@ const TrabajadorRecienteCard = ({ item, onPress }) => {
           </Text>
         </View>
       </View>
+
+      <RatingBadge estrellas={item.estrellasCliente} />
 
       {/* Footer */}
       <View style={styles.cardFooter}>
@@ -144,14 +165,20 @@ export default function RecientesClientes({ route, navigation }) {
     }
   }, [idCliente]);
 
-  useEffect(() => {
-    fetchRecientes();
-  }, [fetchRecientes]);
+  // 👇 NUEVO: se refresca cada vez que la pantalla vuelve a tener foco
+  // (por ejemplo, al volver de ClasificarTrabajador después de calificar)
+  useFocusEffect(
+    useCallback(() => {
+      fetchRecientes();
+    }, [fetchRecientes])
+  );
 
   const irAContratar = (trabajador) => {
-    // Ajustá el nombre de pantalla/params según lo que tengas armado
-    // para volver a contratar o ver el perfil del trabajador.
-    navigation?.navigate('BuscadorCliente', { trabajador });
+    if (trabajador.estrellasCliente != null) {
+      Alert.alert('Ya calificado', 'Ya enviaste una calificación para este trabajo.');
+      return;
+    }
+    navigation?.navigate('ClasificarTrabajador', { trabajo: trabajador, usuario });
   };
 
   return (
@@ -225,7 +252,6 @@ const styles = StyleSheet.create({
   headerTitle: { color: '#1E293B', fontSize: 20, fontWeight: '800' },
   headerSub: { color: '#94A3B8', fontSize: 13 },
 
-  // States
   centerBox: {
     flex: 1,
     justifyContent: 'center',
@@ -244,7 +270,6 @@ const styles = StyleSheet.create({
   retryText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   emptyText: { color: '#94A3B8', fontSize: 15 },
 
-  // List
   listContent: {
     paddingHorizontal: 16,
     paddingTop: 4,
@@ -259,7 +284,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
 
-  // Card
   card: {
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -340,7 +364,22 @@ const styles = StyleSheet.create({
     color: '#1565D8',
   },
 
-  // Card Footer
+  ratingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginHorizontal: 14,
+    marginBottom: 10,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  ratingBadgePending: { backgroundColor: '#FEF3C7' },
+  ratingBadgeDone: { backgroundColor: '#DCFCE7' },
+  ratingBadgeTextPending: { fontSize: 11, fontWeight: '700', color: '#B45309' },
+  ratingBadgeTextDone: { fontSize: 11, fontWeight: '700', color: '#3B6D11' },
+
   cardFooter: {
     flexDirection: 'row',
     borderTopWidth: 0.5,

@@ -174,7 +174,7 @@ const buscarServicio = (nombreServicio) => {
           >
             {recientes.map((item) => (
               <TouchableOpacity
-                key={item.id}
+                key={item.idTrabajador}
                 style={styles.recentCard}
                 activeOpacity={0.85}
               >

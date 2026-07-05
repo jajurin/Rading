@@ -126,4 +126,15 @@ router.get("/recientes/:id", async (req, res) => {
         res.status(500).json({ message: "Error al obtener recientes", error })
     }
 })
+// POST /cliente/resenia
+// POST /cliente/resenia
+router.post("/resenia", async (req, res) => {
+    try {
+        const result = await svc.crearReseñaCliente(req.body)
+        res.status(201).json({ message: "Reseña creada correctamente", ...result })
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: "Error al crear reseña", error: error.message })
+    }
+})
 export default router

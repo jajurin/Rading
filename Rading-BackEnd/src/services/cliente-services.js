@@ -25,6 +25,15 @@ mostrarServiciosPreferidos = async (idCliente) => {
 mostrarRecientes = async (idCliente) => {
     return await this.#repo.mostrarRecientes(idCliente)
 }
+crearReseñaCliente = async (body) => {
+    if (!body.idTrabajador || !body.idCliente || !body.idTrabajo) {
+        throw new Error('Faltan idTrabajador, idCliente o idTrabajo')
+    }
+    if (!body.estrellas || !body.razon) {
+        throw new Error('Faltan estrellas o razon')
+    }
+    return await this.#repo.crearReseñaCliente(body)
+}
 mostrarRecientes = async (idCliente) => {
     return await this.#repo.mostrarRecientes(idCliente)
 }

@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import {
   View,
@@ -10,7 +9,9 @@ import {
   Modal,
   Image,
   Alert,
+  ActivityIndicator,
 } from "react-native";
+import API_URL from '../configS';
 
 const COLORS = {
   primary: "#1565D8",
@@ -127,8 +128,15 @@ const LowReviewModal = ({ visible, onClose, onSubmit }) => {
   );
 };
 
-export default function ClasificarTrabajador({ worker, onSubmit }) {
-  const w = worker || { name: "Alejandro Gomez", role: "Plomero", avatar: null };
+export default function ClasificarTrabajador({ route, navigation }) {
+  // 👇 ACÁ está la conexión real: ya no hay worker hardcodeado.
+  // trabajo viene de la pantalla anterior (lista de trabajos terminados),
+  // usuario es el cliente logueado.
+  const { trabajo, usuario } = route?.params || {};
+
+  const nombreCompleto = trabajo ? `${trabajo.nombre ?? ''} ${trabajo.apellido ?? ''}`.trim() : '';
+  const servicioNombre = trabajo?.servicio_nombre ?? '';
+  const fotoTrabajador = trabajo?.foto ?? null;
 
   const [rating, setRating] = useState(0);
   const [reason, setReason] = useState("");
@@ -136,6 +144,7 @@ export default function ClasificarTrabajador({ worker, onSubmit }) {
   const [block, setBlock] = useState(false);
   const [showLowModal, setShowLowModal] = useState(false);
   const [lowReviewText, setLowReviewText] = useState("");
+  const [enviando, setEnviando] = useState(false);
 
   const ratingLabels = ["", "Muy malo", "Malo", "Regular", "Bueno", "Excelente"];
 
@@ -149,7 +158,7 @@ export default function ClasificarTrabajador({ worker, onSubmit }) {
     setShowLowModal(false);
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!rating) {
       Alert.alert("Calificaci\u00f3n requerida", "Por favor selecciona una calificaci\u00f3n con estrellas.");
       return;
@@ -158,8 +167,47 @@ export default function ClasificarTrabajador({ worker, onSubmit }) {
       Alert.alert("Raz\u00f3n requerida", "Por favor selecciona una raz\u00f3n para tu calificaci\u00f3n.");
       return;
     }
-    const payload = { rating, reason, description, block, lowReviewText };
-    onSubmit ? onSubmit(payload) : Alert.alert("Enviado", JSON.stringify(payload));
+    if (!trabajo?.idTrabajador || !trabajo?.idTrabajo || !usuario?.idCliente) {
+      Alert.alert("Error", "Faltan datos del trabajo o del usuario para enviar la calificaci\u00f3n.");
+      return;
+    }
+
+    const payload = {
+      idTrabajador: trabajo.idTrabajador,
+      idCliente: usuario.idCliente,
+      idTrabajo: trabajo.idTrabajo,
+      estrellas: rating,
+      razon: reason,
+      descripcion: description,
+      comentarioBajaCalificacion: rating <= 2 ? lowReviewText : null,
+      bloqueoSolicitado: block,
+    };
+
+    try {
+      setEnviando(true);
+
+      const res = await fetch(`${API_URL}/cliente/resenia`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message ?? `Error ${res.status} al enviar la reseña`);
+      }
+
+      Alert.alert(
+        "\u00a1Gracias!",
+        "Tu calificaci\u00f3n fue enviada correctamente.",
+        [{ text: "OK", onPress: () => navigation?.goBack() }]
+      );
+    } catch (err) {
+      console.error('Error al enviar reseña:', err);
+      Alert.alert("Error", err.message ?? "No se pudo enviar la calificaci\u00f3n. Intent\u00e1 de nuevo.");
+    } finally {
+      setEnviando(false);
+    }
   };
 
   return (
@@ -167,15 +215,17 @@ export default function ClasificarTrabajador({ worker, onSubmit }) {
       <ScrollView style={styles.screen} contentContainerStyle={styles.screenContent} keyboardShouldPersistTaps="handled">
         <Text style={styles.pageTitle}>Clasificar trabajador</Text>
 
-        {/* Tarjeta trabajador */}
+        {/* Tarjeta trabajador — datos reales del trabajo, no hardcodeados */}
         <View style={styles.workerCard}>
           <View style={styles.avatarWrapper}>
-            {w.avatar ? (
-              <Image source={{ uri: w.avatar }} style={styles.avatar} />
+            {fotoTrabajador ? (
+              <Image source={{ uri: fotoTrabajador }} style={styles.avatar} />
             ) : (
               <View style={styles.avatarFallback}>
                 <Text style={styles.avatarInitials}>
-                  {w.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                  {nombreCompleto
+                    ? nombreCompleto.split(" ").filter(Boolean).map((n) => n[0]).join("").slice(0, 2).toUpperCase()
+                    : "?"}
                 </Text>
               </View>
             )}
@@ -186,9 +236,9 @@ export default function ClasificarTrabajador({ worker, onSubmit }) {
               <Text style={styles.reportIcon}>{"\ud83d\udce3"}</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.workerName}>{w.name}</Text>
+          <Text style={styles.workerName}>{nombreCompleto || 'Trabajador'}</Text>
           <View style={styles.rolePill}>
-            <Text style={styles.roleText}>{w.role}</Text>
+            <Text style={styles.roleText}>{servicioNombre || 'Servicio'}</Text>
           </View>
         </View>
 
@@ -216,6 +266,7 @@ export default function ClasificarTrabajador({ worker, onSubmit }) {
             numberOfLines={4}
             value={description}
             onChangeText={setDescription}
+            maxLength={300}
             textAlignVertical="top"
           />
           <Text style={styles.charCount}>{description.length}/300</Text>
@@ -237,8 +288,17 @@ export default function ClasificarTrabajador({ worker, onSubmit }) {
         </TouchableOpacity>
 
         {/* Boton */}
-        <TouchableOpacity style={styles.btnPrimary} onPress={handleSend} activeOpacity={0.85}>
-          <Text style={styles.btnPrimaryText}>{"Enviar calificaci\u00f3n"}</Text>
+        <TouchableOpacity
+          style={[styles.btnPrimary, enviando && { opacity: 0.7 }]}
+          onPress={handleSend}
+          activeOpacity={0.85}
+          disabled={enviando}
+        >
+          {enviando ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.btnPrimaryText}>{"Enviar calificaci\u00f3n"}</Text>
+          )}
         </TouchableOpacity>
 
         <View style={{ height: 32 }} />

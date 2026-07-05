@@ -329,17 +329,21 @@ obtenerCategoriaCliente = async (idCliente) => {
         const sql = `
             SELECT * FROM (
                 SELECT DISTINCT ON (t.id)
-                    t.id,
+                    t.id AS "idTrabajador",
+                    ct.id AS "idTrabajo",
                     u.nombre,
                     u.apellido,
                     t.foto,
                     ct.estado,
                     ct.fecha_iniciado,
                     ct.fecha_acabado,
-                    ct.precio
+                    ct.precio,
+                    ct."estrellasCliente",
+                    s.nombre AS servicio_nombre
                 FROM "Cliente-Trabajador" ct
                 INNER JOIN "Trabajador" t ON ct."IdTrabajador" = t.id
                 INNER JOIN "Usuario" u ON t."IdPersona" = u.id
+                LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
                 WHERE ct."IdCliente" = $1
                   AND ct.estado <> 'EN PROCESO'
                 ORDER BY t.id, ct.fecha_iniciado DESC
@@ -358,5 +362,63 @@ obtenerCategoriaCliente = async (idCliente) => {
     }
 
     return result?.rows ?? []
+}
+crearReseñaCliente = async (reseña) => {
+    const client = new Client(config)
+
+    try {
+        await client.connect()
+        await client.query('BEGIN')
+
+        const sqlInsert = `
+            INSERT INTO "ReseñaCliente"
+           ("idTrabajador", "idCliente", "idTrabajo", estrellas, razon, descripcion, "comentarioBajaCalificacion", "bloqueoSolicitado")
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id
+        `
+        const values = [
+            reseña.idTrabajador,
+            reseña.idCliente,
+            reseña.idTrabajo,
+            reseña.estrellas,
+            reseña.razon,
+            reseña.descripcion,
+            reseña.comentarioBajaCalificacion ?? null,
+            reseña.bloqueoSolicitado ?? false
+        ]
+
+        const resultInsert = await client.query(sqlInsert, values)
+        const idReseña = resultInsert.rows[0].id
+
+        // Recalcula promedio real a partir de todas las reseñas del trabajador
+        const sqlPromedio = `
+            SELECT AVG(estrellas)::numeric(3,2) AS promedio, COUNT(*) AS total
+            FROM "ReseñaCliente"
+            WHERE "idTrabajador" = $1
+        `
+        const resultPromedio = await client.query(sqlPromedio, [reseña.idTrabajador])
+        const { promedio, total } = resultPromedio.rows[0]
+
+        await client.query(
+            `UPDATE "Trabajador" SET estrellas = $1, "reseñasRec" = $2 WHERE id = $3`,
+            [promedio, total, reseña.idTrabajador]
+        )
+
+        // 👇 NUEVO: guarda la nota puntual en el trabajo calificado
+        await client.query(
+            `UPDATE "Cliente-Trabajador" SET "estrellasCliente" = $1 WHERE id = $2`,
+            [reseña.estrellas, reseña.idTrabajo]
+        )
+
+        await client.query('COMMIT')
+        return { id: idReseña, nuevoPromedio: promedio, totalReseñas: total }
+
+    } catch (err) {
+        await client.query('ROLLBACK')
+        console.error('Error en crearReseñaCliente:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
 }
     }
