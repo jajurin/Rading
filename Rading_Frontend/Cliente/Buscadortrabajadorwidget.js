@@ -5,46 +5,76 @@ import {
 } from 'react-native';
 import API_URL from '../configS';
 import Svg, { Path } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons';
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-const RatingBadge = ({ rating }) => (
-  <View style={styles.ratingBadge}>
-    <Text style={styles.ratingText}>{Number(rating).toFixed(2)}</Text>
-    <Text style={styles.ratingStar}>★</Text>
-  </View>
-);
+// ─── Estrellas reales (llena / media / vacía) ────────────────────────────
+const EstrellasRating = ({ valor = 0, size = 13 }) => {
+  const estrellas = Math.max(0, Math.min(5, Number(valor) || 0));
+  const llenas = Math.floor(estrellas);
+  const decimal = estrellas - llenas;
+  const media = decimal >= 0.25 && decimal < 0.75;
+  const extraLlena = decimal >= 0.75;
+  const totalLlenas = llenas + (extraLlena ? 1 : 0);
+  const vacias = 5 - totalLlenas - (media ? 1 : 0);
 
-const ChatIcon = () => (
-  <View style={styles.chatBubble}>
-    <View style={styles.dotsRow}>
-      <View style={styles.dot} />
-      <View style={styles.dot} />
-      <View style={styles.dot} />
+  return (
+    <View style={styles.starsRowMini}>
+      {Array.from({ length: totalLlenas }).map((_, i) => (
+        <Ionicons key={`f${i}`} name="star" size={size} color={GOLD_STAR} />
+      ))}
+      {media && <Ionicons name="star-half" size={size} color={GOLD_STAR} />}
+      {Array.from({ length: vacias }).map((_, i) => (
+        <Ionicons key={`e${i}`} name="star-outline" size={size} color={GOLD_STAR} />
+      ))}
+      <Text style={styles.ratingNumero}>{estrellas.toFixed(1)}</Text>
     </View>
-  </View>
-);
+  );
+};
+
+// ─── Avatar con fallback de iniciales ─────────────────────────────────────
+const Avatar = ({ foto, nombre, apellido }) => {
+  if (foto) {
+    return <Image source={{ uri: foto }} style={styles.avatar} />;
+  }
+  const iniciales = `${nombre?.[0] ?? ''}${apellido?.[0] ?? ''}`.toUpperCase();
+  return (
+    <View style={[styles.avatar, styles.avatarFallback]}>
+      <Text style={styles.avatarIniciales}>{iniciales || '?'}</Text>
+    </View>
+  );
+};
 
 const ClienteCard = ({ item, onPressChat }) => (
   <View style={styles.card}>
-    <TouchableOpacity activeOpacity={0.8}>
-      <Image
-        source={{ uri: item.foto ?? 'https://i.pravatar.cc/150?img=12' }}
-        style={styles.avatar}
-      />
-    </TouchableOpacity>
+    <Avatar foto={item.foto} nombre={item.nombre} apellido={item.apellido} />
+
     <View style={styles.cardBody}>
       <View style={styles.cardHeader}>
-        <Text style={styles.cardName}>{item.nombre} {item.apellido}</Text>
-        <RatingBadge rating={item.estrellas ?? 0} />
+        <Text style={styles.cardName} numberOfLines={1}>
+          {item.nombre} {item.apellido}
+        </Text>
       </View>
-      <Text style={styles.cardZona}>📧 {item.email ?? '-'}</Text>
-      <Text style={styles.cardBio} numberOfLines={2}>
-        📞 {item.telefono ?? 'Sin teléfono'}
-      </Text>
+
+      <EstrellasRating valor={item.estrellas} />
+
+      <View style={styles.contactRow}>
+        <Ionicons name="mail-outline" size={12} color={TEXT_GRAY} />
+        <Text style={styles.cardContacto} numberOfLines={1}>{item.email ?? 'Sin email'}</Text>
+      </View>
+      <View style={styles.contactRow}>
+        <Ionicons name="call-outline" size={12} color={TEXT_GRAY} />
+        <Text style={styles.cardContacto} numberOfLines={1}>{item.telefono ?? 'Sin teléfono'}</Text>
+      </View>
     </View>
-    <TouchableOpacity style={styles.chatButton} onPress={() => onPressChat(item)} activeOpacity={0.8}>
-      <ChatIcon />
+
+    <TouchableOpacity
+      style={styles.chatButton}
+      onPress={() => onPressChat?.(item)}
+      activeOpacity={0.8}
+    >
+      <Ionicons name="chatbubble-ellipses" size={19} color={WHITE} />
     </TouchableOpacity>
   </View>
 );
@@ -219,13 +249,6 @@ const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
 };
 
 // ─── Widget principal ──────────────────────────────────────────────────────────
-// Reutilizable: se puede meter dentro de un ScrollView (ej. HomeCliente) o
-// usar como pantalla completa (ej. BuscadorTrabajador). No usa FlatList
-// a propósito, para poder vivir dentro de otro ScrollView sin el warning
-// de "VirtualizedLists should never be nested inside plain ScrollViews".
-//
-// Expone un ref con `buscar(texto)` para poder dispararlo desde afuera
-// (por ejemplo, al tocar una categoría en la Home).
 
 const BuscadorTrabajadorWidget = forwardRef(function BuscadorTrabajadorWidget(
   { usuario, navigation, initialTexto = '' },
@@ -289,20 +312,18 @@ const BuscadorTrabajadorWidget = forwardRef(function BuscadorTrabajadorWidget(
 
   const handleSubmit = () => fetchTrabajadores(texto);
 
-  // Permite disparar una búsqueda desde afuera, ej: buscadorRef.current.buscar('Plomero')
-useImperativeHandle(ref, () => ({
-  buscar: (nuevoTexto) => {
-    setTexto(nuevoTexto);
-    fetchTrabajadores(nuevoTexto);
-  },
-  // ← NUEVO: busca por especialidad (filtro), no por texto libre
-  buscarPorEspecialidad: (especialidad) => {
-    const newFilters = { ...filters, especialidad };
-    setFilters(newFilters);
-    setTexto('');
-    fetchTrabajadores('', newFilters);
-  },
-}));
+  useImperativeHandle(ref, () => ({
+    buscar: (nuevoTexto) => {
+      setTexto(nuevoTexto);
+      fetchTrabajadores(nuevoTexto);
+    },
+    buscarPorEspecialidad: (especialidad) => {
+      const newFilters = { ...filters, especialidad };
+      setFilters(newFilters);
+      setTexto('');
+      fetchTrabajadores('', newFilters);
+    },
+  }));
 
   return (
     <View>
@@ -387,9 +408,12 @@ export default BuscadorTrabajadorWidget;
 
 const WHITE     = '#ffffff';
 const GOLD      = '#ffd700';
+const GOLD_STAR = '#F5A623';
 const BLUE      = '#1565D8';
 const BLUE_DARK = '#0a0f3c';
-const BLUE_CARD = '#1e35b5';
+const TEXT_DARK = '#1A2233';
+const TEXT_GRAY = '#8A94A6';
+const BG_SOFT   = 'rgba(21,101,216,0.08)';
 
 const styles = StyleSheet.create({
   // Search + filtro
@@ -449,22 +473,47 @@ const styles = StyleSheet.create({
   resultCount:  { color: '#A0AEC0', fontSize: 12, fontWeight: '600', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
 
   // Card
-  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: BLUE, borderRadius: 12, marginBottom: 10, padding: 12, gap: 10, elevation: 4 },
-  avatar: { width: 60, height: 60, borderRadius: 30, borderWidth: 2, borderColor: '#2a4fd6' },
-  cardBody: { flex: 1 },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 2 },
-  cardName: { color: WHITE, fontWeight: '700', fontSize: 15 },
-  cardZona: { color: '#c0ceff', fontSize: 11, marginBottom: 3 },
-  cardBio:  { color: '#dce4ff', fontSize: 12, lineHeight: 16 },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: WHITE,
+    borderRadius: 16,
+    marginBottom: 10,
+    padding: 12,
+    gap: 12,
+    shadowColor: '#0d4bb8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  avatar: {
+    width: 56, height: 56, borderRadius: 28,
+    borderWidth: 2, borderColor: BG_SOFT,
+  },
+  avatarFallback: { backgroundColor: BLUE, justifyContent: 'center', alignItems: 'center' },
+  avatarIniciales: { color: WHITE, fontWeight: '800', fontSize: 17 },
 
-  ratingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: BLUE_DARK, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, gap: 2 },
-  ratingText:  { color: WHITE, fontSize: 11, fontWeight: '600' },
-  ratingStar:  { color: GOLD, fontSize: 11 },
+  cardBody: { flex: 1, gap: 3 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  cardName: { color: TEXT_DARK, fontWeight: '800', fontSize: 15 },
 
-  chatButton: { padding: 6, justifyContent: 'center', alignItems: 'center' },
-  chatBubble: { width: 28, height: 22, backgroundColor: WHITE, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
-  dotsRow:    { flexDirection: 'row', gap: 3 },
-  dot:        { width: 4, height: 4, borderRadius: 2, backgroundColor: BLUE_CARD },
+  starsRowMini: { flexDirection: 'row', alignItems: 'center', gap: 1, marginBottom: 2 },
+  ratingNumero: { fontSize: 11.5, fontWeight: '700', color: TEXT_GRAY, marginLeft: 4 },
+
+  contactRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  cardContacto: { color: TEXT_GRAY, fontSize: 12, flexShrink: 1 },
+
+  chatButton: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: BLUE,
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: BLUE_DARK,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 2,
+  },
 
   // Modal overlay
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
@@ -482,7 +531,7 @@ const styles = StyleSheet.create({
   filterSection: { color: WHITE, fontSize: 15, fontWeight: '700', marginBottom: 10 },
   filterLabel:   { color: '#8faeff', fontSize: 13, fontWeight: '600', marginBottom: 8 },
 
-  // Stars
+  // Stars (selector de filtro)
   starsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   starIcon:   { fontSize: 28, color: 'rgba(255,255,255,0.25)' },
   starActive: { color: GOLD },

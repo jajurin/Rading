@@ -1,5 +1,5 @@
 // RecibirOfertasScreen.js
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useMemo } from 'react'
 import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, SafeAreaView, StatusBar, Modal, Platform,
@@ -21,6 +21,7 @@ const COLORS = {
   bg:     '#f4f6fb',
   white:  '#ffffff',
   ink:    '#1a1a2e',
+  green:  '#22c55e',
 }
 
 const shadow = (elevation = 6) => ({
@@ -52,6 +53,63 @@ function Estrellas({ rating, size = 12 }) {
         />
       ))}
     </View>
+  )
+}
+
+// ─── Chips de solicitudes activas (General + una por servicio) ───────────
+// Rediseñado: menos recargado, puntito de color en vez de badge numérico grande.
+function SolicitudesChips({ solicitudes, seleccionada, onSeleccionar }) {
+  if (solicitudes.length <= 1) return null // con 0 o 1 solicitud no tiene sentido mostrar el selector
+
+  const totalOfertas = solicitudes.reduce((acc, s) => acc + Number(s.cantidadOfertas ?? 0), 0)
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.chipsScroll}
+      contentContainerStyle={styles.chipsContent}
+    >
+      <TouchableOpacity
+        style={[styles.chip, seleccionada === null && styles.chipActive]}
+        onPress={() => onSeleccionar(null)}
+        activeOpacity={0.8}
+      >
+        <Ionicons
+          name="apps"
+          size={13}
+          color={seleccionada === null ? COLORS.white : COLORS.gray}
+        />
+        <Text style={[styles.chipText, seleccionada === null && styles.chipTextActive]}>
+          General
+        </Text>
+        <Text style={[styles.chipCount, seleccionada === null && styles.chipCountActive]}>
+          {totalOfertas}
+        </Text>
+      </TouchableOpacity>
+
+      {solicitudes.map(s => {
+        const activo = seleccionada === s.idTrabajo
+        return (
+          <TouchableOpacity
+            key={s.idTrabajo}
+            style={[styles.chip, activo && styles.chipActive]}
+            onPress={() => onSeleccionar(s.idTrabajo)}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[styles.chipText, activo && styles.chipTextActive]}
+              numberOfLines={1}
+            >
+              {s.servicio_nombre ?? 'Servicio'}
+            </Text>
+            <Text style={[styles.chipCount, activo && styles.chipCountActive]}>
+              {s.cantidadOfertas}
+            </Text>
+          </TouchableOpacity>
+        )
+      })}
+    </ScrollView>
   )
 }
 
@@ -111,7 +169,7 @@ function ModalOfertaAceptada({ oferta, servicioNombre, onClose }) {
             </Text>
           </View>
 
-          <TouchableOpacity style={styles.chatBtn} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.chatBtn} activeOpacity={0.85} onPress={onClose}>
             <Ionicons name="chatbubble-ellipses" size={20} color={COLORS.white} />
             <Text style={styles.chatBtnText}>Abrir chat</Text>
           </TouchableOpacity>
@@ -122,10 +180,29 @@ function ModalOfertaAceptada({ oferta, servicioNombre, onClose }) {
   )
 }
 
+const mapearOfertas = (data, idTrabajo, servicioNombreOverride = null) =>
+  (Array.isArray(data) ? data : []).map(o => ({
+    id: o.id,
+    idTrabajo,
+    idTrabajador: o.idTrabajador,
+    nombre: `${o.nombre ?? ''} ${o.apellido ?? ''}`.trim(),
+    rating: Number(o.estrellas ?? 0),
+    distancia: o.distancia ?? null,
+    costoExtraMin: Number(o.costoExtraMin ?? 0),
+    costoExtraMax: Number(o.costoExtraMax ?? 0),
+    precio: Number(o.precio ?? o.precioSolicitud ?? 0),
+    servicioNombre: servicioNombreOverride,
+  }))
+
 export default function RecibirOfertasScreen({ route, navigation }) {
-  // 👇 esperamos idTrabajo (id de la fila Cliente-Trabajador "abierta") y
-  // opcionalmente servicioNombre para el título del header/modal.
-  const { idTrabajo, servicioNombre, tituloSolicitud, usuario } = route?.params || {}
+  const { idTrabajo: idTrabajoInicial, servicioNombre, tituloSolicitud, usuario } = route?.params || {}
+  const idCliente = usuario?.idCliente
+
+  const [solicitudes, setSolicitudes] = useState([])
+  const [loadingSolicitudes, setLoadingSolicitudes] = useState(true)
+
+  // idTrabajo seleccionado: null = "General" (todas), o un id puntual
+  const [seleccionada, setSeleccionada] = useState(idTrabajoInicial ?? null)
 
   const [ofertas, setOfertas] = useState([])
   const [loading, setLoading] = useState(true)
@@ -133,32 +210,64 @@ export default function RecibirOfertasScreen({ route, navigation }) {
   const [ofertaAceptada, setOfertaAceptada] = useState(null)
   const [aceptando, setAceptando] = useState(false)
 
-  const fetchOfertas = useCallback(async () => {
-    console.log('🔵 idTrabajo recibido en la screen:', idTrabajo)
-    if (!idTrabajo) {
-      setLoading(false)
-      setError('No se encontró el trabajo')
+  const fetchSolicitudes = useCallback(async () => {
+    if (!idCliente) {
+      setLoadingSolicitudes(false)
       return
     }
     try {
+      setLoadingSolicitudes(true)
+      const res = await fetch(`${API_URL}/cliente/ofertas/pendientes/${idCliente}`)
+      if (!res.ok) throw new Error(`Error ${res.status} al obtener solicitudes`)
+      const data = await res.json()
+      const lista = Array.isArray(data) ? data : []
+      setSolicitudes(lista)
+
+      // 👇 FIX: si la solicitud seleccionada ya no está en la lista (por ejemplo,
+      // porque se le acaba de aceptar un trabajador), volvemos a "General" en vez
+      // de quedar con un chip apuntando a algo que ya no existe.
+      setSeleccionada(prev => {
+        if (prev == null) return null
+        const sigueActiva = lista.some(s => s.idTrabajo === prev)
+        return sigueActiva ? prev : null
+      })
+    } catch (e) {
+      console.error('Error al cargar solicitudes activas:', e)
+      setSolicitudes([])
+    } finally {
+      setLoadingSolicitudes(false)
+    }
+  }, [idCliente])
+
+  const fetchOfertas = useCallback(async () => {
+    try {
       setLoading(true)
       setError(null)
-      const res = await fetch(`${API_URL}/cliente/ofertas/${idTrabajo}`)
-      if (!res.ok) throw new Error(`Error ${res.status} al obtener ofertas`)
-      const data = await res.json()
 
-      const mapeadas = (Array.isArray(data) ? data : []).map(o => ({
-        id: o.id,
-        idTrabajador: o.idTrabajador,
-        nombre: `${o.nombre ?? ''} ${o.apellido ?? ''}`.trim(),
-        rating: Number(o.estrellas ?? 0),
-        distancia: o.distancia ?? null,
-        costoExtraMin: Number(o.costoExtraMin ?? 0),
-        costoExtraMax: Number(o.costoExtraMax ?? 0),
-        precio: Number(o.precio ?? o.precioSolicitud ?? 0),
-      }))
+      if (seleccionada != null) {
+        const res = await fetch(`${API_URL}/cliente/ofertas/${seleccionada}`)
+        if (!res.ok) throw new Error(`Error ${res.status} al obtener ofertas`)
+        const data = await res.json()
+        const s = solicitudes.find(s => s.idTrabajo === seleccionada)
+        setOfertas(mapearOfertas(data, seleccionada, s?.servicio_nombre))
+        return
+      }
 
-      setOfertas(mapeadas)
+      if (solicitudes.length === 0) {
+        setOfertas([])
+        return
+      }
+
+      const resultados = await Promise.all(
+        solicitudes.map(async (s) => {
+          const res = await fetch(`${API_URL}/cliente/ofertas/${s.idTrabajo}`)
+          if (!res.ok) return []
+          const data = await res.json()
+          return mapearOfertas(data, s.idTrabajo, s.servicio_nombre)
+        })
+      )
+      setOfertas(resultados.flat())
+
     } catch (e) {
       console.error('Error al cargar ofertas:', e)
       setError('No se pudieron cargar las ofertas')
@@ -166,12 +275,18 @@ export default function RecibirOfertasScreen({ route, navigation }) {
     } finally {
       setLoading(false)
     }
-  }, [idTrabajo])
+  }, [seleccionada, solicitudes])
 
   useFocusEffect(
     useCallback(() => {
-      fetchOfertas()
-    }, [fetchOfertas])
+      fetchSolicitudes()
+    }, [fetchSolicitudes])
+  )
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!loadingSolicitudes) fetchOfertas()
+    }, [fetchOfertas, loadingSolicitudes])
   )
 
   const handleAceptar = async (item) => {
@@ -196,9 +311,23 @@ export default function RecibirOfertasScreen({ route, navigation }) {
     }
   }
 
-  const mejorOferta = ofertas.length > 0
-    ? ofertas.reduce((a, b) => (a.precio < b.precio ? a : b))
-    : null
+  // 👇 FIX: la "mejor oferta" se calcula POR solicitud (idTrabajo), no globalmente.
+  // Antes, en modo General, comparaba precios de servicios distintos entre sí
+  // (ej. marcaba como "mejor oferta" a un plomero contra un abogado).
+  const mejoresPorTrabajo = useMemo(() => {
+    const mapa = new Map()
+    ofertas.forEach(o => {
+      const actual = mapa.get(o.idTrabajo)
+      if (!actual || o.precio < actual.precio) mapa.set(o.idTrabajo, o)
+    })
+    return mapa
+  }, [ofertas])
+
+  const tituloHeader = useMemo(() => {
+    if (seleccionada == null) return 'Todas tus solicitudes'
+    const s = solicitudes.find(s => s.idTrabajo === seleccionada)
+    return s?.servicio_nombre || tituloSolicitud || servicioNombre || 'Tu solicitud'
+  }, [seleccionada, solicitudes, tituloSolicitud, servicioNombre])
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -208,13 +337,23 @@ export default function RecibirOfertasScreen({ route, navigation }) {
 
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerSub}>Solicitud activa</Text>
-          <Text style={styles.headerTitulo}>{tituloSolicitud || servicioNombre || 'Tu solicitud'}</Text>
+          <Text style={styles.headerSub}>
+            {seleccionada == null ? 'Solicitud activa' : 'Solicitud activa · filtrada'}
+          </Text>
+          <Text style={styles.headerTitulo}>{tituloHeader}</Text>
         </View>
         <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.headerBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Ionicons name="chevron-down" size={20} color={COLORS.gray} />
         </TouchableOpacity>
       </View>
+
+      {!loadingSolicitudes && (
+        <SolicitudesChips
+          solicitudes={solicitudes}
+          seleccionada={seleccionada}
+          onSeleccionar={setSeleccionada}
+        />
+      )}
 
       {loading ? (
         <View style={styles.centerBox}>
@@ -231,7 +370,11 @@ export default function RecibirOfertasScreen({ route, navigation }) {
       ) : ofertas.length === 0 ? (
         <View style={styles.centerBox}>
           <Ionicons name="mail-open-outline" size={48} color={COLORS.grayLight} />
-          <Text style={styles.emptyText}>Todavía no recibiste ofertas</Text>
+          <Text style={styles.emptyText}>
+            {seleccionada == null
+              ? 'Todavía no recibiste ofertas'
+              : 'Esta solicitud todavía no tiene ofertas'}
+          </Text>
         </View>
       ) : (
         <ScrollView style={styles.body} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
@@ -244,12 +387,19 @@ export default function RecibirOfertasScreen({ route, navigation }) {
           </View>
 
           {ofertas.map(item => (
-            <OfertaCard
-              key={item.id}
-              item={item}
-              esMejor={mejorOferta?.id === item.id}
-              onAceptar={() => handleAceptar(item)}
-            />
+            <View key={`${item.idTrabajo}-${item.id}`}>
+              {seleccionada == null && item.servicioNombre && (
+                <View style={styles.servicioTag}>
+                  <Ionicons name="construct-outline" size={11} color={COLORS.blue} />
+                  <Text style={styles.servicioTagText}>{item.servicioNombre}</Text>
+                </View>
+              )}
+              <OfertaCard
+                item={item}
+                esMejor={mejoresPorTrabajo.get(item.idTrabajo)?.id === item.id}
+                onAceptar={() => handleAceptar(item)}
+              />
+            </View>
           ))}
 
           <View style={styles.avisoCard}>
@@ -270,10 +420,10 @@ export default function RecibirOfertasScreen({ route, navigation }) {
 
       <ModalOfertaAceptada
         oferta={ofertaAceptada}
-        servicioNombre={tituloSolicitud || servicioNombre}
+        servicioNombre={ofertaAceptada?.servicioNombre || tituloSolicitud || servicioNombre}
         onClose={() => {
           setOfertaAceptada(null)
-          navigation?.goBack()
+          fetchSolicitudes() // esto ya corrige la selección si hace falta (ver FIX arriba)
         }}
       />
 
@@ -293,6 +443,38 @@ const styles = StyleSheet.create({
   headerSub:    { fontSize: 11, color: COLORS.grayLight, marginBottom: 1 },
   headerTitulo: { fontSize: 16, fontWeight: '600', color: COLORS.blue },
   headerBtn:    { width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center' },
+
+  // Chips de solicitudes — más livianos, sin badges gigantes
+  chipsScroll: {
+  flexGrow: 0,          // 👈 evita que el ScrollView se estire para llenar la pantalla
+  height: 54,           // 👈 altura fija de la barra de chips
+  backgroundColor: COLORS.white,
+  borderBottomWidth: StyleSheet.hairlineWidth,
+  borderBottomColor: COLORS.border,
+},
+chipsContent: {
+  paddingHorizontal: 16,
+  alignItems: 'center',  // 👈 evita que cada chip se estire verticalmente (stretch)
+  height: 54,
+},
+chip: {
+  flexDirection: 'row', alignItems: 'center', gap: 5,
+  paddingHorizontal: 12, paddingVertical: 7,
+  borderRadius: 14, backgroundColor: COLORS.bg,
+  marginRight: 8,
+  height: 34,            // 👈 altura fija del chip en sí
+},
+  chipActive: { backgroundColor: COLORS.blue },
+  chipText: { fontSize: 12.5, fontWeight: '600', color: COLORS.ink, maxWidth: 110 },
+  chipTextActive: { color: COLORS.white },
+  chipCount: { fontSize: 11, fontWeight: '700', color: COLORS.grayLight },
+  chipCountActive: { color: 'rgba(255,255,255,0.75)' },
+
+  servicioTag: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    marginBottom: 6, marginLeft: 2,
+  },
+  servicioTagText: { fontSize: 11, fontWeight: '700', color: COLORS.blue },
 
   centerBox: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10, paddingHorizontal: 24 },
   loadingText: { color: COLORS.blue, fontSize: 14 },
@@ -358,4 +540,4 @@ const styles = StyleSheet.create({
     ...shadow(6),
   },
   chatBtnText: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
-})  
+})
