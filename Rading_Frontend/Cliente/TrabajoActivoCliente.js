@@ -3,9 +3,15 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 export default function TrabajoActivoCliente({
-  titulo = "REPARACIÓN DE PLOMERÍA",
+  titulo = "Trabajos activos",
   onPress,
+  // 👇 Cantidad de ofertas nuevas/pendientes. Si es > 0, se muestra una
+  // alertita (badge) en la esquina de la tarjeta para que el cliente sepa
+  // que tiene algo esperando, aunque no haya abierto el overlay todavía.
+  badgeCount = 0,
 }) {
+  const mostrarBadge = badgeCount > 0;
+
   return (
     <TouchableOpacity style={styles.container} activeOpacity={0.9} onPress={onPress}>
       <View style={styles.leftSection}>
@@ -13,11 +19,21 @@ export default function TrabajoActivoCliente({
           <Ionicons name="construct" size={13} color="#7a5c00" />
         </View>
         <View>
-          <Text style={styles.estado}>Buscando...</Text>
+          <Text style={styles.estado}>Cargando...</Text>
           <Text style={styles.titulo}>{titulo}</Text>
         </View>
       </View>
-      <Ionicons name="chevron-up" size={20} color="#3d2e00" />
+
+      <View style={styles.rightSection}>
+        {mostrarBadge && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>
+              {badgeCount > 9 ? "9+" : badgeCount}
+            </Text>
+          </View>
+        )}
+        <Ionicons name="chevron-up" size={20} color="#3d2e00" />
+      </View>
     </TouchableOpacity>
   );
 }
@@ -42,6 +58,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
+  rightSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   iconCircle: {
     width: 32,
     height: 32,
@@ -64,5 +85,22 @@ const styles = StyleSheet.create({
     color: "#1a1200",
     textTransform: "uppercase",
     marginTop: 1,
+  },
+  // Alertita de ofertas nuevas
+  badge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#0D47C7",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+    borderWidth: 1.5,
+    borderColor: "#FFD600",
+  },
+  badgeText: {
+    color: "#FFF",
+    fontSize: 10,
+    fontWeight: "900",
   },
 });

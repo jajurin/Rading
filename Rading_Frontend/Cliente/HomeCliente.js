@@ -28,6 +28,40 @@ const CARD_WIDTH = 92;
 const CARD_GAP = 12;
 const SCROLL_STEP = (CARD_WIDTH + CARD_GAP) * 2; // avanza de a 2 tarjetas por click
 
+// Mapea el nombre del servicio a un ícono de Ionicons según palabras clave
+const normalizar = (str = '') =>
+  str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, ''); // saca tildes
+
+const ICONOS_SERVICIO = [
+  { keywords: ['plomer', 'gasista', 'destap', 'cano', 'sanitari'], icon: 'water' },
+  { keywords: ['electric', 'electrici'], icon: 'flash' },
+  { keywords: ['limpi'], icon: 'sparkles' },
+  { keywords: ['pintu', 'pintor'], icon: 'color-palette' },
+  { keywords: ['jardin', 'paisaj', 'cesped'], icon: 'leaf' },
+  { keywords: ['carpint', 'muebl'], icon: 'hammer' },
+  { keywords: ['cerraj', 'llave'], icon: 'key' },
+  { keywords: ['mudanza', 'flete', 'transport'], icon: 'car' },
+  { keywords: ['aire acondicionado', 'climat', 'refrigera'], icon: 'snow' },
+  { keywords: ['albañil', 'albanil', 'construc', 'reform'], icon: 'construct' },
+  { keywords: ['niñer', 'ninera', 'cuidado infantil'], icon: 'happy' },
+  { keywords: ['mascota', 'perro', 'gato', 'veterin'], icon: 'paw' },
+  { keywords: ['tecnico', 'reparacion', 'computa', 'celular'], icon: 'build' },
+  { keywords: ['seguridad', 'alarma', 'camara'], icon: 'shield-checkmark' },
+  { keywords: ['pileta', 'piscina'], icon: 'water-outline' },
+  { keywords: ['vidri', 'ventana'], icon: 'square' },
+];
+
+const obtenerIconoServicio = (nombre) => {
+  const n = normalizar(nombre);
+  const match = ICONOS_SERVICIO.find((entry) =>
+    entry.keywords.some((k) => n.includes(k))
+  );
+  return match ? match.icon : 'construct'; // fallback genérico
+};
+
 export default function HomeCliente({ route, navigation }) {
   const usuario = route?.params?.usuario;
   const buscadorRef = useRef(null);
@@ -176,7 +210,7 @@ const buscarServicio = (nombreServicio) => {
                   onPress={() => buscarServicio(s.nombre)}
                 >
                   <View style={styles.categoryIconWrap}>
-                    <Text style={styles.categoryIcon}>🛠️</Text>
+                    <Ionicons name={obtenerIconoServicio(s.nombre)} size={22} color="#fff" />
                   </View>
                   <Text style={styles.categoryText} numberOfLines={2}>
                     {s.nombre}
@@ -286,13 +320,42 @@ const styles = StyleSheet.create({
   verMas: { color: BLUE, fontWeight: '600', fontSize: 13 },
   horizontalContainer: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4, gap: 12 },
   categoryCard: {
-    width: 92, height: 100, backgroundColor: '#fff', borderRadius: 18,
-    justifyContent: 'center', alignItems: 'center', shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2, paddingHorizontal: 6,
+    width: 92,
+    height: 108,
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(21,101,216,0.08)',
+    shadowColor: BLUE_DARK,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
   },
-  categoryIconWrap: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(21,101,216,0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-  categoryIcon: { fontSize: 20 },
-  categoryText: { color: '#4A5568', fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  categoryIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: BLUE,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+    shadowColor: BLUE,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  categoryText: {
+    color: '#2D3748',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
   recentCard: { width: 92, backgroundColor: '#fff', borderRadius: 16, alignItems: 'center', paddingVertical: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
   avatar: { width: 52, height: 52, borderRadius: 26, borderWidth: 2, borderColor: 'rgba(21,101,216,0.15)' },
   avatarPlaceholder: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#EDF1F7', justifyContent: 'center', alignItems: 'center' },

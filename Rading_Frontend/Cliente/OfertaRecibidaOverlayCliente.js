@@ -233,63 +233,67 @@ export default function OfertaRecibidaOverlayCliente({
       <View style={styles.overlay}>
         <View style={styles.container} >
  
-          {/* Header */}
-          <TouchableOpacity 
-  style={styles.header}
-  onPress={onClose}
-  activeOpacity={0.8}
->
-  <View style={styles.headerLeft}>
-    <View style={styles.iconCircle}>
-      <Ionicons name="construct" size={13} color="#7a5c00" />
-    </View>
+          {/* Header: fila 1 = título + cerrar (tocar afuera del título ya
+              cierra), fila 2 = acciones (Ofertas / Recientes), separada
+              del título para que no queden "pegadas". */}
+          <View style={styles.header}>
 
-    <View>
-      <Text style={styles.headerLabel}>MIS TRABAJOS</Text>
-      <Text style={styles.headerTitle}>
-        {loading ? '...' : `${trabajos.length} en proceso`}
-      </Text>
-    </View>
-  </View>
+            <TouchableOpacity
+              style={styles.headerTop}
+              onPress={onClose}
+              activeOpacity={0.8}
+            >
+              <View style={styles.headerLeft}>
+                <View style={styles.iconCircle}>
+                  <Ionicons name="construct" size={13} color="#7a5c00" />
+                </View>
 
-  {/* BOTÓN + CLOSE */}
-  <View style={styles.headerRight}>
+                <View>
+                  <Text style={styles.headerLabel}>MIS TRABAJOS</Text>
+                  <Text style={styles.headerTitle}>
+                    {loading ? '...' : `${trabajos.length} en proceso`}
+                  </Text>
+                </View>
+              </View>
 
-    {/* Botón Ofertas con badge azul */}
-    <TouchableOpacity
-      style={[styles.ofertasButton, loadingOfertas && styles.ofertasButtonDisabled]}
-      onPress={irAOfertas}
-      disabled={loadingOfertas}
-    >
-      <Text style={styles.ofertasText}>
-        {loadingOfertas ? '...' : 'Ofertas'}
-      </Text>
-      {!loadingOfertas && (totalOfertas > 0 || errorOfertas) && (
-        <View style={styles.ofertasBadge}>
-          <Text style={styles.ofertasBadgeText}>
-            {errorOfertas ? '!' : totalOfertas}
-          </Text>
-        </View>
-      )}
-    </TouchableOpacity>
+              <View style={styles.closeCircle}>
+                <Ionicons name="chevron-down" size={20} color="#7a5c00" />
+              </View>
+            </TouchableOpacity>
 
-    <TouchableOpacity
-      style={styles.recientesButton}
-      onPress={() => {
-        onClose?.();
-       navigation?.navigate('RecienteClientes', { usuario });
+            {/* Fila de acciones, separada del título */}
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={styles.recientesButton}
+                onPress={() => {
+                  onClose?.();
+                  navigation?.navigate('RecienteClientes', { usuario });
+                }}
+              >
+                <Ionicons name="time-outline" size={13} color="#3a2c00" />
+                <Text style={styles.recientesText}>Recientes</Text>
+              </TouchableOpacity>
 
-      }}
-    >
-      <Text style={styles.recientesText}>Recientes</Text>
-    </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.ofertasButton, loadingOfertas && styles.ofertasButtonDisabled]}
+                onPress={irAOfertas}
+                disabled={loadingOfertas}
+              >
+                <Ionicons name="pricetags-outline" size={13} color="#FFF" />
+                <Text style={styles.ofertasText}>
+                  {loadingOfertas ? 'Cargando...' : 'Ver ofertas'}
+                </Text>
+                {!loadingOfertas && (totalOfertas > 0 || errorOfertas) && (
+                  <View style={styles.ofertasBadge}>
+                    <Text style={styles.ofertasBadgeText}>
+                      {errorOfertas ? '!' : totalOfertas}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
 
-    <View style={styles.closeCircle}>
-      <Ionicons name="chevron-down" size={20} color="#7a5c00" />
-    </View>
-
-  </View>
-</TouchableOpacity>
+          </View>
  
           {/* Contenido */}
           {loading ? (
@@ -344,15 +348,19 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
  
-  // Header
+  // Header (ahora envuelve 2 filas: título y acciones)
   header: {
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingTop: 14,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.1)",
+    gap: 12,
+  },
+  headerTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.1)",
   },
   headerLeft: {
     flexDirection: "row",
@@ -385,6 +393,14 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.08)",
     justifyContent: "center",
     alignItems: "center",
+  },
+
+  // Fila de acciones (Recientes / Ofertas), separada del título de arriba
+  headerActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 10,
   },
  
   // Loading / Empty
@@ -576,62 +592,56 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  //boton reciente
+  // Botón "Recientes" (fila de acciones)
+  recientesButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.6)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.15)",
+  },
+  recientesText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#3a2c00",
+  },
 
-  
-headerRight: {
-  flexDirection: "row",
-  alignItems: "center",
-  gap: 10,
-},
-
-recientesButton: {
-  backgroundColor: "#FFF",
-  paddingHorizontal: 10,
-  paddingVertical: 6,
-  borderRadius: 8,
-  borderWidth: 1,
-  borderColor: "rgba(0,0,0,0.15)",
-},
-
-recientesText: {
-  fontSize: 11,
-  fontWeight: "800",
-  color: "#3a2c00",
-},
-
-  // Botón Ofertas + badge
+  // Botón "Ver ofertas" + badge (destacado en azul para diferenciarlo
+  // claramente de "Recientes" y darle más peso visual)
   ofertasButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#FFF",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.15)",
+    backgroundColor: "#0D47C7",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
   },
   ofertasButtonDisabled: {
-    opacity: 0.5,
+    opacity: 0.6,
   },
   ofertasText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "800",
-    color: "#3a2c00",
+    color: "#FFF",
   },
   ofertasBadge: {
-    backgroundColor: "#0D47C7",
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
+    backgroundColor: "#FFF",
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 4,
+    marginLeft: 2,
   },
   ofertasBadgeText: {
-    color: "#FFF",
-    fontSize: 10,
+    color: "#0D47C7",
+    fontSize: 11,
     fontWeight: "900",
   },
 });

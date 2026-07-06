@@ -84,6 +84,93 @@ LIMPIEZA (doméstica)
 - Limpieza profunda / post-obra: $32.500–$65.000+
 - Limpieza de oficina/local: cotizar por m² o por hora según superficie
 
+VIDRIERO
+- Visita/medición: $16.500–$32.500
+- Cambio de vidrio simple (ventana estándar, float 4mm): $26.000–$65.000
+- Cambio de vidrio laminado/blindex de puerta o baño: $65.000–$156.000
+- Espejo a medida (colocado, tamaño baño estándar): $52.000–$130.000
+- Mampara de baño (corrediza, colocada): $156.000–$390.000
+- Cerramiento de balcón/ventanal grande: $234.000–$650.000+
+- Vidrio roto sin protección de la vivienda = puede tratarse como urgencia:
+  recargo de urgencia si aplica
+
+COLOCADOR DE PISOS
+- Visita/presupuesto (con medición): $16.500–$32.500
+- Colocación de cerámico/porcelanato por m² (mano de obra): $13.000–$26.000/m²
+- Colocación de piso flotante/vinílico por m² (mano de obra): $9.750–$19.500/m²
+- Nivelación de contrapiso previo (por m²): $9.750–$19.500/m²
+- Reparación puntual (pisos sueltos, pocos m²): $32.500–$91.000
+- Colocación de zócalos (por metro lineal): $3.900–$7.800/m
+
+TAPICERO
+- Visita/presupuesto: $13.000–$26.000
+- Retapizado de silla individual: $32.500–$71.500
+- Retapizado de sillón de 1 cuerpo: $91.000–$195.000
+- Retapizado de sillón/sofá de 2-3 cuerpos: $195.000–$455.000+
+- Confección de fundas a medida (por asiento): $39.000–$91.000
+- Cambio de gomaespuma/relleno (incluido en retapizado, si es aparte): $19.500–$52.000
+
+HERRERO
+- Visita/presupuesto: $19.500–$39.000
+- Reparación de reja/portón (soldadura puntual): $32.500–$91.000
+- Fabricación de reja a medida (por m²): $52.000–$104.000/m²
+- Portón corredizo/abatible (fabricación + colocación, chico-mediano): $260.000–$650.000+
+- Baranda de escalera (por metro lineal): $39.000–$91.000/m
+- Ajuste/lubricación de portón existente: $19.500–$45.500
+
+ALBAÑIL
+- Visita/presupuesto de obra: $19.500–$45.500
+- Reparación de fisuras/revoque (por m², trabajo chico): $9.750–$26.000/m²
+- Colocación de cerámicos/revestimiento (por m², solo colocación): $13.000–$26.000/m²
+- Impermeabilización de pared o entrepiso (por m²): $13.000–$32.500/m²
+- Construcción de muro/tabique de mampostería (por m²): $45.500–$104.000/m²
+- Arreglo puntual chico (media jornada): $52.000–$117.000
+- Obra completa (jornal por día, oficial): $65.000–$130.000/día
+
+SERVICE DE ELECTRODOMÉSTICOS
+- Visita/diagnóstico a domicilio: $19.500–$45.500
+- Reparación de heladera (visita + repuesto menor, sin compresor): $45.500–$117.000
+- Reparación de heladera con cambio de compresor: $117.000–$260.000
+- Reparación de lavarropas (problema mecánico/eléctrico común): $39.000–$104.000
+- Reparación de lavarropas con cambio de cubo/rulemanes: $91.000–$195.000
+- Reparación de microondas u horno eléctrico: $26.000–$71.500
+- Reparación de aire acondicionado (no incluye carga de gas): $39.000–$104.000
+
+FUMIGADOR / CONTROL DE PLAGAS
+- Visita/diagnóstico: $16.500–$32.500
+- Fumigación departamento estándar (cucarachas, hormigas): $32.500–$71.500
+- Fumigación casa completa: $65.000–$156.000
+- Desratización: $45.500–$117.000
+- Control de plagas en obra/comercio (cotizar por m²): $9.750–$19.500/m²
+- Tratamiento con garantía/seguimiento (varias visitas): $91.000–$234.000
+
+MANTENIMIENTO DE PILETAS
+- Visita/diagnóstico: $16.500–$32.500
+- Mantenimiento mensual recurrente (limpieza + químicos, pileta estándar): $52.000–$117.000/mes
+- Limpieza puntual (una vez, pileta con agua verde/turbia): $65.000–$156.000
+- Reparación de bomba o filtro: $45.500–$130.000
+- Puesta en marcha de temporada (apertura de pileta): $71.500–$156.000
+
+NIÑERA (cuidado de niños en el hogar)
+- Tarifa por hora (referencia CNTCP + mercado, con retiro): $4.500–$6.500/hora
+- Jornada diaria (varias horas seguidas): $28.000–$45.000/día
+- Recargo por más de un niño: +20% a +30% sobre la tarifa base
+- Recargo nocturno / urgencia de último momento: +20% a +50% sobre la tarifa base
+- Niñera de emergencia (llamado imprevisto, mismo día): cotizar en el techo o por encima
+
+CUIDADOR DE ADULTOS MAYORES
+- Tarifa por hora (acompañamiento/asistencia básica, con retiro): $4.500–$6.500/hora
+- Jornada diaria (varias horas seguidas): $30.000–$52.000/día
+- Cuidado con tareas de asistencia personal (higiene, movilidad): $5.500–$8.000/hora
+- Cuidado nocturno / pernocte: $45.500–$91.000/noche
+- Recargo por urgencia o cobertura de imprevisto el mismo día: +20% a +50%
+
+PASEADOR DE PERROS
+- Paseo individual (30-45 min, un solo perro): $6.500–$13.000
+- Paseo grupal (30-45 min, varios perros del cliente): $9.750–$19.500
+- Abono mensual (paseos diarios de lunes a viernes): $91.000–$195.000/mes
+- Visita puntual (dar de comer/agua, sin paseo): $4.500–$9.750
+
 ── DISEÑO Y SERVICIOS DIGITALES ──
 
 DISEÑADOR GRÁFICO
@@ -181,31 +268,40 @@ return { precioMin, precioMax, precioSugerido };
 }
 
 // Normaliza una lista de opciones/chips: siempre array de strings cortos.
+// Siempre garantiza que "No sé" esté presente como una de las opciones,
+// para que el cliente pueda avanzar aunque no tenga el dato puntual.
 function normalizarOpciones(valor) {
-    if (!Array.isArray(valor)) return [];
-    return valor
+    if (!Array.isArray(valor)) valor = [];
+    let opciones = valor
         .map((op) => (typeof op === "string" ? op.trim() : ""))
-        .filter((op) => op.length > 0 && op.length <= 40)
-        .slice(0, 4);
+        .filter((op) => op.length > 0 && op.length <= 40);
+
+    const yaTieneNoSe = opciones.some((op) => op.toLowerCase() === "no sé" || op.toLowerCase() === "no se");
+    opciones = opciones.slice(0, yaTieneNoSe ? 4 : 3);
+    if (!yaTieneNoSe) opciones.push("No sé");
+
+    return opciones;
 }
 
-// Normaliza "preguntas": tiene que quedar como un array (0 a 3) de objetos
-// { pregunta: string, opciones: string[] }. Si el modelo manda cualquier
-// otra cosa (formato viejo, objetos incompletos, etc.), lo filtramos sin
-// romper. Cada pregunta con 0 opciones válidas recibe un fallback ["No sé"].
-function normalizarPreguntas(valor) {
+// Normaliza "preguntas": tiene que quedar como un array (0 a 3, o 0 a 1 si es
+// emergencia) de objetos { pregunta: string, opciones: string[] }. Si el
+// modelo manda cualquier otra cosa (formato viejo, objetos incompletos,
+// etc.), lo filtramos sin romper. Cada pregunta con 0 opciones válidas
+// recibe un fallback ["No sé"], y toda pregunta siempre incluye "No sé"
+// como una de sus opciones.
+function normalizarPreguntas(valor, { esEmergencia = false } = {}) {
     if (!Array.isArray(valor)) return [];
+    const maxPreguntas = esEmergencia ? 1 : 3;
     return valor
         .map((p) => {
             if (!p || typeof p !== "object") return null;
             const pregunta = typeof p.pregunta === "string" ? p.pregunta.trim() : "";
             if (!pregunta) return null;
-            let opciones = normalizarOpciones(p.opciones);
-            if (opciones.length === 0) opciones = ["No sé"];
+            const opciones = normalizarOpciones(p.opciones);
             return { pregunta, opciones };
         })
         .filter(Boolean)
-        .slice(0, 3);
+        .slice(0, maxPreguntas);
 }
 
 export async function analizarSolicitud(descripcionOriginal, servicios) {
@@ -219,6 +315,12 @@ export async function analizarSolicitud(descripcionOriginal, servicios) {
     const listaServicios = servicios
         .map((s) => `[${s.id}] ${s.nombre} (${s.categoria_nombre})`)
         .join("\n");
+
+    // Se usa para acotar la cantidad de preguntas después de la respuesta del
+    // modelo, sin depender de que el modelo lo recuerde bien: si el texto ya
+    // trae la sección "— Emergencia: ...", tratamos todo el pedido como
+    // emergencia de entrada.
+    const esEmergenciaDeclarada = /—\s*Emergencia:/i.test(descripcionOriginal);
 
     const systemPrompt = `
 Sos un clasificador y cotizador experto en servicios (changas) en Argentina.
@@ -306,6 +408,21 @@ algo que tengas que inferir vos, ni algo que tengas que volver a preguntar
 - Nunca le preguntes al cliente si es una emergencia: ese dato ya se decidió
   con un botón en la pantalla antes de llegar a vos.
 
+**REGLA CRÍTICA: SI ES EMERGENCIA, NO HAGAS MUCHAS PREGUNTAS**
+Cuando el pedido es una emergencia (ya sea porque el texto trae la sección
+"— Emergencia: ..." o porque vos la detectaste por tu cuenta), priorizá la
+velocidad por sobre la precisión del presupuesto:
+- Máximo UNA sola pregunta, y solo si es absolutamente imprescindible para
+  poder clasificar el servicio o cotizar (por ejemplo, distinguir entre dos
+  rubros muy distintos con precios muy distintos).
+- Si podés clasificar y cotizar razonablemente con lo que ya tenés (aunque
+  sea con una estimación un poco más amplia), preferí NO preguntar nada:
+  "necesitaAclaracion": false, "preguntas": [], y poné cualquier duda menor
+  en "notas". En una emergencia, el cliente necesita que le manden a alguien
+  YA, no un cuestionario.
+- Nunca mandes 2 o 3 preguntas juntas en una emergencia, aunque en un pedido
+  normal esas mismas preguntas te parecieran razonables de agrupar.
+
 **REGLA CRÍTICA SOBRE ACLARACIONES — LEÉ ESTO PRIMERO:**
 El texto del cliente puede incluir una o más secciones "— Aclaración: ...", que son
 respuestas que el cliente YA DIO a preguntas anteriores (pueden venir varias
@@ -334,15 +451,23 @@ Si te faltan VARIOS datos independientes para clasificar o cotizar bien (por
 ejemplo: tipo de problema + ambiente + urgencia), no preguntes uno por vez.
 Agrupá hasta 2 o 3 preguntas juntas en el array "preguntas", para que el
 cliente las responda todas de una sola vez y no tengas que ir de a poco.
+Esto NO aplica si el pedido es una emergencia: en ese caso, ver la regla
+"SI ES EMERGENCIA, NO HAGAS MUCHAS PREGUNTAS" de arriba (máximo 1 pregunta).
 - Preferí SIEMPRE la tanda más chica posible que resuelva la ambigüedad: si
   con 1 pregunta alcanza, mandá solo 1. Nunca mandes una pregunta "de relleno"
   solo para completar el cupo de 2 o 3.
-- Máximo 3 preguntas por tanda.
+- Máximo 3 preguntas por tanda (máximo 1 si es emergencia).
 - Cada pregunta tiene que ser sobre un dato DISTINTO e independiente de las
   demás (no repitas el mismo eje con otras palabras).
 - No preguntes por el plazo/fecha límite ni por si es una emergencia: esos
   dos datos ya vienen resueltos por los selectores/botones de la pantalla
   antes de analizar, nunca son parte de "preguntas".
+
+**REGLA CRÍTICA: TODA PREGUNTA TIENE QUE TENER SIEMPRE LA OPCIÓN "No sé"**
+Sin excepción: cada objeto de "preguntas" tiene que incluir "No sé" como una
+de las opciones del array "opciones", además de las 2-3 respuestas más
+probables. Esto es así aunque te parezca una pregunta fácil de responder:
+el cliente siempre tiene que poder tocar un botón y avanzar sin trabarse.
 
 **LO QUE TENÉS QUE DEVOLVER:**
 
@@ -371,17 +496,18 @@ cliente las responda todas de una sola vez y no tengas que ir de a poco.
    (incluyendo aclaraciones previas). false si el cliente ya dijo que no
    sabe, no puede dar más detalles, o si ya respondió aclaraciones antes y
    no queda nada crítico por preguntar — en esos casos elegí el servicio más
-   cercano posible y procedé sin preguntar más.
+   cercano posible y procedé sin preguntar más. Si es una emergencia, ver
+   también la regla de arriba: preferí false salvo que sea imprescindible.
 
-7. "preguntas": si necesitaAclaracion es true, un array de 1 a 3 objetos,
-   cada uno con:
+7. "preguntas": si necesitaAclaracion es true, un array de 1 a 3 objetos (1 a
+   1 si es emergencia), cada uno con:
      - "pregunta": una pregunta corta y concreta, que NO repita algo ya
        contestado. Ejemplos: "¿La pérdida es en una canilla, un caño o el
        inodoro?", "¿En qué ambiente necesitás la pintura?".
      - "opciones": un array de 2 a 4 respuestas MUY cortas (2-4 palabras)
        para que el cliente pueda TOCAR UN BOTÓN en vez de escribir, cubriendo
-       las respuestas más probables a esa pregunta puntual. Si "no sé" es una
-       respuesta probable, incluila como opción ("No sé").
+       las respuestas más probables a esa pregunta puntual, y SIEMPRE
+       incluyendo "No sé" como una de las opciones (ver regla de arriba).
    Ejemplo de una tanda con 2 preguntas independientes:
    [
      { "pregunta": "¿Querés que vayan a diagnosticar el problema, o ya sabés
@@ -434,8 +560,13 @@ cliente las responda todas de una sola vez y no tengas que ir de a poco.
         resultado.complejidad = "media";
     }
 
-    // Siempre dejamos "preguntas" como array válido de { pregunta, opciones }.
-    resultado.preguntas = normalizarPreguntas(resultado.preguntas);
+    // Si el cliente ya marcó la emergencia con el botón, o el modelo la marcó
+    // por su cuenta, acotamos las preguntas a máximo 1 pase lo que pase.
+    const esEmergencia = esEmergenciaDeclarada || resultado.emergencia === true;
+
+    // Siempre dejamos "preguntas" como array válido de { pregunta, opciones },
+    // con "No sé" garantizado en cada una, y acotado a 1 sola si es emergencia.
+    resultado.preguntas = normalizarPreguntas(resultado.preguntas, { esEmergencia });
 
     // Mantenemos "necesitaAclaracion" consistente con si hay o no preguntas:
     // si el modelo dijo que sí pero no mandó ninguna pregunta usable, le

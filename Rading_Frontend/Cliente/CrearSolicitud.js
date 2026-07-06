@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   View, Text, TextInput, Pressable, ScrollView,
-  ActivityIndicator, StyleSheet, Platform, Animated, KeyboardAvoidingView,
+  ActivityIndicator, StyleSheet, Platform, Animated, KeyboardAvoidingView, Modal,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import API_URL from "../configS";
@@ -604,19 +604,43 @@ export default function CrearSolicitud({ route, navigation }) {
               <Text style={styles.chevron}>{selectorAbierto ? "▲" : "▼"}</Text>
             </Pressable>
 
-            {selectorAbierto && (
-              <View style={styles.dropdown}>
-                {analisis.servicios?.map((s) => (
-                  <Pressable
-                    key={s.id}
-                    style={styles.dropdownItem}
-                    onPress={() => { setServicioId(s.id); setSelectorAbierto(false); }}
+            <Modal
+              visible={selectorAbierto}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setSelectorAbierto(false)}
+            >
+              {/* Fondo: tocar afuera de la lista la cierra. Al estar en un
+                  Modal, esta lista queda FUERA del ScrollView de la pantalla,
+                  así que su scroll no compite con el de la pantalla. */}
+              <Pressable style={styles.modalBackdrop} onPress={() => setSelectorAbierto(false)}>
+                <Pressable style={styles.modalCard} onPress={() => {}}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitulo}>Elegí el servicio</Text>
+                    <Pressable onPress={() => setSelectorAbierto(false)} hitSlop={10}>
+                      <Text style={styles.modalCerrar}>✕</Text>
+                    </Pressable>
+                  </View>
+                  <ScrollView
+                    style={styles.modalScroll}
+                    showsVerticalScrollIndicator
+                    keyboardShouldPersistTaps="handled"
                   >
-                    <Text style={styles.dropdownItemText}>{s.categoria} · {s.nombre}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
+                    {analisis.servicios?.map((s) => (
+                      <Pressable
+                        key={s.id}
+                        style={[styles.dropdownItem, s.id === servicioId && styles.dropdownItemActivo]}
+                        onPress={() => { setServicioId(s.id); setSelectorAbierto(false); }}
+                      >
+                        <Text style={[styles.dropdownItemText, s.id === servicioId && styles.dropdownItemTextActivo]}>
+                          {s.categoria} · {s.nombre}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </Pressable>
+              </Pressable>
+            </Modal>
 
             {tienePlazo && fechaLimite && (
               <>
@@ -810,12 +834,34 @@ const styles = StyleSheet.create({
   },
   selectText: { fontSize: 15, color: COLORS.ink, fontWeight: "600" },
   chevron: { color: COLORS.inkSoft, fontSize: 12 },
-  dropdown: {
-    backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: 14, marginTop: 6, overflow: "hidden", maxHeight: 240,
+
+  // Modal del selector de servicio: al vivir en un Modal (fuera del
+  // ScrollView de la pantalla), su scroll interno no compite con el de
+  // afuera, y el usuario puede bajar la lista sin que se mueva la pantalla.
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
   },
-  dropdownItem: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  modalCard: {
+    backgroundColor: COLORS.card,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    maxHeight: "70%",
+    paddingBottom: Platform.OS === "ios" ? 24 : 12,
+  },
+  modalHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingVertical: 16,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  modalTitulo: { fontSize: 16, fontWeight: "700", color: COLORS.ink },
+  modalCerrar: { fontSize: 16, color: COLORS.inkSoft, fontWeight: "700", padding: 4 },
+  modalScroll: { paddingHorizontal: 4 },
+
+  dropdownItem: { paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  dropdownItemActivo: { backgroundColor: "#EAF1FC" },
   dropdownItemText: { fontSize: 14, color: COLORS.ink },
+  dropdownItemTextActivo: { color: COLORS.primary, fontWeight: "700" },
 
   divider: { height: 1, backgroundColor: "rgba(0,0,0,0.1)", marginTop: 18 },
 
