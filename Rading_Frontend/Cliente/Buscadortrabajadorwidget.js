@@ -143,13 +143,34 @@ const TimePicker = ({ label, value, onChange }) => {
 
 // ─── Filter Overlay ───────────────────────────────────────────────────────────
 
-const ESPECIALIDADES = [
-  'Electrisista', 'Plomero', 'Jardinero', 'Gasista',
-  'Limpieza', 'Cerrajero',
-  'Diseñador Gráfico', 'Programador', 'Redactor',
-  'Editor de Video', 'Community Manager',
-  'Abogado', 'Contador', 'Arquitecto',
-  'Médico', 'Psicólogo', 'Ingeniero',
+// 👇 ACTUALIZADO: lista completa de servicios agrupada por categoría,
+// tal cual la tabla "Servicio" (id, nombre, categoria_id).
+// Se mantiene la ortografía exacta de la base ("Electrisista") porque
+// el filtro hace match textual contra s.nombre en el backend.
+const ESPECIALIDADES_POR_CATEGORIA = [
+  {
+    categoria: 'Hogar y oficios',
+    servicios: [
+      'Electrisista', 'Plomero', 'Jardinero', 'Gasista', 'Limpieza', 'Cerrajero',
+      'Pintor', 'Carpintería', 'Mudanzas', 'Vidriero', 'Colocador de Pisos',
+      'Tapicero', 'Herrero', 'Albañil', 'Service de Electrodomésticos',
+      'Fumigador / Control de Plagas', 'Mantenimiento de Piletas',
+      'Niñera', 'Cuidador de Adultos Mayores', 'Paseador de Perros',
+    ],
+  },
+  {
+    categoria: 'Digital y freelance',
+    servicios: [
+      'Diseñador Gráfico', 'Programador', 'Redactor',
+      'Editor de Video', 'Community Manager',
+    ],
+  },
+  {
+    categoria: 'Profesionales',
+    servicios: [
+      'Abogado', 'Contador', 'Arquitecto', 'Médico', 'Psicólogo', 'Ingeniero',
+    ],
+  },
 ];
 
 const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
@@ -189,25 +210,31 @@ const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
             <Text style={styles.filterLabel}>Rating:</Text>
             <StarSelector value={estrellas} onChange={setEstrellas} />
 
-            {/* Especialidad */}
+            {/* Especialidad — ahora agrupada por categoría */}
             <Text style={[styles.filterLabel, { marginTop: 18 }]}>Especialidad</Text>
-            <View style={styles.chipsWrap}>
-              {ESPECIALIDADES.map(esp => (
-                <TouchableOpacity
-                  key={esp}
-                  style={[styles.chip, especialidad === esp && styles.chipActive]}
-                  onPress={() => setEspecialidad(especialidad === esp ? null : esp)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.chipText, especialidad === esp && styles.chipTextActive]}>
-                    {esp}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+
+            {ESPECIALIDADES_POR_CATEGORIA.map(grupo => (
+              <View key={grupo.categoria} style={{ marginBottom: 14 }}>
+                <Text style={styles.categoriaLabel}>{grupo.categoria}</Text>
+                <View style={styles.chipsWrap}>
+                  {grupo.servicios.map(esp => (
+                    <TouchableOpacity
+                      key={esp}
+                      style={[styles.chip, especialidad === esp && styles.chipActive]}
+                      onPress={() => setEspecialidad(especialidad === esp ? null : esp)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.chipText, especialidad === esp && styles.chipTextActive]}>
+                        {esp}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ))}
 
             {/* Horario */}
-            <Text style={[styles.filterLabel, { marginTop: 18, color: '#1565D8' }]}>Horario disponible</Text>
+            <Text style={[styles.filterLabel, { marginTop: 4, color: '#1565D8' }]}>Horario disponible</Text>
             <View style={styles.timePickers}>
               <TimePicker label="Desde" value={horarioDesde} onChange={setHorarioDesde} />
               <TimePicker label="Hasta" value={horarioHasta} onChange={setHorarioHasta} />
@@ -530,6 +557,16 @@ const styles = StyleSheet.create({
 
   filterSection: { color: WHITE, fontSize: 15, fontWeight: '700', marginBottom: 10 },
   filterLabel:   { color: '#8faeff', fontSize: 13, fontWeight: '600', marginBottom: 8 },
+
+  // 👇 NUEVO: subtítulo de cada grupo de especialidades
+  categoriaLabel: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 10.5,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+  },
 
   // Stars (selector de filtro)
   starsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
