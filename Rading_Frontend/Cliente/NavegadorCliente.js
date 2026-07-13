@@ -6,21 +6,17 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
+  Easing,
 } from 'react-native';
 // 1. Importamos los componentes necesarios para el SVG
 import Svg, { G, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native'; // 👈 NUEVO
+import { useNavigation } from '@react-navigation/native';
 
 
 const Icons = {
   Home: ({ color, size = 22 }) => (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-    >
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <G id="SVGRepo_bgCarrier" strokeWidth="0" />
       <G id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round" />
       <G id="SVGRepo_iconCarrier">
@@ -35,47 +31,23 @@ const Icons = {
     </Svg>
   ),
 
-
   Search: ({ color, size = 22 }) => (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill={color}
-    >
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
       <G id="SVGRepo_bgCarrier" strokeWidth="0" />
       <G id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round" />
       <G id="SVGRepo_iconCarrier">
-        <Path
-          d="M19.778,4.222A11,11,0,1,1,12,1a1,1,0,0,1,1,1v8.277a2,2,0,1,1-2,0V7.621a4.49,4.49,0,1,0,4.182,1.2A1,1,0,0,1,16.6,7.4,6.505,6.505,0,1,1,11,5.585V3.055a9,9,0,1,0,7.364,2.581,1,1,0,1,1,1.414-1.414Z"
-        />
+        <Path d="M19.778,4.222A11,11,0,1,1,12,1a1,1,0,0,1,1,1v8.277a2,2,0,1,1-2,0V7.621a4.49,4.49,0,1,0,4.182,1.2A1,1,0,0,1,16.6,7.4,6.505,6.505,0,1,1,11,5.585V3.055a9,9,0,1,0,7.364,2.581,1,1,0,1,1,1.414-1.414Z" />
       </G>
     </Svg>
   ),
 
-
   Chat: ({ color, size = 22 }) => (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-    >
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <G id="SVGRepo_bgCarrier" strokeWidth="0" />
       <G id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round" />
       <G id="SVGRepo_iconCarrier">
-        <Path
-          d="M8 10.5H16"
-          stroke={color}
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-        <Path
-          d="M8 14H13.5"
-          stroke={color}
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
+        <Path d="M8 10.5H16" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <Path d="M8 14H13.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
         <Path
           d="M17 3.33782C15.5291 2.48697 13.8214 2 12 2C6.47715 2 2 6.47715 2 12C2 13.5997 2.37562 15.1116 3.04346 16.4525C3.22094 16.8088 3.28001 17.2161 3.17712 17.6006L2.58151 19.8267C2.32295 20.793 3.20701 21.677 4.17335 21.4185L6.39939 20.8229C6.78393 20.72 7.19121 20.7791 7.54753 20.9565C8.88837 21.6244 10.4003 22 12 22C17.5228 22 22 17.5228 22 12C22 10.1786 21.513 8.47087 20.6622 7"
           stroke={color}
@@ -86,56 +58,69 @@ const Icons = {
     </Svg>
   ),
 
+  Profile: ({ color, size = 22 }) => (
+    <Svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <G id="SVGRepo_bgCarrier" strokeWidth="0" />
+      <G id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round" />
+      <G id="SVGRepo_iconCarrier">
+        <Path
+          d="M8 7C9.65685 7 11 5.65685 11 4C11 2.34315 9.65685 1 8 1C6.34315 1 5 2.34315 5 4C5 5.65685 6.34315 7 8 7Z"
+          fill={color}
+        />
+        <Path d="M14 12C14 10.3431 12.6569 9 11 9H5C3.34315 9 2 10.3431 2 12V15H14V12Z" fill={color} />
+      </G>
+    </Svg>
+  ),
 
- Profile: ({ color, size = 22 }) => (
-  <Svg
-    width={size}
-    height={size}
-    viewBox="0 0 16 16"
-    fill="none"
-  >
-    <G id="SVGRepo_bgCarrier" strokeWidth="0" />
-    <G id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round" />
-    <G id="SVGRepo_iconCarrier">
+  Plus: ({ color, size = 22 }) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
-        d="M8 7C9.65685 7 11 5.65685 11 4C11 2.34315 9.65685 1 8 1C6.34315 1 5 2.34315 5 4C5 5.65685 6.34315 7 8 7Z"
-        fill={color}
+        d="M12 5V19M5 12H19"
+        stroke={color}
+        strokeWidth="2.4"
+        strokeLinecap="round"
       />
-      <Path
-        d="M14 12C14 10.3431 12.6569 9 11 9H5C3.34315 9 2 10.3431 2 12V15H14V12Z"
-        fill={color}
-      />
-    </G>
-  </Svg>
-),
+    </Svg>
+  ),
 };
+
+// Paleta alineada con el resto de la app (Home, Chats)
+const BLUE       = '#1565D8';
+const BLUE_DARK  = '#0d47a8';
+const BLUE_LIGHT = '#3b7ff0';
+
 const THEME = {
-  bg: '#e4e2e2',
-  border: 'rgba(0, 0, 0, 0.06)',
-  accent: '#ff6363',
-  accentGlow: 'rgba(102, 102, 102, 0.35)',
-  accentLight: '#004AC6',
-  textInactive: '#8d8d94',
-  fabBg: '#004AC6',
-  fabShadow: '#004AC6',
+  bar: '#FFFFFF',
+  border: 'rgba(21,101,216,0.08)',
+  textInactive: '#9AA5B5',
+  active: BLUE_DARK,
+  pill: 'rgba(21,101,216,0.14)',
+  pillBorder: 'rgba(21,101,216,0.22)',
+  fabBg: BLUE_DARK,
+  fabBgBright: '#1f6fe6',
+  fabHighlight: BLUE_LIGHT,
+  fabShadow: BLUE_DARK,
+  fabGlow: 'rgba(21,101,216,0.55)',
 };
 
-
-// Cada tab define a qué pantalla del Stack.Navigator (App.js) navega.
-// Si el nombre de alguna pantalla en tu Stack es distinto, cambialo acá.
+// Cada tab define a quÃ© pantalla del Stack.Navigator (App.js) navega.
+// Si el nombre de alguna pantalla en tu Stack es distinto, cambialo acÃ¡.
+// El fab ahora SÃ es un tab "activable": al tocarlo se marca como activo
+// y el indicador se transforma en un anillo circular a su alrededor.
 const NAV_ITEMS = [
-  { key: 'inicio',   label: 'Inicio',   Icon: Icons.Home,    screen: 'HomeCliente' },
-  { key: 'busqueda', label: 'Busqueda', Icon: Icons.Search,  screen: 'BuscadorCliente' },
-  { key: 'chats',    label: 'Chats',    Icon: Icons.Chat,    screen: 'Chats' }, // 👈 todavía no existe esta pantalla en App.js, hay que crearla
-  { key: 'perfil',   label: 'Perfil',   Icon: Icons.Profile, screen: 'PerfilScreen' },
+  { key: 'inicio',   label: 'Inicio',  Icon: Icons.Home,    screen: 'HomeCliente' },
+  { key: 'busqueda', label: 'Buscar',  Icon: Icons.Search,  screen: 'BuscadorCliente' },
+  { key: 'fab',      label: null,      Icon: Icons.Plus,    screen: 'CrearSolicitud' },
+  { key: 'chats',    label: 'Chats',   Icon: Icons.Chat,    screen: 'ChatsCliente' },
+  { key: 'perfil',   label: 'Perfil',  Icon: Icons.Profile, screen: 'PerfilScreen' },
 ];
 
+const FAB_INDEX = NAV_ITEMS.findIndex((i) => i.key === 'fab');
+const FAB_RING_SIZE = 60;
 
 function NavTabItem({ item, isActive, onPress }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(isActive ? 1 : 0)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-
 
   useEffect(() => {
     Animated.parallel([
@@ -150,15 +135,8 @@ function NavTabItem({ item, isActive, onPress }) {
         duration: 200,
         useNativeDriver: true,
       }),
-      Animated.spring(translateY, {
-        toValue: isActive ? -2 : 0,
-        useNativeDriver: true,
-        tension: 180,
-        friction: 8,
-      }),
     ]).start();
   }, [isActive]);
-
 
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
@@ -169,7 +147,6 @@ function NavTabItem({ item, isActive, onPress }) {
     }).start();
   };
 
-
   const handlePressOut = () => {
     Animated.spring(scaleAnim, {
       toValue: isActive ? 1.05 : 1,
@@ -179,6 +156,88 @@ function NavTabItem({ item, isActive, onPress }) {
     }).start();
   };
 
+  return (
+    <TouchableOpacity
+      style={styles.tabItem}
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      activeOpacity={1}
+    >
+      <Animated.View style={[styles.tabContent, { transform: [{ scale: scaleAnim }] }]}>
+        <item.Icon color={isActive ? THEME.active : THEME.textInactive} size={21} />
+
+        <Animated.Text
+          style={[
+            styles.tabLabel,
+            {
+              color: isActive ? THEME.active : THEME.textInactive,
+              fontWeight: isActive ? '700' : '600',
+              opacity: opacityAnim.interpolate({ inputRange: [0, 1], outputRange: [0.65, 1] }),
+            },
+          ]}
+        >
+          {item.label}
+        </Animated.Text>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+function FabButton({ onPress, isActive, transitPulseKey }) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;   // flash al tocar / al pasar de largo
+  const glowRing = useRef(new Animated.Value(0)).current;   // anillo expansivo del flash
+  const breathe = useRef(new Animated.Value(0)).current;    // brillo "respirando" mientras estÃ¡ activo
+  const breatheLoop = useRef(null);
+
+  const fireFlash = () => {
+    glowAnim.setValue(1);
+    glowRing.setValue(0);
+    Animated.timing(glowAnim, { toValue: 0, duration: 550, useNativeDriver: false }).start();
+    Animated.timing(glowRing, { toValue: 1, duration: 550, useNativeDriver: true }).start();
+  };
+
+  // Brillo persistente en "respiraciÃ³n" mientras el fab es el tab activo,
+  // asÃ­ se identifica de un vistazo que estÃ¡s parado ahÃ­.
+  useEffect(() => {
+    if (isActive) {
+      breatheLoop.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(breathe, { toValue: 1, duration: 900, useNativeDriver: true }),
+          Animated.timing(breathe, { toValue: 0, duration: 900, useNativeDriver: true }),
+        ])
+      );
+      breatheLoop.current.start();
+    } else {
+      breatheLoop.current && breatheLoop.current.stop();
+      Animated.timing(breathe, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+    }
+    return () => breatheLoop.current && breatheLoop.current.stop();
+  }, [isActive]);
+
+  // Cuando la gota "pasa de largo" por el fab (sin quedarse ahÃ­), tiramos
+  // un flash cortito para que se sienta el recorrido fluido.
+  useEffect(() => {
+    if (transitPulseKey > 0) fireFlash();
+  }, [transitPulseKey]);
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, { toValue: 0.88, useNativeDriver: true, tension: 200, friction: 6 }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 160, friction: 7 }).start();
+    fireFlash();
+  };
+
+  const ringScale = glowRing.interpolate({ inputRange: [0, 1], outputRange: [1, 1.9] });
+  const ringOpacity = glowRing.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] });
+  const flashColor = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
+  const bgColor = isActive || glowAnim ? undefined : undefined;
+
+  const breatheScale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
+  const breatheOpacity = breathe.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.75] });
 
   return (
     <TouchableOpacity
@@ -188,236 +247,314 @@ function NavTabItem({ item, isActive, onPress }) {
       onPressOut={handlePressOut}
       activeOpacity={1}
     >
-      <Animated.View
-        style={[
-          styles.tabContent,
-          { transform: [{ scale: scaleAnim }, { translateY }] },
-        ]}
-      >
+      <View style={styles.fabZone}>
+        {/* Brillo persistente mientras el fab estÃ¡ activo */}
         <Animated.View
-          style={[styles.activePill, { opacity: opacityAnim }]}
           pointerEvents="none"
-        />
-
-
-        <item.Icon
-          color={isActive ? THEME.accentLight : THEME.textInactive}
-          size={22}
-        />
-
-
-        <Animated.Text
           style={[
-            styles.tabLabel,
+            styles.fabBreatheRing,
+            { opacity: isActive ? breatheOpacity : 0, transform: [{ scale: breatheScale }] },
+          ]}
+        />
+        {/* Flash expansivo al tocar (o al pasar de largo) */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.fabGlowRing,
+            { opacity: ringOpacity, transform: [{ scale: ringScale }] },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.fabButton,
             {
-              color: isActive ? THEME.accentLight : THEME.textInactive,
-              opacity: opacityAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.5, 1],
-              }),
+              backgroundColor: isActive ? THEME.fabBgBright : THEME.fabBg,
+              transform: [{ scale: scaleAnim }],
             },
           ]}
         >
-          {item.label}
-        </Animated.Text>
-
-
-        <Animated.View style={[styles.activeDot, { opacity: opacityAnim }]} />
-      </Animated.View>
+          <Animated.View
+            style={[styles.fabFlashOverlay, { opacity: glowAnim }]}
+            pointerEvents="none"
+          />
+          <View style={styles.fabHighlight} pointerEvents="none" />
+          <Icons.Plus color="#FFFFFF" size={22} />
+        </Animated.View>
+      </View>
     </TouchableOpacity>
   );
 }
-
-
-function FabButton({ onPress }) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-
-
-  const handlePressIn = () => {
-    Animated.parallel([
-      Animated.spring(scaleAnim, { toValue: 0.9, useNativeDriver: true, tension: 200, friction: 6 }),
-      Animated.timing(rotateAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
-    ]).start();
-  };
-
-
-  const handlePressOut = () => {
-    Animated.parallel([
-      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 180, friction: 8 }),
-      Animated.timing(rotateAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
-    ]).start();
-  };
-
-
-  const rotate = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '45deg'],
-  });
-
-
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      activeOpacity={1}
-      style={styles.fabWrapper}
-    >
-      <Animated.View style={[styles.fabButton, { transform: [{ scale: scaleAnim }] }]}>
-        <Animated.Text style={[styles.fabIcon, { transform: [{ rotate }] }]}>
-          +
-        </Animated.Text>
-      </Animated.View>
-    </TouchableOpacity>
-  );
-}
-
 
 /**
- * Barra de navegación inferior.
+ * Barra de navegaciÃ³n inferior.
  *
  * Props:
  * - usuario: objeto del usuario logueado (se lo pasamos a las pantallas
  *   a las que navegamos, porque varias lo necesitan, ej. PerfilScreen).
- * - pantallaActiva: opcional. Le decís desde qué pantalla la estás
- *   renderizando ('inicio' | 'busqueda' | 'chats' | 'perfil') para que
- *   se marque el tab correcto como activo. Si no lo pasás, arranca en 'inicio'.
+ * - pantallaActiva: opcional. Le decÃ­s desde quÃ© pantalla la estÃ¡s
+ *   renderizando ('inicio' | 'busqueda' | 'fab' | 'chats' | 'perfil') para
+ *   que se marque el tab correcto como activo. Si no lo pasÃ¡s, arranca en 'inicio'.
  */
 export default function BottomNavBar({ usuario, pantallaActiva }) {
   const [activeTab, setActiveTab] = useState(pantallaActiva || 'inicio');
+  const [rowWidth, setRowWidth] = useState(0);
+  const [fabTransitPulse, setFabTransitPulse] = useState(0);
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation(); // 👈 NUEVO
+  const navigation = useNavigation();
+
+  const pillX = useRef(new Animated.Value(0)).current;
+  const pillStretch = useRef(new Animated.Value(1)).current; // efecto "gota" al deslizar
+  const fabActiveAnim = useRef(new Animated.Value(pantallaActiva === 'fab' ? 1 : 0)).current;
 
   useEffect(() => {
     if (pantallaActiva) setActiveTab(pantallaActiva);
   }, [pantallaActiva]);
 
-  const leftItems = NAV_ITEMS.slice(0, 2);
-  const rightItems = NAV_ITEMS.slice(2, 4);
+  const activeIndex = NAV_ITEMS.findIndex((i) => i.key === activeTab);
+  const isFabActive = activeTab === 'fab';
+
+  const slotWidth = rowWidth / NAV_ITEMS.length || 0;
+
+  useEffect(() => {
+    if (!rowWidth || activeIndex < 0) return;
+    const targetX = activeIndex * slotWidth;
+
+    // Se estira un poco en el sentido del movimiento y vuelve a su forma,
+    // como una gota que se desliza y se acomoda.
+    Animated.sequence([
+      Animated.timing(pillStretch, { toValue: 1.22, duration: 110, useNativeDriver: true }),
+      Animated.spring(pillStretch, { toValue: 1, useNativeDriver: true, tension: 220, friction: 10 }),
+    ]).start();
+
+    Animated.spring(pillX, {
+      toValue: targetX,
+      useNativeDriver: true,
+      tension: 140,
+      friction: 16,
+    }).start();
+
+    Animated.timing(fabActiveAnim, {
+      toValue: isFabActive ? 1 : 0,
+      duration: 260,
+      useNativeDriver: true,
+    }).start();
+  }, [activeIndex, rowWidth]);
+
+  // Detecta cuando la gota estÃ¡ "pasando de largo" por el slot del fab
+  // (por ejemplo: vas de Perfil a Inicio) para tirarle un pequeÃ±o brillo
+  // de paso, sin que el fab quede marcado como activo.
+  useEffect(() => {
+    if (!rowWidth || FAB_INDEX < 0) return;
+    const fabStart = FAB_INDEX * slotWidth;
+    const fabEnd = fabStart + slotWidth;
+    let wasInside = false;
+
+    const id = pillX.addListener(({ value }) => {
+      const center = value + slotWidth / 2;
+      const isInside = center >= fabStart && center <= fabEnd;
+      if (isInside && !wasInside && activeTab !== 'fab') {
+        setFabTransitPulse((k) => k + 1);
+      }
+      wasInside = isInside;
+    });
+
+    return () => pillX.removeListener(id);
+  }, [rowWidth, activeTab]);
 
   const irA = (item) => {
     setActiveTab(item.key);
     navigation.navigate(item.screen, { usuario });
   };
 
+  // Ancho fijo por slot: cada tab (incluido el primero y el Ãºltimo) ocupa
+  // todo su carril, tocando el borde de la barra en los extremos y la
+  // mitad de camino hacia el vecino en el resto. Circular alrededor del fab.
+  const pillWidth = slotWidth || 1;
+
+  const rectOpacity = fabActiveAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
+  const circleOpacity = fabActiveAnim;
+  const circleOffsetX = slotWidth ? (slotWidth - FAB_RING_SIZE) / 2 : 0;
 
   return (
-    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-      <View style={styles.topBorder} />
-      <View style={styles.bar}>
-        <View style={styles.tabGroup}>
-          {leftItems.map(item => (
-            <NavTabItem
-              key={item.key}
-              item={item}
-              isActive={activeTab === item.key}
-              onPress={() => irA(item)}
+    <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 10) }]} pointerEvents="box-none">
+      <View style={styles.container}>
+        <View style={styles.bar}>
+          <View
+            style={styles.tabsRow}
+            onLayout={(e) => setRowWidth(e.nativeEvent.layout.width)}
+          >
+            {/* Gota rectangular: usada mientras el activo es un tab de texto */}
+            <Animated.View
+              style={[
+                styles.slidingPill,
+                {
+                  width: pillWidth,
+                  opacity: rectOpacity,
+                  transform: [{ translateX: pillX }, { scaleX: pillStretch }],
+                },
+              ]}
+              pointerEvents="none"
             />
-          ))}
-        </View>
 
-
-  <FabButton onPress={() => navigation.navigate('CrearSolicitud', { usuario })} />
-
-
-        <View style={styles.tabGroup}>
-          {rightItems.map(item => (
-            <NavTabItem
-              key={item.key}
-              item={item}
-              isActive={activeTab === item.key}
-              onPress={() => irA(item)}
+            {/* Gota circular: se arma alrededor del fab cuando es el activo */}
+            <Animated.View
+              style={[
+                styles.slidingCircle,
+                {
+                  opacity: circleOpacity,
+                  transform: [
+                    { translateX: pillX },
+                    { translateX: circleOffsetX },
+                    { scale: pillStretch },
+                  ],
+                },
+              ]}
+              pointerEvents="none"
             />
-          ))}
+
+            {NAV_ITEMS.map((item) =>
+              item.key === 'fab' ? (
+                <FabButton
+                  key={item.key}
+                  onPress={() => irA(item)}
+                  isActive={isFabActive}
+                  transitPulseKey={fabTransitPulse}
+                />
+              ) : (
+                <NavTabItem
+                  key={item.key}
+                  item={item}
+                  isActive={activeTab === item.key}
+                  onPress={() => irA(item)}
+                />
+              )
+            )}
+          </View>
         </View>
       </View>
     </View>
   );
 }
 
-
 const styles = StyleSheet.create({
-  container: {
+  wrapper: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: THEME.bg,
+    alignItems: 'center',
   },
-  topBorder: {
-    height: 1,
-    backgroundColor: THEME.border,
+  container: {
+    width: '100%',
+    // MÃ¡s margen a los costados para que quede como una cÃ¡psula
+    // flotante chica y centrada, bien separada de los bordes del celu
+    // (estilo WhatsApp), en vez de una barra que casi toca los bordes.
+    paddingHorizontal: 52,
+    alignItems: 'center',
   },
   bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingTop: 10,
+    width: '100%',
+    backgroundColor: THEME.bar,
+    borderRadius: 28,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    shadowColor: '#0d47a8',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 12,
   },
-  tabGroup: {
+  tabsRow: {
     flexDirection: 'row',
-    flex: 1,
-    justifyContent: 'space-evenly',
     alignItems: 'center',
+    height: 52,
+  },
+  slidingPill: {
+    position: 'absolute',
+    // Ocupa el carril completo: en Inicio/Perfil llega hasta el borde
+    // de la barra, y en los del medio hasta la mitad de cada vecino.
+    top: 0,
+    left: 0,
+    height: 52,
+    backgroundColor: THEME.pill,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: THEME.pillBorder,
+  },
+  slidingCircle: {
+    position: 'absolute',
+    top: (52 - FAB_RING_SIZE) / 2,
+    left: 0,
+    width: FAB_RING_SIZE,
+    height: FAB_RING_SIZE,
+    borderRadius: FAB_RING_SIZE / 2,
+    backgroundColor: THEME.pill,
+    borderWidth: 1,
+    borderColor: THEME.pillBorder,
   },
   tabItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
-    overflow: 'hidden',
+    paddingVertical: 4,
   },
   tabContent: {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
-  },
-  activePill: {
-    position: 'absolute',
-    width: 72,
     height: 52,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(6, 139, 216, 0.13)',
-    borderRadius: 14,
   },
   tabLabel: {
     fontSize: 10,
-    fontWeight: '600',
     letterSpacing: 0.3,
   },
-  activeDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: THEME.accentLight,
-    marginTop: 1,
-  },
-  fabWrapper: {
+
+  // ---- BotÃ³n central (+), en lÃ­nea con los demÃ¡s, misma altura ----
+  fabZone: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 8,
-    marginBottom: 4,
   },
   fabButton: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: THEME.fabBg,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
     shadowColor: THEME.fabShadow,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.55,
-    shadowRadius: 16,
-    elevation: 14,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  fabIcon: {
-    fontSize: 32,
-    color: '#FFFFFF',
-    lineHeight: 36,
-    fontWeight: '300',
-    marginTop: -2,
+  fabFlashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: THEME.fabBgBright,
+  },
+  fabHighlight: {
+    position: 'absolute',
+    top: -12,
+    left: -8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: THEME.fabHighlight,
+    opacity: 0.55,
+  },
+  fabGlowRing: {
+    position: 'absolute',
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: THEME.fabGlow,
+  },
+  fabBreatheRing: {
+    position: 'absolute',
+    width: FAB_RING_SIZE + 6,
+    height: FAB_RING_SIZE + 6,
+    borderRadius: (FAB_RING_SIZE + 6) / 2,
+    backgroundColor: THEME.fabGlow,
   },
 });

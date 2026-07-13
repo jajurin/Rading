@@ -28,12 +28,14 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <NavigationContainer>
+      
         <Stack.Navigator screenOptions={{ headerShown: false }}>
+                 <Stack.Screen name="Login" component={Login} />
             <Stack.Screen name="chats" component={ChatsClientes} />
                   <Stack.Screen name="chat" component={ChatCliente} />
                
 
-            <Stack.Screen name="Login" component={Login} />
+     
 
                     <Stack.Screen name="RecibirOfertasScreen" component={RecibirOfertasScreen} />
 
