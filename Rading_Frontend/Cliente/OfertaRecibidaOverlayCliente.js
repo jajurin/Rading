@@ -194,7 +194,20 @@ export default function OfertaRecibidaOverlayCliente({
       setLoadingOfertas(false);
     }
   };
- 
+ const handleChat = (trabajo) => {
+  onClose?.();
+  navigation?.navigate('ChatCliente', {
+    usuario,
+    contacto: {
+      idTrabajador: trabajo.idTrabajador,
+      nombre: `${trabajo.nombre} ${trabajo.apellido}`.trim(),
+      servicio: trabajo.servicio_nombre,
+      foto: trabajo.foto,
+      online: false,
+    },
+  });
+  onChat?.(trabajo); // mantiene compatibilidad si el padre hacía algo más
+};
   const handleSelect = (trabajo) => {
     setTrabajoSeleccionado(prev => prev?.id === trabajo.id ? null : trabajo);
   };
@@ -320,7 +333,7 @@ export default function OfertaRecibidaOverlayCliente({
                     isSelected={trabajoSeleccionado?.id === trabajo.id}
                   />
                   {trabajoSeleccionado?.id === trabajo.id && (
-                    <TrabajoDetalle trabajo={trabajo} onChat={onChat} />
+                  <TrabajoDetalle trabajo={trabajo} onChat={handleChat} />
                   )}
                 </View>
               ))}

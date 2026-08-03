@@ -2,9 +2,14 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context'; // 👈 NUEVO, necesario para que useSafeAreaInsets funcione bien en Android (NavegadorCliente.js lo usa)
+<<<<<<< HEAD
 
 import ChatCliente from './Chat';
 import ChatsClientes from './PreviaChat';
+=======
+import ChatCliente from './Cliente/Chat';
+import ChatsCliente from './Cliente/PreviaChat';
+>>>>>>> e621d112d5820a461d0f326bf3c8a8d45d1a37bb
 import Login from './Login';
 import Registrarse from './Registrarse';
 import TipoUsuario from './TipoUsuario';
@@ -33,6 +38,7 @@ export default function App() {
       <NavigationContainer>
       
         <Stack.Navigator screenOptions={{ headerShown: false }}>
+<<<<<<< HEAD
           
               <Stack.Screen name="MasOfertas" component={MasOfertasScreen} />
             <Stack.Screen name="HomeTrabajdor" component={HomeTrabajador} />
@@ -43,6 +49,12 @@ export default function App() {
                
 
      
+=======
+            <Stack.Screen name="Login" component={Login} />
+ 
+<Stack.Screen name="ChatsCliente" component={ChatsCliente} />
+<Stack.Screen name="ChatCliente" component={ChatCliente} />
+>>>>>>> e621d112d5820a461d0f326bf3c8a8d45d1a37bb
 
                     <Stack.Screen name="RecibirOfertasScreen" component={RecibirOfertasScreen} />
 

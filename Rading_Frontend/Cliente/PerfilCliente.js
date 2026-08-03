@@ -264,7 +264,19 @@ export default function PerfilClienteScreen({ navigation, route }) {
             <TarjetaPerfilCliente
               key={item.id ?? idx}
               item={item}
-              onPressChat={(trabajo) => navigation?.navigate('Chat', { trabajo })}
+              onPressChat={(trabajo) =>
+  navigation?.navigate('ChatCliente', {
+    usuario,
+    contacto: {
+      idTrabajador: trabajo.idTrabajador,
+      nombre: `${trabajo.nombre} ${trabajo.apellido}`.trim(),
+      servicio: trabajo.servicio_nombre,
+      foto: trabajo.foto,
+      online: false,
+    },
+    // 👇 sin chatId: se crea recién cuando mande el primer mensaje
+  })
+}
             />
           ))
         )}

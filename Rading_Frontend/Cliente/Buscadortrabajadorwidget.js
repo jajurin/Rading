@@ -413,9 +413,24 @@ const BuscadorTrabajadorWidget = forwardRef(function BuscadorTrabajadorWidget(
           <Text style={styles.resultCount}>
             {clientes.length} resultado{clientes.length !== 1 ? 's' : ''}
           </Text>
-          {clientes.map((item) => (
-            <ClienteCard key={item.id.toString()} item={item} onPressChat={() => {}} />
-          ))}
+    {clientes.map((item) => (
+  <ClienteCard
+    key={item.id.toString()}
+    item={item}
+    onPressChat={(trabajador) =>
+      navigation?.navigate('ChatCliente', {
+        usuario,
+        contacto: {
+          idTrabajador: trabajador.id, // acá item.id YA es el idTrabajador
+          nombre: `${trabajador.nombre} ${trabajador.apellido}`.trim(),
+          servicio: undefined, // este endpoint no trae el nombre del servicio
+          foto: trabajador.foto,
+          online: false,
+        },
+      })
+    }
+  />
+))}
         </View>
       )}
 
