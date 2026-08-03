@@ -35,12 +35,6 @@ export default function App() {
 <Stack.Screen name="ChatsCliente" component={ChatsCliente} />
 <Stack.Screen name="ChatCliente" component={ChatCliente} />
 
-
-
-  
-
-
-
                     <Stack.Screen name="RecibirOfertasScreen" component={RecibirOfertasScreen} />
 
 
