@@ -2,6 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context'; // 👈 NUEVO, necesario para que useSafeAreaInsets funcione bien en Android (NavegadorCliente.js lo usa)
+
 import ChatCliente from './Chat';
 import ChatsClientes from './PreviaChat';
 import Login from './Login';
@@ -19,6 +20,8 @@ import RecibirOfertasScreen from './Cliente/RecibirOfertaScreen';
 import ClasificarTrabajador from './Cliente/Resenia';
 import HomeCliente from './Cliente/HomeCliente';
 import RecientesClientes from './Cliente/RecienteClientes';
+import HomeTrabajador from './Trabajador/HomeTrabajador';
+import MasOfertasScreen from './Trabajador/MasOfertas';
 
 import OfertaRecibidaOverlayCliente from './Cliente/OfertaRecibidaOverlayCliente';
 
@@ -30,6 +33,10 @@ export default function App() {
       <NavigationContainer>
       
         <Stack.Navigator screenOptions={{ headerShown: false }}>
+          
+              <Stack.Screen name="MasOfertas" component={MasOfertasScreen} />
+            <Stack.Screen name="HomeTrabajdor" component={HomeTrabajador} />
+              <Stack.Screen name="HomeCliente" component={HomeCliente} />
                  <Stack.Screen name="Login" component={Login} />
             <Stack.Screen name="chats" component={ChatsClientes} />
                   <Stack.Screen name="chat" component={ChatCliente} />
@@ -50,7 +57,7 @@ export default function App() {
        <Stack.Screen name="RecienteClientes" component={RecientesClientes} />
 
           <Stack.Screen name="a" component={ClasificarTrabajador} />
-          <Stack.Screen name="HomeCliente" component={HomeCliente} />
+      
 
 
           <Stack.Screen name="RegistrarseTrabajador" component={RegistrarseTrabajador} />
@@ -58,7 +65,7 @@ export default function App() {
           <Stack.Screen name="VerTrabajosRealizados" component={VerTrabajosRealizados} />
 
           <Stack.Screen name="navegador" component={BottomNavBar} />
-          <Stack.Screen name="bottombar" component={BottomNavBar} />
+   
           <Stack.Screen name="TipoUsuario" component={TipoUsuario} />
 
           <Stack.Screen name="RegistrarseCliente" component={RegistrarseCliente} />

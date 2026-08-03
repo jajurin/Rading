@@ -44,8 +44,8 @@ export default function Header({
       {/* Icono Izquierdo */}
     <TouchableOpacity style={styles.iconButton} onPress={onSettings}>
   <Svg
-    width={24}
-    height={24}
+    width={40}
+    height={40}
     viewBox="0 0 1024 1024"
   >
     <Path
@@ -101,15 +101,15 @@ const styles = StyleSheet.create({
 
 
   iconButton: {
-    width: 60,
-    height: 60,
+    width: 80,
+    height: 80,
     justifyContent: 'center',
     alignItems: 'center',
   },
 
   rightIcon: {
-  width: 60,
-  height: 60,
+  width: 80,
+  height: 80,
 },
 
 
