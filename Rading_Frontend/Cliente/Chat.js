@@ -1,6 +1,7 @@
-import React, { useRef, useState, useEffect } from 'react';
-import Header from './Header';
-import BottomNavBar from './Cliente/NavegadorCliente';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
+import Header from '../Header';
+import BottomNavBar from './NavegadorCliente';
+import API_URL from '../configS';
 import {
   View,
   Text,
@@ -12,6 +13,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,34 +23,7 @@ const BLUE_DARK  = '#0d47a8';
 const BLUE_LIGHT = '#3b7ff0';
 const STATUS_BAR = '#0D4FD7';
 const BG         = '#F3F5FA';
-
-// ---------------------------------------------------------------------
-// CONTACTO Y MENSAJES HARDCODEADOS (luego se reemplaza por el backend)
-// ---------------------------------------------------------------------
-const CONTACTO_HARDCODEADO = {
-  idTrabajador: 101,
-  nombre: 'Marcos Giménez',
-  servicio: 'Plomería',
-  foto: null,
-  online: true,
-};
-
-const MENSAJES_HARDCODEADOS = [
-  { id: 'm1', tipo: 'texto', autor: 'trabajador', texto: 'Hola! ¿En qué te puedo ayudar?', hora: '10:12' },
-  { id: 'm2', tipo: 'texto', autor: 'cliente', texto: 'Hola! Necesito que me revises una pérdida en el grifo de la cocina', hora: '10:13' },
-  { id: 'm3', tipo: 'texto', autor: 'trabajador', texto: 'Perfecto, mandame la solicitud y te paso un presupuesto', hora: '10:14' },
-  {
-    id: 'm4',
-    tipo: 'servicio',
-    autor: 'trabajador',
-    hora: '10:16',
-    servicio: 'Plomería',
-    precio: '23.000',
-    estado: 'Presupuesto enviado',
-  },
-  { id: 'm5', tipo: 'texto', autor: 'cliente', texto: 'Dale, me parece bien 👍', hora: '10:20' },
-  { id: 'm6', tipo: 'texto', autor: 'trabajador', texto: 'Genial, puedo pasar mañana a las 15hs, ¿te queda bien?', hora: '10:21' },
-];
+const API_BASE_URL = API_URL;
 
 const obtenerIniciales = (nombre = '') =>
   nombre
@@ -58,36 +33,144 @@ const obtenerIniciales = (nombre = '') =>
     .map((p) => p[0]?.toUpperCase())
     .join('');
 
+// Convierte una fila de "Mensajes" del backend a la forma que usa el render
+const mapearMensaje = (m, idUsuario) => ({
+  id: String(m.id),
+  tipo: m.tipo === 'PROPUESTA' ? 'servicio' : 'texto',
+  autor: m.enviador_id === idUsuario ? 'cliente' : 'trabajador',
+  texto: m.contenido,
+  servicio: m.servicio_nombre, // si tu backend lo manda para mensajes tipo PROPUESTA
+  precio: m.precio,
+  estado: m.ESTADO_OFERTA,
+  leido: !!m.leido,
+  hora: m.created_at
+    ? new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+    : '',
+});
+
 export default function ChatCliente({ route, navigation }) {
-  const contacto = route?.params?.contacto || CONTACTO_HARDCODEADO;
+  const contacto = route?.params?.contacto;
   const usuario = route?.params?.usuario;
 
   const listRef = useRef(null);
-  const [mensajes, setMensajes] = useState(MENSAJES_HARDCODEADOS);
+  const [mensajes, setMensajes] = useState([]);
   const [texto, setTexto] = useState('');
+  // chatId puede venir de PreviaChat.js (charla ya existente) o ser null
+  // si se entró desde "Chatear con el trabajador" por primera vez.
+  // En ese caso, el chat recién se crea en el backend cuando se manda
+  // el primer mensaje (ver enviarMensaje más abajo).
+  const [chatId, setChatId] = useState(route?.params?.chatId ?? null);
+  const [cargando, setCargando] = useState(!!route?.params?.chatId);
+  const [error, setError] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+
+  const cargarMensajes = useCallback(async () => {
+    if (!chatId) {
+      setCargando(false);
+      return;
+    }
+    try {
+      setError(null);
+      const res = await fetch(`${API_BASE_URL}/chat/${chatId}/mensajes`);
+      if (!res.ok) throw new Error('Respuesta no OK del servidor');
+      const data = await res.json();
+      setMensajes(data.map((m) => mapearMensaje(m, usuario?.id)));
+    } catch (err) {
+      console.error('Error al cargar mensajes:', err);
+      setError('No pudimos cargar la conversación');
+    } finally {
+      setCargando(false);
+    }
+  }, [chatId, usuario]);
+
+  // Carga inicial de mensajes
+  useEffect(() => {
+    cargarMensajes();
+  }, [cargarMensajes]);
+
+  // Marca como leídos los mensajes del otro participante al entrar al chat
+  useEffect(() => {
+    if (!chatId || !usuario?.id) return;
+    fetch(`${API_BASE_URL}/chat/${chatId}/leido`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: usuario.id }),
+    }).catch((err) => console.error('Error al marcar como leído:', err));
+  }, [chatId, usuario]);
 
   useEffect(() => {
     setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 50);
-  }, []);
+  }, [mensajes.length]);
 
-  const enviarMensaje = () => {
+  const enviarMensaje = async () => {
     const contenido = texto.trim();
-    if (!contenido) return;
+    if (!contenido || enviando) return;
 
-    const nuevo = {
-      id: `local-${Date.now()}`,
+    if (!usuario?.id || (!chatId && (!usuario?.idCliente || !contacto?.idTrabajador))) {
+      console.error('Faltan datos para enviar el mensaje (usuario o idTrabajador)');
+      return;
+    }
+
+    // Mostramos el mensaje al toque (optimista) y lo reconciliamos con la respuesta real
+    const idTemp = `local-${Date.now()}`;
+    const nuevoLocal = {
+      id: idTemp,
       tipo: 'texto',
       autor: 'cliente',
       texto: contenido,
       hora: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMensajes((prev) => [...prev, nuevo]);
+    setMensajes((prev) => [...prev, nuevoLocal]);
     setTexto('');
+    setEnviando(true);
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 60);
 
-    // TODO: reemplazar por POST al backend cuando esté disponible
-    // fetch(`${API_BASE_URL}/chat/enviar`, { method: 'POST', body: JSON.stringify({...}) })
+    try {
+      // Si ya existe el chat, mandamos chatId.
+      // Si es la primera vez, mandamos idCliente + idTrabajador y el
+      // backend crea el Chat y el mensaje en la misma operación.
+      const body = chatId
+        ? { chatId, enviadorId: usuario.id, contenido, tipo: 'TEXTO' }
+        : {
+            idCliente: usuario.idCliente,
+            idTrabajador: contacto.idTrabajador,
+            enviadorId: usuario.id,
+            contenido,
+            tipo: 'TEXTO',
+          };
+
+      const res = await fetch(`${API_BASE_URL}/chat/mensaje`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('Respuesta no OK del servidor');
+      const guardado = await res.json();
+
+      // Si este era el primer mensaje, el backend acaba de crear el chat:
+      // guardamos su id para que los próximos mensajes y el "marcar leído"
+      // ya lo usen directamente.
+      if (!chatId && guardado.chat_id) {
+        setChatId(guardado.chat_id);
+      }
+
+      setMensajes((prev) =>
+        prev.map((m) =>
+          m.id === idTemp
+            ? { ...m, id: String(guardado.id), hora: mapearMensaje(guardado, usuario.id).hora }
+            : m
+        )
+      );
+    } catch (err) {
+      console.error('Error al enviar mensaje:', err);
+      // Marcamos el mensaje local como fallido en vez de sacarlo de la lista
+      setMensajes((prev) =>
+        prev.map((m) => (m.id === idTemp ? { ...m, fallo: true } : m))
+      );
+    } finally {
+      setEnviando(false);
+    }
   };
 
   const renderBurbujaTexto = (item) => {
@@ -104,6 +187,7 @@ export default function ChatCliente({ route, navigation }) {
           style={[
             styles.burbuja,
             esCliente ? styles.burbujaCliente : styles.burbujaTrabajador,
+            item.fallo && styles.burbujaFallo,
           ]}
         >
           <Text style={esCliente ? styles.textoBurbujaCliente : styles.textoBurbujaTrabajador}>
@@ -111,13 +195,21 @@ export default function ChatCliente({ route, navigation }) {
           </Text>
           <View style={styles.filaHora}>
             <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>
-              {item.hora}
+              {item.fallo ? 'No se pudo enviar' : item.hora}
             </Text>
-            {esCliente && (
+            {esCliente && !item.fallo && (
               <Ionicons
-                name="checkmark-done"
+                name={item.leido ? 'checkmark-done' : 'checkmark'}
                 size={14}
                 color="rgba(255,255,255,0.85)"
+                style={{ marginLeft: 4 }}
+              />
+            )}
+            {item.fallo && (
+              <Ionicons
+                name="alert-circle"
+                size={13}
+                color="#FFD1D1"
                 style={{ marginLeft: 4 }}
               />
             )}
@@ -140,11 +232,11 @@ export default function ChatCliente({ route, navigation }) {
         <View style={styles.tarjetaServicio}>
           <View style={styles.tarjetaServicioBadge}>
             <Ionicons name="hammer" size={12} color={BLUE_DARK} />
-            <Text style={styles.tarjetaServicioBadgeText}>{item.estado}</Text>
+            <Text style={styles.tarjetaServicioBadgeText}>{item.estado ?? 'Propuesta'}</Text>
           </View>
 
           <Text style={styles.tarjetaServicioLabel}>Servicio</Text>
-          <Text style={styles.tarjetaServicioValor}>{item.servicio}</Text>
+          <Text style={styles.tarjetaServicioValor}>{item.servicio ?? contacto?.servicio}</Text>
 
           <View style={styles.tarjetaServicioDivider} />
 
@@ -181,20 +273,21 @@ export default function ChatCliente({ route, navigation }) {
         </TouchableOpacity>
 
         <View style={styles.chatHeaderAvatarWrap}>
-          {contacto.foto ? (
+          {contacto?.foto ? (
             <Image source={{ uri: contacto.foto }} style={styles.chatHeaderAvatar} />
           ) : (
             <View style={styles.chatHeaderAvatarPlaceholder}>
-              <Text style={styles.chatHeaderAvatarText}>{obtenerIniciales(contacto.nombre)}</Text>
+              <Text style={styles.chatHeaderAvatarText}>{obtenerIniciales(contacto?.nombre)}</Text>
             </View>
           )}
-          {contacto.online && <View style={styles.onlineDot} />}
+          {contacto?.online && <View style={styles.onlineDot} />}
         </View>
 
         <View style={{ flex: 1, marginLeft: 10 }}>
-          <Text style={styles.chatHeaderNombre} numberOfLines={1}>{contacto.nombre}</Text>
+          <Text style={styles.chatHeaderNombre} numberOfLines={1}>{contacto?.nombre}</Text>
           <Text style={styles.chatHeaderEstado}>
-            {contacto.online ? 'En línea' : 'Desconectado'} · {contacto.servicio}
+            {contacto?.online ? 'En línea' : 'Desconectado'}
+            {contacto?.servicio ? ` · ${contacto.servicio}` : ''}
           </Text>
         </View>
 
@@ -208,21 +301,42 @@ export default function ChatCliente({ route, navigation }) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={90}
       >
-        <FlatList
-          ref={listRef}
-          data={mensajes}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listaContent}
-          showsVerticalScrollIndicator={false}
-          ListHeaderComponent={
-            <View style={styles.diaDividerWrap}>
-              <View style={styles.diaDividerLine} />
-              <Text style={styles.diaDividerText}>Hoy</Text>
-              <View style={styles.diaDividerLine} />
-            </View>
-          }
-        />
+        {cargando ? (
+          <View style={styles.estadoWrap}>
+            <ActivityIndicator size="large" color={BLUE} />
+            <Text style={styles.estadoTexto}>Cargando conversación...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.estadoWrap}>
+            <Ionicons name="alert-circle-outline" size={38} color="#C7D2E3" />
+            <Text style={styles.estadoTexto}>{error}</Text>
+            <TouchableOpacity onPress={cargarMensajes} style={styles.reintentarBtn}>
+              <Text style={styles.reintentarBtnText}>Reintentar</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <FlatList
+            ref={listRef}
+            data={mensajes}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            contentContainerStyle={styles.listaContent}
+            showsVerticalScrollIndicator={false}
+            ListHeaderComponent={
+              <View style={styles.diaDividerWrap}>
+                <View style={styles.diaDividerLine} />
+                <Text style={styles.diaDividerText}>Hoy</Text>
+                <View style={styles.diaDividerLine} />
+              </View>
+            }
+            ListEmptyComponent={
+              <View style={styles.estadoWrap}>
+                <Ionicons name="chatbubble-ellipses-outline" size={32} color="#C7D2E3" />
+                <Text style={styles.estadoTexto}>Todavía no hay mensajes. ¡Escribí el primero!</Text>
+              </View>
+            }
+          />
+        )}
 
         {/* Barra de entrada */}
         <View style={styles.inputBar}>
@@ -243,9 +357,13 @@ export default function ChatCliente({ route, navigation }) {
             style={[styles.enviarButton, !texto.trim() && styles.enviarButtonDisabled]}
             onPress={enviarMensaje}
             activeOpacity={0.85}
-            disabled={!texto.trim()}
+            disabled={!texto.trim() || enviando}
           >
-            <Ionicons name="send" size={17} color="#fff" />
+            {enviando ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="send" size={17} color="#fff" />
+            )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -255,11 +373,11 @@ export default function ChatCliente({ route, navigation }) {
 }
 
 function AvatarMini({ contacto }) {
-  return contacto.foto ? (
+  return contacto?.foto ? (
     <Image source={{ uri: contacto.foto }} style={styles.avatarMini} />
   ) : (
     <View style={styles.avatarMiniPlaceholder}>
-      <Text style={styles.avatarMiniTexto}>{obtenerIniciales(contacto.nombre)}</Text>
+      <Text style={styles.avatarMiniTexto}>{obtenerIniciales(contacto?.nombre)}</Text>
     </View>
   );
 }
@@ -311,8 +429,20 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
   },
 
+  // ---- Estados (loading / error / vacío) ----
+  estadoWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
+  estadoTexto: { marginTop: 10, color: '#8A94A6', fontSize: 13, textAlign: 'center' },
+  reintentarBtn: {
+    marginTop: 14,
+    backgroundColor: BLUE,
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  reintentarBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+
   // ---- Lista de mensajes ----
-  listaContent: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 18 },
+  listaContent: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 18, flexGrow: 1 },
   diaDividerWrap: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   diaDividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(21,101,216,0.12)' },
   diaDividerText: {
@@ -354,6 +484,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 6,
     elevation: 1,
+  },
+  burbujaFallo: {
+    opacity: 0.6,
   },
   textoBurbujaCliente: { color: '#fff', fontSize: 14, lineHeight: 20 },
   textoBurbujaTrabajador: { color: '#2D3748', fontSize: 14, lineHeight: 20 },

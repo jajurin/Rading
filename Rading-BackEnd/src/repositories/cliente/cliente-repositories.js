@@ -152,29 +152,30 @@ import config from '../../configs/dbconfig.js'
                 await client.connect()
 
                 const sql = `
-                    SELECT
-                        ct.id,
-                        u.nombre,
-                        u.apellido,
-                        t.foto,
-                        t.estrellas,
-                        ct.estado,
-                        ct.fecha_iniciado,
-                        ct.distancia,
-                        ct.fijo,
-                        ct.precio,
-                        ct.servicio_id,
-                        ct.emergencia,
-                        ct.horario_requerido,
-                        ct.horario_finalizado,
-                        s.nombre AS servicio_nombre
-                    FROM "Cliente-Trabajador" ct
-                    INNER JOIN "Trabajador" t ON ct."IdTrabajador" = t.id
-                    INNER JOIN "Usuario" u ON t."IdPersona" = u.id
-                    LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
-                    WHERE ct."IdCliente" = $1
-                    AND ct.estado = 'EN PROCESO'
-                `
+    SELECT
+        ct.id,
+        t.id AS "idTrabajador",
+        u.nombre,
+        u.apellido,
+        t.foto,
+        t.estrellas,
+        ct.estado,
+        ct.fecha_iniciado,
+        ct.distancia,
+        ct.fijo,
+        ct.precio,
+        ct.servicio_id,
+        ct.emergencia,
+        ct.horario_requerido,
+        ct.horario_finalizado,
+        s.nombre AS servicio_nombre
+    FROM "Cliente-Trabajador" ct
+    INNER JOIN "Trabajador" t ON ct."IdTrabajador" = t.id
+    INNER JOIN "Usuario" u ON t."IdPersona" = u.id
+    LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+    WHERE ct."IdCliente" = $1
+    AND ct.estado = 'EN PROCESO'
+`
                 result = await client.query(sql, [idCliente])
             } catch (err) {
                 console.error('Error en mostrarTrabajosActivos:', err)

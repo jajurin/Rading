@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
-import Header from './Header';
-import BottomNavBar from './Cliente/NavegadorCliente';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import Header from '../Header';
+import BottomNavBar from './NavegadorCliente';
+import API_URL from '../configS';
 import {
   View,
   Text,
@@ -10,6 +11,7 @@ import {
   Image,
   StatusBar,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,115 +21,9 @@ const BLUE_DARK  = '#0d47a8';
 const BLUE_LIGHT = '#3b7ff0';
 const STATUS_BAR = '#0D4FD7';
 const BG         = '#F3F5FA';
+const API_BASE_URL = API_URL;
 
-// ---------------------------------------------------------------------
-// CHATS HARDCODEADOS (luego se reemplaza por el backend)
-// deQuien: 'cliente' | 'trabajador' -> quién mandó el último mensaje
-// visto: si ESE último mensaje ya fue visto por el destinatario
-// noLeidos: mensajes del trabajador que el cliente todavía no abrió
-// ---------------------------------------------------------------------
-const CHATS_HARDCODEADOS = [
-  {
-    id: 'c1',
-    idTrabajador: 101,
-    nombre: 'Marcos Giménez',
-    servicio: 'Plomería',
-    foto: null,
-    online: true,
-    trabajoActivo: true,
-    ultimoMensaje: 'Genial, puedo pasar mañana a las 15hs, ¿te queda bien?',
-    deQuien: 'trabajador',
-    visto: false,
-    noLeidos: 1,
-    hora: '10:21',
-  },
-  {
-    id: 'c2',
-    idTrabajador: 102,
-    nombre: 'Camila Ríos',
-    servicio: 'Pintura',
-    foto: null,
-    online: true,
-    trabajoActivo: true,
-    ultimoMensaje: 'Te mando fotos del avance en un rato',
-    deQuien: 'trabajador',
-    visto: false,
-    noLeidos: 2,
-    hora: '09:58',
-  },
-  {
-    id: 'c3',
-    idTrabajador: 103,
-    nombre: 'Lucía Fernández',
-    servicio: 'Limpieza',
-    foto: null,
-    online: false,
-    trabajoActivo: true,
-    ultimoMensaje: 'Dale, te espero a las 9',
-    deQuien: 'cliente',
-    visto: true,
-    noLeidos: 0,
-    hora: 'Ayer',
-  },
-  {
-    id: 'c4',
-    idTrabajador: 104,
-    nombre: 'Diego Álvarez',
-    servicio: 'Electricidad',
-    foto: null,
-    online: false,
-    trabajoActivo: false,
-    ultimoMensaje: 'Quedó todo funcionando, gracias por confiar en mí!',
-    deQuien: 'trabajador',
-    visto: true,
-    noLeidos: 0,
-    hora: 'Vie',
-  },
-  {
-    id: 'c5',
-    idTrabajador: 105,
-    nombre: 'Rocío Paz',
-    servicio: 'Jardinería',
-    foto: null,
-    online: false,
-    trabajoActivo: false,
-    ultimoMensaje: 'Perfecto, muchas gracias!',
-    deQuien: 'cliente',
-    visto: true,
-    noLeidos: 0,
-    hora: 'Vie',
-  },
-  {
-    id: 'c6',
-    idTrabajador: 106,
-    nombre: 'Nahuel Torres',
-    servicio: 'Cerrajería',
-    foto: null,
-    online: true,
-    trabajoActivo: false,
-    ultimoMensaje: 'Estoy a 10 minutos',
-    deQuien: 'trabajador',
-    visto: true,
-    noLeidos: 0,
-    hora: 'Mar',
-  },
-  {
-    id: 'c7',
-    idTrabajador: 107,
-    nombre: 'Julieta Sosa',
-    servicio: 'Niñera',
-    foto: null,
-    online: false,
-    trabajoActivo: false,
-    ultimoMensaje: 'Nos vemos el jueves entonces',
-    deQuien: 'cliente',
-    visto: false,
-    noLeidos: 0,
-    hora: 'Lun',
-  },
-];
-
-const normalizar = (str = '') =>
+const normalizar = (str = '') =>  
   str
     .toLowerCase()
     .normalize('NFD')
@@ -141,24 +37,73 @@ const obtenerIniciales = (nombre = '') =>
     .map((p) => p[0]?.toUpperCase())
     .join('');
 
+// Convierte lo que devuelve el backend (/chat/cliente/:idCliente)
+// a la forma que usa el render de esta pantalla.
+const mapearChat = (c, idUsuario) => ({
+  id: String(c.chat_id),
+  idTrabajador: c.id_trabajador,
+  nombre: `${c.nombre ?? ''} ${c.apellido ?? ''}`.trim(),
+  servicio: c.servicio_nombre ?? '',
+  foto: c.foto ?? null,
+  online: false, // TODO: reemplazar cuando haya presencia en tiempo real
+  trabajoActivo: false, // TODO: cruzar con Cliente-Trabajador si querés el tag "Activo"
+  ultimoMensaje: c.ultimo_mensaje ?? 'Todavía no hay mensajes',
+  deQuien: c.ultimo_enviador_id === idUsuario ? 'cliente' : 'trabajador',
+  visto: Number(c.no_leidos) === 0,
+  noLeidos: Number(c.no_leidos) || 0,
+  hora: c.ultimo_created_at
+    ? new Date(c.ultimo_created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+    : '',
+});
+
 export default function ChatsCliente({ route, navigation }) {
   const usuario = route?.params?.usuario;
 
+  const [chats, setChats] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
   const [busqueda, setBusqueda] = useState('');
   const [priorizarActivos, setPriorizarActivos] = useState(false);
 
+  const cargarChats = useCallback(async () => {
+    if (!usuario?.idCliente) {
+      setCargando(false);
+      return;
+    }
+    try {
+      setError(null);
+      const res = await fetch(`${API_BASE_URL}/chat/cliente/${usuario.idCliente}`);
+      if (!res.ok) throw new Error('Respuesta no OK del servidor');
+      const data = await res.json();
+      setChats(data.map((c) => mapearChat(c, usuario.id)));
+    } catch (err) {
+      console.error('Error al cargar chats:', err);
+      setError('No pudimos cargar tus chats');
+    } finally {
+      setCargando(false);
+    }
+  }, [usuario]);
+
+  // Carga inicial
+  useEffect(() => {
+    cargarChats();
+  }, [cargarChats]);
+
+  // Recarga cada vez que volvés a esta pantalla (ej: después de mandar un mensaje)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', cargarChats);
+    return unsubscribe;
+  }, [navigation, cargarChats]);
+
   const trabajosActivos = useMemo(
-    () => CHATS_HARDCODEADOS.filter((c) => c.trabajoActivo),
-    []
+    () => chats.filter((c) => c.trabajoActivo),
+    [chats]
   );
 
   const chatsFiltrados = useMemo(() => {
     const q = normalizar(busqueda.trim());
-    const base = q
-      ? CHATS_HARDCODEADOS.filter((c) => normalizar(c.nombre).includes(q))
-      : CHATS_HARDCODEADOS;
-    return base;
-  }, [busqueda]);
+    return q ? chats.filter((c) => normalizar(c.nombre).includes(q)) : chats;
+  }, [busqueda, chats]);
 
   const { listaActivos, listaResto } = useMemo(() => {
     if (!priorizarActivos) return { listaActivos: [], listaResto: chatsFiltrados };
@@ -169,7 +114,11 @@ export default function ChatsCliente({ route, navigation }) {
   }, [chatsFiltrados, priorizarActivos]);
 
   const abrirChat = (contacto) => {
-    navigation.navigate('ChatCliente', { contacto, usuario });
+    navigation.navigate('ChatCliente', {
+      contacto,
+      usuario,
+      chatId: contacto.id, // 👈 clave: viaja el chatId real de la DB
+    });
   };
 
   const renderFilaChat = (item) => {
@@ -304,10 +253,27 @@ export default function ChatsCliente({ route, navigation }) {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        {chatsFiltrados.length === 0 ? (
+        {cargando ? (
+          <View style={styles.emptyWrap}>
+            <ActivityIndicator size="large" color={BLUE} />
+            <Text style={styles.emptyText}>Cargando tus chats...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.emptyWrap}>
+            <Ionicons name="alert-circle-outline" size={38} color="#C7D2E3" />
+            <Text style={styles.emptyText}>{error}</Text>
+            <TouchableOpacity onPress={cargarChats} style={styles.reintentarBtn}>
+              <Text style={styles.reintentarBtnText}>Reintentar</Text>
+            </TouchableOpacity>
+          </View>
+        ) : chatsFiltrados.length === 0 ? (
           <View style={styles.emptyWrap}>
             <Ionicons name="chatbubble-ellipses-outline" size={38} color="#C7D2E3" />
-            <Text style={styles.emptyText}>No encontramos chats con ese nombre</Text>
+            <Text style={styles.emptyText}>
+              {chats.length === 0
+                ? 'Todavía no tenés chats. Cuando contactes a un trabajador van a aparecer acá.'
+                : 'No encontramos chats con ese nombre'}
+            </Text>
           </View>
         ) : priorizarActivos ? (
           <>
@@ -351,7 +317,7 @@ export default function ChatsCliente({ route, navigation }) {
         )}
       </ScrollView>
 
-      <BottomNavBar usuario={usuario} />
+      <BottomNavBar usuario={usuario} pantallaActiva="chats" />
     </SafeAreaView>
   );
 }
@@ -536,4 +502,12 @@ const styles = StyleSheet.create({
   // ---- Empty state ----
   emptyWrap: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
   emptyText: { marginTop: 10, color: '#8A94A6', fontSize: 13, textAlign: 'center' },
+  reintentarBtn: {
+    marginTop: 14,
+    backgroundColor: BLUE,
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  reintentarBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 });
