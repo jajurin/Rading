@@ -20,6 +20,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 
 const BLUE       = '#1565D8';
 const BLUE_DARK  = '#0d47a8';
@@ -77,6 +79,9 @@ export default function ChatCliente({ route, navigation }) {
 
   // Menú de opciones del botón "+" (adjuntar archivo / enviar propuesta)
   const [mostrarOpciones, setMostrarOpciones] = useState(false);
+
+  // Estado de subida de archivos (foto / cámara / documento)
+  const [subiendoArchivo, setSubiendoArchivo] = useState(false);
 
   // ── Overlay de "Enviar propuesta" ──────────────────────────────────
   const [mostrarPropuesta, setMostrarPropuesta] = useState(false);
@@ -225,11 +230,94 @@ export default function ChatCliente({ route, navigation }) {
   };
 
   // --- Opciones del botón "+" ---
-  const handleAgregarArchivo = () => {
+
+  // Sube el archivo (imagen o documento) al backend y lo agrega al chat
+  const subirYEnviarArchivo = async (archivo) => {
+    if (!usuario?.id || (!chatId && (!usuario?.idCliente || !contacto?.idTrabajador))) {
+      setError('Faltan datos para enviar el archivo.');
+      return;
+    }
+
+    setSubiendoArchivo(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', {
+        uri: archivo.uri,
+        name: archivo.name || archivo.fileName || `archivo_${Date.now()}`,
+        type: archivo.mimeType || archivo.type || 'application/octet-stream',
+      });
+      if (chatId) {
+        formData.append('chatId', chatId);
+      } else {
+        formData.append('idCliente', usuario.idCliente);
+        formData.append('idTrabajador', contacto.idTrabajador);
+      }
+      formData.append('enviadorId', usuario.id);
+
+      // Este endpoint hay que crearlo en el backend (recibe multipart/form-data)
+      const res = await fetch(`${API_BASE_URL}/chat/mensaje/archivo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'multipart/form-data' },
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Respuesta no OK del servidor');
+      const guardado = await res.json();
+
+      if (!chatId && guardado.chat_id) {
+        setChatId(guardado.chat_id);
+      }
+
+      setMensajes((prev) => [...prev, mapearMensaje(guardado, usuario.id)]);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 60);
+    } catch (err) {
+      console.error('Error al subir archivo:', err);
+      setError('No se pudo enviar el archivo.');
+    } finally {
+      setSubiendoArchivo(false);
+    }
+  };
+
+  // Pide permiso de galería (fotos/videos) y abre el picker
+  const elegirDeGaleria = async () => {
     setMostrarOpciones(false);
-    // TODO: conectar con expo-image-picker / expo-document-picker
-    // y luego subir el archivo y mandar un mensaje tipo 'ARCHIVO' o 'IMAGEN'.
-    console.log('Agregar archivo');
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      setError('Necesitamos permiso para acceder a tus fotos.');
+      return;
+    }
+    const resultado = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      quality: 0.8,
+    });
+    if (!resultado.canceled && resultado.assets?.length) {
+      subirYEnviarArchivo(resultado.assets[0]);
+    }
+  };
+
+  // Pide permiso de cámara y saca una foto
+  const tomarFoto = async () => {
+    setMostrarOpciones(false);
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      setError('Necesitamos permiso para usar la cámara.');
+      return;
+    }
+    const resultado = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+    if (!resultado.canceled && resultado.assets?.length) {
+      subirYEnviarArchivo(resultado.assets[0]);
+    }
+  };
+
+  // Documento (pdf, doc, etc.)
+  const elegirDocumento = async () => {
+    setMostrarOpciones(false);
+    const resultado = await DocumentPicker.getDocumentAsync({
+      type: '*/*',
+      copyToCacheDirectory: true,
+    });
+    if (resultado.canceled) return;
+    const archivo = resultado.assets?.[0];
+    if (archivo) subirYEnviarArchivo(archivo);
   };
 
   // Abre el overlay de propuesta (precarga el servicio del contacto si existe)
@@ -613,8 +701,13 @@ export default function ChatCliente({ route, navigation }) {
             style={styles.adjuntarButton}
             activeOpacity={0.8}
             onPress={() => setMostrarOpciones((v) => !v)}
+            disabled={subiendoArchivo}
           >
-            <Ionicons name={mostrarOpciones ? 'close' : 'add'} size={22} color={BLUE_DARK} />
+            {subiendoArchivo ? (
+              <ActivityIndicator size="small" color={BLUE_DARK} />
+            ) : (
+              <Ionicons name={mostrarOpciones ? 'close' : 'add'} size={22} color={BLUE_DARK} />
+            )}
           </TouchableOpacity>
 
           <TextInput
@@ -641,7 +734,7 @@ export default function ChatCliente({ route, navigation }) {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Menú de opciones del botón "+" (archivo / propuesta) */}
+      {/* Menú de opciones del botón "+" (foto / cámara / documento / propuesta) */}
       <Modal
         visible={mostrarOpciones}
         transparent
@@ -655,14 +748,48 @@ export default function ChatCliente({ route, navigation }) {
                 <TouchableOpacity
                   style={styles.opcionItem}
                   activeOpacity={0.75}
-                  onPress={handleAgregarArchivo}
+                  onPress={elegirDeGaleria}
+                >
+                  <View style={[styles.opcionIconoWrap, { backgroundColor: 'rgba(21,101,216,0.10)' }]}>
+                    <Ionicons name="images" size={20} color={BLUE_DARK} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.opcionTitulo}>Foto o video</Text>
+                    <Text style={styles.opcionSubtitulo}>Desde tu galería</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#C7D2E3" />
+                </TouchableOpacity>
+
+                <View style={styles.opcionDivider} />
+
+                <TouchableOpacity
+                  style={styles.opcionItem}
+                  activeOpacity={0.75}
+                  onPress={tomarFoto}
+                >
+                  <View style={[styles.opcionIconoWrap, { backgroundColor: 'rgba(21,101,216,0.10)' }]}>
+                    <Ionicons name="camera" size={20} color={BLUE_DARK} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.opcionTitulo}>Tomar foto</Text>
+                    <Text style={styles.opcionSubtitulo}>Usar la cámara</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#C7D2E3" />
+                </TouchableOpacity>
+
+                <View style={styles.opcionDivider} />
+
+                <TouchableOpacity
+                  style={styles.opcionItem}
+                  activeOpacity={0.75}
+                  onPress={elegirDocumento}
                 >
                   <View style={[styles.opcionIconoWrap, { backgroundColor: 'rgba(21,101,216,0.10)' }]}>
                     <Ionicons name="document-attach" size={20} color={BLUE_DARK} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.opcionTitulo}>Adjuntar archivo</Text>
-                    <Text style={styles.opcionSubtitulo}>Fotos, documentos, etc.</Text>
+                    <Text style={styles.opcionTitulo}>Documento</Text>
+                    <Text style={styles.opcionSubtitulo}>PDF, Word, etc.</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color="#C7D2E3" />
                 </TouchableOpacity>
