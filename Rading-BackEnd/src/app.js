@@ -6,6 +6,8 @@ import usuarioRoutes from "./routes/usuario-routes.js";
 import verificacionRoutes from "./routes/verificacion-routes.js"
 import solicitudRouter from "./routes/solicitud-routes.js"
 import chatRoutes from './routes/chat-routes.js'
+import path from "path"
+
 const app = express();
 app.use(cors());
 app.use(express.json()); 
@@ -15,4 +17,5 @@ app.use("/cliente", clienteRoutes);
 app.use("/usuario", usuarioRoutes);
 app.use("/verificacion", verificacionRoutes)
 app.use('/chat', chatRoutes)
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')))
 export default app;

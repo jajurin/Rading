@@ -36,7 +36,15 @@ export default class ChatServices {
 
     return await this.#repo.enviarMensaje({ chatId, idCliente, idTrabajador, enviadorId, contenido, tipo })
 }
-
+enviarMensajeArchivo = async ({ chatId, idCliente, idTrabajador, enviadorId, archivoUrl, archivoNombre, tipo }) => {
+    if (!enviadorId || !archivoUrl) {
+        throw new Error('Faltan enviadorId o archivoUrl')
+    }
+    if (!chatId && (!idCliente || !idTrabajador)) {
+        throw new Error('Falta chatId, o idCliente + idTrabajador para crear el chat')
+    }
+    return await this.#repo.enviarMensajeArchivo({ chatId, idCliente, idTrabajador, enviadorId, archivoUrl, archivoNombre, tipo })
+}
     marcarComoLeidos = async (chatId, userId) => {
         if (!chatId || !userId) throw new Error('Faltan chatId o userId')
         return await this.#repo.marcarComoLeidos(chatId, userId)

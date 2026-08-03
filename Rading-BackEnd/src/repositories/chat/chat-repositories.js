@@ -215,6 +215,59 @@ enviarMensaje = async ({ chatId, idCliente, idTrabajador, enviadorId, contenido,
     }
 }
 
+
+
+// Guarda un mensaje de tipo ARCHIVO (imagen o documento ya subido a disco/storage)
+enviarMensajeArchivo = async ({ chatId, idCliente, idTrabajador, enviadorId, archivoUrl, archivoNombre, tipo }) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        await client.query('BEGIN')
+
+        let finalChatId = chatId
+
+        if (!finalChatId) {
+            const buscar = await client.query(
+                `SELECT id FROM "Chat" WHERE id_cliente = $1 AND id_trabajador = $2`,
+                [idCliente, idTrabajador]
+            )
+            if (buscar.rows.length > 0) {
+                finalChatId = buscar.rows[0].id
+            } else {
+                const crear = await client.query(
+                    `INSERT INTO "Chat" (id_cliente, id_trabajador, updated_at)
+                     VALUES ($1, $2, now())
+                     RETURNING id`,
+                    [idCliente, idTrabajador]
+                )
+                finalChatId = crear.rows[0].id
+            }
+        }
+
+        // Guardamos la URL del archivo como contenido; archivoNombre queda
+        // en un aparte por si después querés mostrarlo distinto en el chat
+        const sql = `
+            INSERT INTO "Mensajes" (chat_id, enviador_id, contenido, tipo)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, chat_id, enviador_id, contenido, tipo, created_at
+        `
+        const result = await client.query(sql, [finalChatId, enviadorId, archivoUrl, tipo])
+
+        await client.query(
+            `UPDATE "Chat" SET last_message_at = now(), updated_at = now() WHERE id = $1`,
+            [finalChatId]
+        )
+
+        await client.query('COMMIT')
+        return { ...result.rows[0], archivoNombre }
+    } catch (err) {
+        await client.query('ROLLBACK')
+        console.error('Error en enviarMensajeArchivo:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
     // Marca como leídos todos los mensajes del chat que NO son del usuario que abre el chat
     marcarComoLeidos = async (chatId, userId) => {
         const client = new Client(config)

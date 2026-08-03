@@ -46,20 +46,36 @@ const obtenerIniciales = (nombre = '') =>
     .map((p) => p[0]?.toUpperCase())
     .join('');
 
+// Detecta si el contenido de un mensaje de tipo archivo es una imagen,
+// mirando la extensión de la URL. Si tu backend ya distingue el tipo
+// de archivo (por ej. un campo 'mimetype' o un 'tipo' propio en la
+// tabla Mensajes), lo ideal es reemplazar esto por ese dato real.
+const esUrlImagen = (url = '') =>
+  /\.(jpg|jpeg|png|gif|webp|jfif|bmp|heic|heif)(\?.*)?$/i.test(url);
+
 // Convierte una fila de "Mensajes" del backend a la forma que usa el render
-const mapearMensaje = (m, idUsuario) => ({
-  id: String(m.id),
-  tipo: m.tipo === 'PROPUESTA' ? 'servicio' : 'texto',
-  autor: m.enviador_id === idUsuario ? 'cliente' : 'trabajador',
-  texto: m.contenido,
-  servicio: m.servicio_nombre, // si tu backend lo manda para mensajes tipo PROPUESTA
-  precio: m.precio,
-  estado: m.ESTADO_OFERTA,
-  leido: !!m.leido,
-  hora: m.created_at
-    ? new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
-    : '',
-});
+const mapearMensaje = (m, idUsuario) => {
+  let tipo = 'texto';
+  if (m.tipo === 'PROPUESTA') {
+    tipo = 'servicio';
+  } else if (esUrlImagen(m.contenido)) {
+    tipo = 'imagen';
+  }
+
+  return {
+    id: String(m.id),
+    tipo,
+    autor: m.enviador_id === idUsuario ? 'cliente' : 'trabajador',
+    texto: m.contenido,
+    servicio: m.servicio_nombre, // si tu backend lo manda para mensajes tipo PROPUESTA
+    precio: m.precio,
+    estado: m.ESTADO_OFERTA,
+    leido: !!m.leido,
+    hora: m.created_at
+      ? new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+      : '',
+  };
+};
 
 export default function ChatCliente({ route, navigation }) {
   const contacto = route?.params?.contacto;
@@ -241,11 +257,20 @@ export default function ChatCliente({ route, navigation }) {
     setSubiendoArchivo(true);
     try {
       const formData = new FormData();
-      formData.append('file', {
-        uri: archivo.uri,
-        name: archivo.name || archivo.fileName || `archivo_${Date.now()}`,
-        type: archivo.mimeType || archivo.type || 'application/octet-stream',
-      });
+
+      if (Platform.OS === 'web') {
+        const respuestaBlob = await fetch(archivo.uri);
+        const blob = await respuestaBlob.blob();
+        const nombre = archivo.name || archivo.fileName || `archivo_${Date.now()}`;
+        formData.append('file', blob, nombre);
+      } else {
+        formData.append('file', {
+          uri: archivo.uri,
+          name: archivo.name || archivo.fileName || `archivo_${Date.now()}`,
+          type: archivo.mimeType || archivo.type || 'application/octet-stream',
+        });
+      }
+
       if (chatId) {
         formData.append('chatId', chatId);
       } else {
@@ -254,14 +279,16 @@ export default function ChatCliente({ route, navigation }) {
       }
       formData.append('enviadorId', usuario.id);
 
-      // Este endpoint hay que crearlo en el backend (recibe multipart/form-data)
       const res = await fetch(`${API_BASE_URL}/chat/mensaje/archivo`, {
         method: 'POST',
-        headers: { 'Content-Type': 'multipart/form-data' },
         body: formData,
       });
-      if (!res.ok) throw new Error('Respuesta no OK del servidor');
-      const guardado = await res.json();
+
+      const textoBruto = await res.text();
+      console.log('STATUS:', res.status, 'BODY:', textoBruto);
+
+      if (!res.ok) throw new Error(`Servidor respondió ${res.status}: ${textoBruto}`);
+      const guardado = JSON.parse(textoBruto);
 
       if (!chatId && guardado.chat_id) {
         setChatId(guardado.chat_id);
@@ -567,6 +594,57 @@ export default function ChatCliente({ route, navigation }) {
     );
   };
 
+  // Mensajes tipo archivo cuya URL apunta a una imagen: se muestran
+  // como una foto en la burbuja en vez del link crudo.
+  const renderBurbujaImagen = (item) => {
+    const esCliente = item.autor === 'cliente';
+    return (
+      <View
+        style={[
+          styles.filaMensaje,
+          { justifyContent: esCliente ? 'flex-end' : 'flex-start' },
+        ]}
+      >
+        {!esCliente && <AvatarMini contacto={contacto} />}
+        <TouchableOpacity
+          activeOpacity={0.9}
+          style={[
+            styles.burbujaImagenWrap,
+            esCliente ? styles.burbujaImagenCliente : styles.burbujaImagenTrabajador,
+            item.fallo && styles.burbujaFallo,
+          ]}
+        >
+          <Image
+            source={{ uri: item.texto }}
+            style={styles.imagenChat}
+            resizeMode="cover"
+          />
+          <View style={[styles.filaHora, { paddingHorizontal: 4, paddingTop: 4 }]}>
+            <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>
+              {item.fallo ? 'No se pudo enviar' : item.hora}
+            </Text>
+            {esCliente && !item.fallo && (
+              <Ionicons
+                name={item.leido ? 'checkmark-done' : 'checkmark'}
+                size={14}
+                color={esCliente ? 'rgba(255,255,255,0.85)' : '#A0AEC0'}
+                style={{ marginLeft: 4 }}
+              />
+            )}
+            {item.fallo && (
+              <Ionicons
+                name="alert-circle"
+                size={13}
+                color="#FFD1D1"
+                style={{ marginLeft: 4 }}
+              />
+            )}
+          </View>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   const renderTarjetaServicio = (item) => {
     const esCliente = item.autor === 'cliente';
     return (
@@ -611,8 +689,11 @@ export default function ChatCliente({ route, navigation }) {
     );
   };
 
-  const renderItem = ({ item }) =>
-    item.tipo === 'servicio' ? renderTarjetaServicio(item) : renderBurbujaTexto(item);
+  const renderItem = ({ item }) => {
+    if (item.tipo === 'servicio') return renderTarjetaServicio(item);
+    if (item.tipo === 'imagen') return renderBurbujaImagen(item);
+    return renderBurbujaTexto(item);
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -1222,6 +1303,39 @@ const styles = StyleSheet.create({
   filaHora: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', marginTop: 4 },
   horaClienteTexto: { color: 'rgba(255,255,255,0.75)', fontSize: 10 },
   horaTrabajadorTexto: { color: '#A0AEC0', fontSize: 10, marginTop: 6 },
+
+  // ---- Burbuja de imagen (foto adjunta en el chat) ----
+  burbujaImagenWrap: {
+    maxWidth: '65%',
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+    padding: 5,
+  },
+  burbujaImagenCliente: {
+    borderBottomRightRadius: 4,
+    shadowColor: BLUE_DARK,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  burbujaImagenTrabajador: {
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(21,101,216,0.08)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  imagenChat: {
+    width: 210,
+    height: 210,
+    borderRadius: 14,
+    backgroundColor: '#E8ECF3',
+  },
 
   // ---- Tarjeta de servicio (presupuesto) ----
   tarjetaServicio: {
