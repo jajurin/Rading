@@ -46,7 +46,7 @@ const mapearChat = (c, idUsuario) => ({
   servicio: c.servicio_nombre ?? '',
   foto: c.foto ?? null,
   online: false, // TODO: reemplazar cuando haya presencia en tiempo real
-  trabajoActivo: false, // TODO: cruzar con Cliente-Trabajador si querés el tag "Activo"
+  trabajoActivo: c.trabajo_activo, // TODO: cruzar con Cliente-Trabajador si querés el tag "Activo"
   ultimoMensaje: c.ultimo_mensaje ?? 'Todavía no hay mensajes',
   deQuien: c.ultimo_enviador_id === idUsuario ? 'cliente' : 'trabajador',
   visto: Number(c.no_leidos) === 0,

@@ -25,26 +25,31 @@ export default class ChatServices {
     }
 
     enviarMensaje = async (body) => {
-    const { chatId, idCliente, idTrabajador, enviadorId, contenido, tipo } = body
+        const { chatId, idCliente, idTrabajador, enviadorId, contenido, tipo, servicioId, precio } = body
 
-    if (!enviadorId || !contenido) {
-        throw new Error('Faltan enviadorId o contenido')
-    }
-    if (!chatId && (!idCliente || !idTrabajador)) {
-        throw new Error('Falta chatId, o idCliente + idTrabajador para crear el chat')
+        if (!enviadorId || !contenido) {
+            throw new Error('Faltan enviadorId o contenido')
+        }
+        if (!chatId && (!idCliente || !idTrabajador)) {
+            throw new Error('Falta chatId, o idCliente + idTrabajador para crear el chat')
+        }
+        if (tipo === 'PROPUESTA' && (!servicioId || precio == null)) {
+            throw new Error('Faltan servicioId o precio para la propuesta')
+        }
+
+        return await this.#repo.enviarMensaje({ chatId, idCliente, idTrabajador, enviadorId, contenido, tipo, servicioId, precio })
     }
 
-    return await this.#repo.enviarMensaje({ chatId, idCliente, idTrabajador, enviadorId, contenido, tipo })
-}
-enviarMensajeArchivo = async ({ chatId, idCliente, idTrabajador, enviadorId, archivoUrl, archivoNombre, tipo }) => {
-    if (!enviadorId || !archivoUrl) {
-        throw new Error('Faltan enviadorId o archivoUrl')
+    enviarMensajeArchivo = async ({ chatId, idCliente, idTrabajador, enviadorId, archivoUrl, archivoNombre, tipo }) => {
+        if (!enviadorId || !archivoUrl) {
+            throw new Error('Faltan enviadorId o archivoUrl')
+        }
+        if (!chatId && (!idCliente || !idTrabajador)) {
+            throw new Error('Falta chatId, o idCliente + idTrabajador para crear el chat')
+        }
+        return await this.#repo.enviarMensajeArchivo({ chatId, idCliente, idTrabajador, enviadorId, archivoUrl, archivoNombre, tipo })
     }
-    if (!chatId && (!idCliente || !idTrabajador)) {
-        throw new Error('Falta chatId, o idCliente + idTrabajador para crear el chat')
-    }
-    return await this.#repo.enviarMensajeArchivo({ chatId, idCliente, idTrabajador, enviadorId, archivoUrl, archivoNombre, tipo })
-}
+
     marcarComoLeidos = async (chatId, userId) => {
         if (!chatId || !userId) throw new Error('Faltan chatId o userId')
         return await this.#repo.marcarComoLeidos(chatId, userId)

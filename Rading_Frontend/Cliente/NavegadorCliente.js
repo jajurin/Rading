@@ -449,7 +449,7 @@ const styles = StyleSheet.create({
     // MÃ¡s margen a los costados para que quede como una cÃ¡psula
     // flotante chica y centrada, bien separada de los bordes del celu
     // (estilo WhatsApp), en vez de una barra que casi toca los bordes.
-    paddingHorizontal: 52,
+    paddingHorizontal: 5,
     alignItems: 'center',
   },
   bar: {
