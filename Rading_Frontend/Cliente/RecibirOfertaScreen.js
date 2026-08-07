@@ -57,9 +57,8 @@ function Estrellas({ rating, size = 12 }) {
 }
 
 // ─── Chips de solicitudes activas (General + una por servicio) ───────────
-// Rediseñado: menos recargado, puntito de color en vez de badge numérico grande.
 function SolicitudesChips({ solicitudes, seleccionada, onSeleccionar }) {
-  if (solicitudes.length <= 1) return null // con 0 o 1 solicitud no tiene sentido mostrar el selector
+  if (solicitudes.length <= 1) return null
 
   const totalOfertas = solicitudes.reduce((acc, s) => acc + Number(s.cantidadOfertas ?? 0), 0)
 
@@ -113,7 +112,8 @@ function SolicitudesChips({ solicitudes, seleccionada, onSeleccionar }) {
   )
 }
 
-function ModalOfertaAceptada({ oferta, servicioNombre, onClose }) {
+// 👇 recibe navigation/usuario/idCliente para poder navegar al chat real
+function ModalOfertaAceptada({ oferta, servicioNombre, onClose, navigation, usuario, idCliente }) {
   if (!oferta) return null
   return (
     <Modal transparent animationType="slide" visible={!!oferta} statusBarTranslucent>
@@ -169,7 +169,20 @@ function ModalOfertaAceptada({ oferta, servicioNombre, onClose }) {
             </Text>
           </View>
 
-          <TouchableOpacity style={styles.chatBtn} activeOpacity={0.85} onPress={onClose}>
+          <TouchableOpacity
+            style={styles.chatBtn}
+            activeOpacity={0.85}
+            onPress={() => {
+              onClose() // cierra el modal
+              navigation.navigate('ChatCliente', {
+                usuario,
+                idCliente,
+                idTrabajador: oferta.idTrabajador,
+                contacto: { idTrabajador: oferta.idTrabajador, nombre: oferta.nombre },
+                // sin chatId — todavía puede no existir, ChatCliente lo resuelve
+              })
+            }}
+          >
             <Ionicons name="chatbubble-ellipses" size={20} color={COLORS.white} />
             <Text style={styles.chatBtnText}>Abrir chat</Text>
           </TouchableOpacity>
@@ -223,9 +236,8 @@ export default function RecibirOfertasScreen({ route, navigation }) {
       const lista = Array.isArray(data) ? data : []
       setSolicitudes(lista)
 
-      // 👇 FIX: si la solicitud seleccionada ya no está en la lista (por ejemplo,
-      // porque se le acaba de aceptar un trabajador), volvemos a "General" en vez
-      // de quedar con un chip apuntando a algo que ya no existe.
+      // si la solicitud seleccionada ya no está en la lista (ej: se le acaba de
+      // aceptar un trabajador), volvemos a "General"
       setSeleccionada(prev => {
         if (prev == null) return null
         const sigueActiva = lista.some(s => s.idTrabajo === prev)
@@ -289,7 +301,19 @@ export default function RecibirOfertasScreen({ route, navigation }) {
     }, [fetchOfertas, loadingSolicitudes])
   )
 
-  const handleAceptar = async (item) => {
+  // 👇 ahora pide confirmación antes de pegarle al backend
+  const handleAceptar = (item) => {
+    Alert.alert(
+      '¿Aceptar esta oferta?',
+      `Vas a contratar a ${item.nombre} por $${Number(item.precio).toLocaleString()}. Esta acción no se puede deshacer.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Aceptar', onPress: () => confirmarAceptar(item) },
+      ]
+    )
+  }
+
+  const confirmarAceptar = async (item) => {
     try {
       setAceptando(true)
       const res = await fetch(`${API_URL}/cliente/ofertas/${item.id}/aceptar`, {
@@ -311,9 +335,7 @@ export default function RecibirOfertasScreen({ route, navigation }) {
     }
   }
 
-  // 👇 FIX: la "mejor oferta" se calcula POR solicitud (idTrabajo), no globalmente.
-  // Antes, en modo General, comparaba precios de servicios distintos entre sí
-  // (ej. marcaba como "mejor oferta" a un plomero contra un abogado).
+  // la "mejor oferta" se calcula POR solicitud (idTrabajo), no globalmente
   const mejoresPorTrabajo = useMemo(() => {
     const mapa = new Map()
     ofertas.forEach(o => {
@@ -421,9 +443,12 @@ export default function RecibirOfertasScreen({ route, navigation }) {
       <ModalOfertaAceptada
         oferta={ofertaAceptada}
         servicioNombre={ofertaAceptada?.servicioNombre || tituloSolicitud || servicioNombre}
+        navigation={navigation}
+        usuario={usuario}
+        idCliente={idCliente}
         onClose={() => {
           setOfertaAceptada(null)
-          fetchSolicitudes() // esto ya corrige la selección si hace falta (ver FIX arriba)
+          fetchSolicitudes() // corrige la selección si hace falta (ver fetchSolicitudes)
         }}
       />
 
@@ -444,26 +469,25 @@ const styles = StyleSheet.create({
   headerTitulo: { fontSize: 16, fontWeight: '600', color: COLORS.blue },
   headerBtn:    { width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center' },
 
-  // Chips de solicitudes — más livianos, sin badges gigantes
   chipsScroll: {
-  flexGrow: 0,          // 👈 evita que el ScrollView se estire para llenar la pantalla
-  height: 54,           // 👈 altura fija de la barra de chips
-  backgroundColor: COLORS.white,
-  borderBottomWidth: StyleSheet.hairlineWidth,
-  borderBottomColor: COLORS.border,
-},
-chipsContent: {
-  paddingHorizontal: 16,
-  alignItems: 'center',  // 👈 evita que cada chip se estire verticalmente (stretch)
-  height: 54,
-},
-chip: {
-  flexDirection: 'row', alignItems: 'center', gap: 5,
-  paddingHorizontal: 12, paddingVertical: 7,
-  borderRadius: 14, backgroundColor: COLORS.bg,
-  marginRight: 8,
-  height: 34,            // 👈 altura fija del chip en sí
-},
+    flexGrow: 0,
+    height: 54,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
+  },
+  chipsContent: {
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    height: 54,
+  },
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderRadius: 14, backgroundColor: COLORS.bg,
+    marginRight: 8,
+    height: 34,
+  },
   chipActive: { backgroundColor: COLORS.blue },
   chipText: { fontSize: 12.5, fontWeight: '600', color: COLORS.ink, maxWidth: 110 },
   chipTextActive: { color: COLORS.white },

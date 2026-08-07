@@ -18,7 +18,16 @@ const storage = multer.diskStorage({
         cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`)
     }
 })
-
+// GET /chat/buscar/:idCliente/:idTrabajador
+router.get('/chat/buscar/:idCliente/:idTrabajador', async (req, res) => {
+  try {
+    const { idCliente, idTrabajador } = req.params
+    const chatId = await chatRepository.buscarChat(idCliente, idTrabajador)
+    res.json({ chatId }) // null si todavía no existe
+  } catch (err) {
+    res.status(500).json({ message: 'Error al buscar el chat' })
+  }
+})
 const upload = multer({
     storage,
     limits: { fileSize: 15 * 1024 * 1024 } // 15MB, ajustá a gusto

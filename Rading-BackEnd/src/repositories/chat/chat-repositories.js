@@ -349,4 +349,21 @@ export default class chatRepository {
             await client.end()
         }
     }
+    // Busca el chat entre cliente y trabajador. Si no existe, devuelve null (NO lo crea).
+buscarChat = async (idCliente, idTrabajador) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        const buscar = await client.query(
+            `SELECT id FROM "Chat" WHERE id_cliente = $1 AND id_trabajador = $2`,
+            [idCliente, idTrabajador]
+        )
+        return buscar.rows.length > 0 ? buscar.rows[0].id : null
+    } catch (err) {
+        console.error('Error en buscarChat:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
 }
