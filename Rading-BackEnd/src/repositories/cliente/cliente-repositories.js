@@ -478,15 +478,17 @@ aceptarOferta = async (idOferta) => {
         await client.query('BEGIN')
 
         const ofertaResult = await client.query(
-            `SELECT o.*, ct.precio AS "precioSolicitud"
+            `SELECT o.*, o."ESTADO_OFERTA" AS estado_actual, ct.precio AS "precioSolicitud"
              FROM "Oferta" o
              INNER JOIN "Cliente-Trabajador" ct ON ct.id = o."idTrabajo"
              WHERE o.id = $1`,
             [idOferta]
         )
         const oferta = ofertaResult.rows[0]
+        console.log('🟡 [aceptarOferta] fila obtenida:', oferta)   // 👈 debug temporal
+
         if (!oferta) throw new Error('Oferta no encontrada')
-        if (oferta.ESTADO_OFERTA !== 'PENDIENTE') throw new Error('Esta oferta ya fue procesada')
+        if (oferta.estado_actual !== 'PENDIENTE') throw new Error('Esta oferta ya fue procesada')
 
         const precioFinal = oferta.precio ?? oferta.precioSolicitud
 
@@ -511,7 +513,7 @@ aceptarOferta = async (idOferta) => {
 
     } catch (err) {
         await client.query('ROLLBACK')
-        console.error('Error en aceptarOferta:', err)
+        console.error('🔴 Error en aceptarOferta:', err.message)
         throw err
     } finally {
         await client.end()

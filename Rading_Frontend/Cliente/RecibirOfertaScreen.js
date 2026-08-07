@@ -11,7 +11,6 @@ import OfertaCard from './OfertaCard'
 import API_URL from '../configS'
 import Header from '../Header'
 import BottomNavBar from './NavegadorCliente'
-
 const COLORS = {
   blue:   '#1a3a8f',
   yellow: '#f5c518',
@@ -303,15 +302,23 @@ export default function RecibirOfertasScreen({ route, navigation }) {
 
   // 👇 ahora pide confirmación antes de pegarle al backend
   const handleAceptar = (item) => {
-    Alert.alert(
-      '¿Aceptar esta oferta?',
-      `Vas a contratar a ${item.nombre} por $${Number(item.precio).toLocaleString()}. Esta acción no se puede deshacer.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Aceptar', onPress: () => confirmarAceptar(item) },
-      ]
+  if (Platform.OS === 'web') {
+    const confirmado = window.confirm(
+      `Vas a contratar a ${item.nombre} por $${Number(item.precio).toLocaleString()}. Esta acción no se puede deshacer.`
     )
+    if (confirmado) confirmarAceptar(item)
+    return
   }
+
+  Alert.alert(
+    '¿Aceptar esta oferta?',
+    `Vas a contratar a ${item.nombre} por $${Number(item.precio).toLocaleString()}. Esta acción no se puede deshacer.`,
+    [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Aceptar', onPress: () => confirmarAceptar(item) },
+    ]
+  )
+}
 
   const confirmarAceptar = async (item) => {
     try {
