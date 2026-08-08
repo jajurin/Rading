@@ -92,7 +92,34 @@ router.get("/trabajosRealizados/:id", async (req, res) => {
         res.status(500).json({ message: "Error al obtener trabajos realizados", error })
     }
 })
-
+router.get("/detalleOferta/:id", async (req, res) => {
+    if (!idValido(req.params.id)) {
+        return res.status(400).json({ message: "id de solicitud inválido" })
+    }
+    try {
+        const detalle = await svc.obtenerDetalleOferta(req.params.id)
+        if (!detalle) {
+            return res.status(404).json({ message: "Solicitud no encontrada" })
+        }
+        res.status(200).json(detalle)
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: "Error al obtener detalle de la oferta", error })
+    }
+})
+router.get("/solicitudesNuevas/:id", async (req, res) => {
+    if (!idValido(req.params.id)) {
+        return res.status(400).json({ message: "id de trabajador inválido" })
+    }
+    try {
+        const radioKm = req.query.radioKm ? Number(req.query.radioKm) : 20
+        const solicitudes = await svc.buscarOfertasCercanas(req.params.id, radioKm)
+        res.status(200).json(solicitudes)
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: "Error al obtener solicitudes nuevas", error })
+    }
+})
 // GET /trabajador/ofertasCercanas/:id?radioKm=5
 router.get("/ofertasCercanas/:id", async (req, res) => {
     if (!idValido(req.params.id)) {

@@ -11,7 +11,9 @@ export default class TrabajadorServices {
     mostrarTodosLosTrabajadores = async () => {
         return await this.#repo.mostrarTodosLosTrabajadores()
     }
-
+obtenerDetalleOferta = async (idTrabajo) => {
+    return await this.#repo.obtenerDetalleOferta(idTrabajo)
+}
     registrarTrabajador = async (body) => {
         const trabajador = new Trabajador(
             body.nombre, body.apellido, body.email, body.direccion,
@@ -55,6 +57,7 @@ export default class TrabajadorServices {
 buscarOfertasCercanas = async (idTrabajador, radioKm) => {
     return await this.#repo.buscarOfertasCercanas(idTrabajador, radioKm ?? 5)
 }
+
     obtenerResumenDiario = async (idTrabajador) => {
         return await this.#repo.obtenerResumenDiario(idTrabajador)
     }

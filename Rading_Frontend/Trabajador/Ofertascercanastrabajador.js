@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // TODO: ajustá el nombre/path exacto de tu archivo con la URL base del
@@ -213,6 +213,7 @@ function OfertaCard({ item, onVerDetalles }) {
 // -------------------------------------------------------------------------
 export default function OfertasCercanasTrabajador() {
   const route = useRoute();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
 
   // TODO: adaptá esto al shape real de tu objeto `usuario` si hace falta.
@@ -286,8 +287,7 @@ export default function OfertasCercanasTrabajador() {
   };
 
   const handleVerDetalles = (item) => {
-    // TODO: la pantalla de detalle queda para después. Cuando exista:
-    // navigation.navigate('DetalleOfertaTrabajador', { ofertaId: item.id });
+    navigation.navigate('DetalleOfertaTrabajador', { ofertaId: item.id });
   };
 
   const subtitulo = useMemo(() => {

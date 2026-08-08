@@ -23,7 +23,7 @@ import HomeCliente from './Cliente/HomeCliente';
 import RecientesClientes from './Cliente/RecienteClientes';
 import HomeTrabajador from './Trabajador/HomeTrabajador';
 import MasOfertasScreen from './Trabajador/MasOfertas';
-
+import DetalleOfertaTrabajador from './Trabajador/DetalleOfertaTrabajador';
 import OfertaRecibidaOverlayCliente from './Cliente/OfertaRecibidaOverlayCliente';
 
 const Stack = createStackNavigator();
@@ -46,7 +46,8 @@ export default function App() {
           <Stack.Screen name="PerfilScreen" component={PerfilScreen} />
           <Stack.Screen name="CrearSolicitud" component={CrearSolicitud} />
           <Stack.Screen name="RecienteClientes" component={RecientesClientes} />
-
+<Stack.Screen name="OfertasCercanasTrabajador" component={OfertasCercanasTrabajador} />
+<Stack.Screen name="DetalleOfertaTrabajador" component={DetalleOfertaTrabajador} />
           <Stack.Screen name="RegistrarseTrabajador" component={RegistrarseTrabajador} />
           <Stack.Screen name="Registrarse" component={Registrarse} />
           <Stack.Screen name="VerTrabajosRealizados" component={VerTrabajosRealizados} />
@@ -56,7 +57,6 @@ export default function App() {
           <Stack.Screen name="BuscadorCliente" component={BuscadorCliente} />
           <Stack.Screen name="BuscadorTrabajador" component={BuscadorTrabajador} />
           <Stack.Screen name="BottomNavBarTrabajador" component={BottomNavBarTrabajador} />
-          <Stack.Screen name="OfertasCercanasTrabajador" component={OfertasCercanasTrabajador} />
           <Stack.Screen name="OfertaRecibidaOverlayCliente" component={OfertaRecibidaOverlayCliente} />
         </Stack.Navigator>
       </NavigationContainer>

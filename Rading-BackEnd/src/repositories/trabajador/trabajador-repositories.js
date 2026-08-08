@@ -277,6 +277,58 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
         await client.end()
     }
 }
+    obtenerDetalleOferta = async (idTrabajo) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+
+        const sql = `
+            SELECT
+                ct.id,
+                ct.descripcion,
+                ct.horario_requerido,
+                ct.horario_finalizado,
+                ct.fijo,
+                ct.emergencia,
+                ct.precio,
+                ct."precioEstimadoIA",
+                ct.estado,
+                ct.fecha_iniciado,
+                ct.lat,
+                ct.lng,
+                ct.direccion,
+                u.nombre,
+                u.apellido,
+                c.estrellas,
+                s.nombre AS servicio_nombre,
+                cs.nombre AS categoria_nombre,
+                COALESCE(
+                    (
+                        SELECT json_agg(
+                            json_build_object('id', si.id, 'url', si.url)
+                            ORDER BY si.orden ASC
+                        )
+                        FROM "SolicitudImagen" si
+                        WHERE si."idTrabajo" = ct.id
+                    ), '[]'
+                ) AS imagenes
+            FROM "Cliente-Trabajador" ct
+            INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
+            INNER JOIN "Usuario" u ON c."IdPersona" = u.id
+            LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+            LEFT JOIN "CategoriaServicio" cs ON cs.id = s.categoria_id
+            WHERE ct.id = $1
+        `
+
+        const result = await client.query(sql, [idTrabajo])
+        return result?.rows?.[0] ?? null
+    } catch (err) {
+        console.error('Error en obtenerDetalleOferta:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
     /**
      * Registra un trabajador: inserta en Usuario y luego en Trabajador.
      * Recibe un objeto con todos los campos del modelo.
