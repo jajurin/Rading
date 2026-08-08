@@ -52,7 +52,9 @@ export default class TrabajadorServices {
     mostrarTrabajosActivos = async (idTrabajador) => {
     return await this.#repo.mostrarTrabajosActivos(idTrabajador)
 }
-
+buscarOfertasCercanas = async (idTrabajador, radioKm) => {
+    return await this.#repo.buscarOfertasCercanas(idTrabajador, radioKm ?? 5)
+}
     obtenerResumenDiario = async (idTrabajador) => {
         return await this.#repo.obtenerResumenDiario(idTrabajador)
     }

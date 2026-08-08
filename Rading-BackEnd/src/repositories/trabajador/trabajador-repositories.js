@@ -196,7 +196,60 @@ export default class trabajadorRepository {
             await client.end()
         }
     }
+/**
+ * Ofertas cercanas para el trabajador: solo solicitudes PENDIENTE sin
+ * asignar, dentro del radio pedido (usa la columna ct.distancia que ya
+ * calculan) y solo de los servicios que este trabajador ofrece.
+ */
+buscarOfertasCercanas = async (idTrabajador, radioKm = 5) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
 
+        const sql = `
+            SELECT
+                ct.id,
+                ct.servicio_id,
+                ct.horario_requerido,
+                ct.horario_finalizado,
+                ct.distancia,
+                ct.fijo,
+                ct.emergencia,
+                ct.precio,
+                ct."precioEstimadoIA",
+                ct.descripcion,
+                ct.estado,
+                ct.fecha_iniciado,
+                u.nombre,
+                u.apellido,
+                c.estrellas,
+                s.nombre AS servicio_nombre,
+                cs.nombre AS categoria_nombre
+            FROM "Cliente-Trabajador" ct
+            INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
+            INNER JOIN "Usuario" u ON c."IdPersona" = u.id
+            LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+            LEFT JOIN "CategoriaServicio" cs ON cs.id = s.categoria_id
+            WHERE ct.estado = 'PENDIENTE'
+              AND ct."IdTrabajador" IS NULL
+              AND ct.distancia <= $2
+              AND ct.servicio_id IN (
+                  SELECT servicios_id
+                  FROM "Trabajador_Servicio"
+                  WHERE trabajadores_id = $1
+              )
+            ORDER BY ct.emergencia DESC, ct.distancia ASC
+        `
+
+        const result = await client.query(sql, [idTrabajador, radioKm])
+        return result?.rows ?? []
+    } catch (err) {
+        console.error('Error en buscarOfertasCercanas:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
     /**
      * Registra un trabajador: inserta en Usuario y luego en Trabajador.
      * Recibe un objeto con todos los campos del modelo.

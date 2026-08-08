@@ -2,7 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-
+import OfertasCercanasTrabajador from './Trabajador/Ofertascercanastrabajador';
 import ChatCliente from './Cliente/Chat';
 import ChatsCliente from './Cliente/PreviaChat';
 import BottomNavBarTrabajador from './Trabajador/Navegadortrabajador';
@@ -56,6 +56,8 @@ export default function App() {
           <Stack.Screen name="BuscadorCliente" component={BuscadorCliente} />
           <Stack.Screen name="BuscadorTrabajador" component={BuscadorTrabajador} />
  <Stack.Screen name="BottomNavBarTrabajador" component={BottomNavBarTrabajador} />
+           <Stack.Screen name="ChatCliente" component={ChatCliente} />
+          <Stack.Screen name="OfertaRecibidaOverlayCliente" component={OfertaRecibidaOverlayCliente} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

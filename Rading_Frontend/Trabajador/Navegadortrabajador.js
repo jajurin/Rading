@@ -398,9 +398,8 @@ export default function BottomNavBarTrabajador({ usuario, pantallaActiva, onRada
     if (onRadarPress) {
       onRadarPress({ radioKm: RADIO_BUSQUEDA_KM });
     } else {
-      navigation.navigate('BuscadorTrabajador', {
+      navigation.navigate('OfertasCercanasTrabajador', {
         usuario,
-        modoRadar: true,
         radioKm: RADIO_BUSQUEDA_KM,
       });
     }
