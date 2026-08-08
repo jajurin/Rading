@@ -33,11 +33,11 @@ export default function App() {
     <SafeAreaProvider>
       <NavigationContainer>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
-         <Stack.Screen name="Login" component={Login} />
+          <Stack.Screen name="Login" component={Login} />
           <Stack.Screen name="MasOfertas" component={MasOfertasScreen} />
           <Stack.Screen name="HomeTrabajador" component={HomeTrabajador} />
           <Stack.Screen name="HomeCliente" component={HomeCliente} />
-          
+
           <Stack.Screen name="ChatsCliente" component={ChatsCliente} />
           <Stack.Screen name="ChatCliente" component={ChatCliente} />
 
@@ -55,8 +55,8 @@ export default function App() {
           <Stack.Screen name="RegistrarseCliente" component={RegistrarseCliente} />
           <Stack.Screen name="BuscadorCliente" component={BuscadorCliente} />
           <Stack.Screen name="BuscadorTrabajador" component={BuscadorTrabajador} />
- <Stack.Screen name="BottomNavBarTrabajador" component={BottomNavBarTrabajador} />
-           <Stack.Screen name="ChatCliente" component={ChatCliente} />
+          <Stack.Screen name="BottomNavBarTrabajador" component={BottomNavBarTrabajador} />
+          <Stack.Screen name="OfertasCercanasTrabajador" component={OfertasCercanasTrabajador} />
           <Stack.Screen name="OfertaRecibidaOverlayCliente" component={OfertaRecibidaOverlayCliente} />
         </Stack.Navigator>
       </NavigationContainer>

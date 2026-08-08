@@ -91,7 +91,9 @@ router.get("/trabajosRealizados/:id", async (req, res) => {
         console.error(error)
         res.status(500).json({ message: "Error al obtener trabajos realizados", error })
     }
-    // GET /trabajador/ofertasCercanas/:id?radioKm=5
+})
+
+// GET /trabajador/ofertasCercanas/:id?radioKm=5
 router.get("/ofertasCercanas/:id", async (req, res) => {
     if (!idValido(req.params.id)) {
         return res.status(400).json({ message: "id de trabajador inválido" })
@@ -104,7 +106,6 @@ router.get("/ofertasCercanas/:id", async (req, res) => {
         console.error(error)
         res.status(500).json({ message: "Error al obtener ofertas cercanas", error })
     }
-})
 })
 
 export default router

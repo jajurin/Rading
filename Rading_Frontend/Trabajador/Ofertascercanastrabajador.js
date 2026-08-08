@@ -7,24 +7,19 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
-  Platform,
 } from 'react-native';
-import Svg, { G, Path, Circle, Line } from 'react-native-svg';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import Svg, { Path, Circle, Line } from 'react-native-svg';
+import { useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// TODO: ajustá este import al path real de tu cliente de Supabase.
-import { supabase } from '../lib/supabase';
-
+// TODO: ajustá el nombre/path exacto de tu archivo con la URL base del
+// backend (el api.js / config.js que ya tenés). Debe exportar algo tipo:
+//   export const API_URL = 'http://192.168.x.x:3000'
+import API_URL from '../configS';
 // -------------------------------------------------------------------------
 // Config
 // -------------------------------------------------------------------------
-const RADIO_DEFAULT_KM = 5;
-
-// TODO: confirmá el valor exacto que usa tu enum ESTADO-OFERTA / estado en
-// Cliente-Trabajador para "solicitud todavía sin trabajador asignado,
-// esperando ofertas". Lo dejo en 'PENDIENTE' como default razonable.
-const ESTADO_PENDIENTE = 'PENDIENTE';
+const RADIO_DEFAULT_KM = 20;
 
 const COLORS = {
   bg: '#F3F6FB',
@@ -38,9 +33,6 @@ const COLORS = {
   chipBg: 'rgba(21,101,216,0.08)',
   chipText: '#1565D8',
   emergencyStrip: '#E23744',
-  emergencyStripDark: '#C81E2C',
-  emergencyBg: '#FFF3F2',
-  emergencyText: '#C81E2C',
   shadow: '#0d47a8',
 };
 
@@ -92,12 +84,7 @@ const Icons = {
   ),
   Alert: ({ color = '#FFFFFF', size = 14 }) => (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M12 3L22 20H2L12 3Z"
-        stroke={color}
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
+      <Path d="M12 3L22 20H2L12 3Z" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />
       <Line x1="12" y1="10" x2="12" y2="14" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
       <Circle cx="12" cy="17" r="0.9" fill={color} />
     </Svg>
@@ -115,25 +102,17 @@ const Icons = {
 // -------------------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------------------
-function haversineKm(lat1, lng1, lat2, lng2) {
-  if ([lat1, lng1, lat2, lng2].some((v) => v === null || v === undefined)) return null;
-  const R = 6371;
-  const toRad = (v) => (v * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
 function formatHora(horaStr) {
   if (!horaStr) return '--:--';
   return horaStr.slice(0, 5);
 }
 
-function formatDistancia(km) {
-  if (km === null || km === undefined) return '-- km';
+// La columna ct.distancia ya viene calculada del backend. Asumimos que
+// está guardada en km (es como la usan en distanciaMax en filtrarSolicitudes).
+// Si en tu DB en realidad son metros, avisame y ajusto el formateo.
+function formatDistancia(valor) {
+  if (valor === null || valor === undefined) return '-- km';
+  const km = Number(valor);
   return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
 }
 
@@ -186,7 +165,7 @@ function OfertaCard({ item, onVerDetalles }) {
 
           <View style={styles.distanciaBadge}>
             <Icons.Pin color={COLORS.blueLight} size={12} />
-            <Text style={styles.distanciaBadgeText}>{formatDistancia(item.distanciaKm)}</Text>
+            <Text style={styles.distanciaBadgeText}>{formatDistancia(item.distancia)}</Text>
           </View>
         </View>
 
@@ -234,18 +213,15 @@ function OfertaCard({ item, onVerDetalles }) {
 // -------------------------------------------------------------------------
 export default function OfertasCercanasTrabajador() {
   const route = useRoute();
-  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
 
-  // TODO: adaptá estos campos al shape real de tu objeto `usuario`
-  // (el que le pasás por navigation params). Necesita como mínimo:
-  // trabajadorId (Trabajador.id), lat y lng (de Usuario).
+  // TODO: adaptá esto al shape real de tu objeto `usuario` si hace falta.
+  // Necesita el id de la fila en "Trabajador" (no el id de Usuario).
   const usuario = route.params?.usuario;
   const radioKm = route.params?.radioKm || RADIO_DEFAULT_KM;
-
-  const trabajadorId = usuario?.trabajadorId ?? usuario?.trabajador?.id;
-  const trabajadorLat = usuario?.lat ?? usuario?.trabajador?.lat;
-  const trabajadorLng = usuario?.lng ?? usuario?.trabajador?.lng;
+  // El login devuelve { ...usuario, tipo, idCliente, idTrabajador }, así
+  // que el id de la fila en "Trabajador" viene en usuario.idTrabajador.
+  const trabajadorId = usuario?.idTrabajador;
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -259,85 +235,37 @@ export default function OfertasCercanasTrabajador() {
         throw new Error('No se encontró el trabajador logueado.');
       }
 
-      // 1) Servicios que ofrece este trabajador (ej: si es electricista,
-      // solo va a ver trabajos de esa categoría).
-      const { data: misServicios, error: errServicios } = await supabase
-        .from('Trabajador_Servicio')
-        .select('servicios_id')
-        .eq('trabajadores_id', trabajadorId);
+      const url = `${API_URL}/trabajador/ofertasCercanas/${trabajadorId}?radioKm=${radioKm}`;
+      const resp = await fetch(url);
 
-      if (errServicios) throw errServicios;
-
-      const idsServicios = (misServicios || [])
-        .map((s) => s.servicios_id)
-        .filter(Boolean);
-
-      if (idsServicios.length === 0) {
-        setOfertas([]);
-        return;
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body?.message || 'No pudimos cargar las ofertas cercanas.');
       }
 
-      // 2) Solicitudes de trabajo todavía sin trabajador asignado, dentro
-      // de las categorías que este trabajador maneja.
-      const { data, error: errOfertas } = await supabase
-        .from('Cliente-Trabajador')
-        .select(
-          `
-          id,
-          distancia,
-          horario_requerido,
-          fijo,
-          precio,
-          precioEstimadoIA,
-          descripcion,
-          emergencia,
-          estado,
-          fecha_iniciado,
-          servicio_id,
-          Servicio ( nombre, CategoriaServicio ( nombre ) ),
-          Cliente ( id, estrellas, Usuario ( nombre, apellido, lat, lng ) )
-        `
-        )
-        .is('IdTrabajador', null)
-        .eq('estado', ESTADO_PENDIENTE)
-        .in('servicio_id', idsServicios);
+      const rows = await resp.json();
 
-      if (errOfertas) throw errOfertas;
+      const procesadas = (rows || []).map((row) => ({
+        id: row.id,
+        descripcion: row.descripcion,
+        horario_requerido: row.horario_requerido,
+        fijo: row.fijo,
+        precio: row.precio,
+        precioEstimadoIA: row.precioEstimadoIA,
+        emergencia: row.emergencia,
+        distancia: row.distancia,
+        servicioNombre: row.servicio_nombre,
+        categoriaNombre: row.categoria_nombre,
+        clienteNombre: row.nombre || '',
+        clienteApellido: row.apellido || '',
+      }));
 
-      // 3) Calculamos distancia real (trabajador <-> cliente) y filtramos
-      // por el radio pedido (-5km por default).
-      const procesadas = (data || [])
-        .map((row) => {
-          const clienteUsuario = row.Cliente?.Usuario;
-          const distanciaKm = haversineKm(
-            trabajadorLat,
-            trabajadorLng,
-            clienteUsuario?.lat,
-            clienteUsuario?.lng
-          );
-
-          return {
-            id: row.id,
-            descripcion: row.descripcion,
-            horario_requerido: row.horario_requerido,
-            fijo: row.fijo,
-            precio: row.precio,
-            precioEstimadoIA: row.precioEstimadoIA,
-            emergencia: row.emergencia,
-            servicioNombre: row.Servicio?.nombre,
-            categoriaNombre: row.Servicio?.CategoriaServicio?.nombre,
-            clienteNombre: clienteUsuario?.nombre || '',
-            clienteApellido: clienteUsuario?.apellido || '',
-            distanciaKm,
-          };
-        })
-        .filter((o) => o.distanciaKm === null || o.distanciaKm <= radioKm)
-        .sort((a, b) => {
-          if (a.emergencia !== b.emergencia) return a.emergencia ? -1 : 1;
-          const da = a.distanciaKm ?? Infinity;
-          const db = b.distanciaKm ?? Infinity;
-          return da - db;
-        });
+      // El backend ya ordena por emergencia y distancia, esto es solo
+      // un resguardo por si en algún momento cambia el orden del SQL.
+      procesadas.sort((a, b) => {
+        if (a.emergencia !== b.emergencia) return a.emergencia ? -1 : 1;
+        return (a.distancia ?? Infinity) - (b.distancia ?? Infinity);
+      });
 
       setOfertas(procesadas);
     } catch (e) {
@@ -346,7 +274,7 @@ export default function OfertasCercanasTrabajador() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [trabajadorId, trabajadorLat, trabajadorLng, radioKm]);
+  }, [trabajadorId, radioKm]);
 
   useEffect(() => {
     cargarOfertas();
@@ -358,8 +286,7 @@ export default function OfertasCercanasTrabajador() {
   };
 
   const handleVerDetalles = (item) => {
-    // TODO: la pantalla de detalle queda para después. Cuando exista,
-    // reemplazá esto por:
+    // TODO: la pantalla de detalle queda para después. Cuando exista:
     // navigation.navigate('DetalleOfertaTrabajador', { ofertaId: item.id });
   };
 

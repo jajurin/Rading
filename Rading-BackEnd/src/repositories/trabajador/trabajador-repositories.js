@@ -198,21 +198,28 @@ export default class trabajadorRepository {
     }
 /**
  * Ofertas cercanas para el trabajador: solo solicitudes PENDIENTE sin
- * asignar, dentro del radio pedido (usa la columna ct.distancia que ya
- * calculan) y solo de los servicios que este trabajador ofrece.
+ * asignar. Calcula la distancia real (haversine) entre la ubicación
+ * del trabajador (obtenida de su propio Usuario vía IdPersona) y la
+ * del cliente (u.lat, u.lng) de cada solicitud. Solo servicios que
+ * este trabajador ofrece.
  */
-buscarOfertasCercanas = async (idTrabajador, radioKm = 5) => {
+buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
     const client = new Client(config)
     try {
         await client.connect()
 
         const sql = `
+            WITH trab AS (
+                SELECT ut.lat, ut.lng
+                FROM "Trabajador" t
+                INNER JOIN "Usuario" ut ON ut.id = t."IdPersona"
+                WHERE t.id = $1
+            )
             SELECT
                 ct.id,
                 ct.servicio_id,
                 ct.horario_requerido,
                 ct.horario_finalizado,
-                ct.distancia,
                 ct.fijo,
                 ct.emergencia,
                 ct.precio,
@@ -224,21 +231,41 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 5) => {
                 u.apellido,
                 c.estrellas,
                 s.nombre AS servicio_nombre,
-                cs.nombre AS categoria_nombre
+                cs.nombre AS categoria_nombre,
+                (
+                    6371 * acos(
+                        LEAST(1, GREATEST(-1,
+                            cos(radians(trab.lat)) * cos(radians(u.lat)) *
+                            cos(radians(u.lng) - radians(trab.lng)) +
+                            sin(radians(trab.lat)) * sin(radians(u.lat))
+                        ))
+                    )
+                ) AS distancia
             FROM "Cliente-Trabajador" ct
+            CROSS JOIN trab
             INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
             INNER JOIN "Usuario" u ON c."IdPersona" = u.id
             LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
             LEFT JOIN "CategoriaServicio" cs ON cs.id = s.categoria_id
             WHERE ct.estado = 'PENDIENTE'
               AND ct."IdTrabajador" IS NULL
-              AND ct.distancia <= $2
+              AND trab.lat IS NOT NULL AND trab.lng IS NOT NULL
+              AND u.lat IS NOT NULL AND u.lng IS NOT NULL
               AND ct.servicio_id IN (
                   SELECT servicios_id
                   FROM "Trabajador_Servicio"
                   WHERE trabajadores_id = $1
               )
-            ORDER BY ct.emergencia DESC, ct.distancia ASC
+              AND (
+                  6371 * acos(
+                      LEAST(1, GREATEST(-1,
+                          cos(radians(trab.lat)) * cos(radians(u.lat)) *
+                          cos(radians(u.lng) - radians(trab.lng)) +
+                          sin(radians(trab.lat)) * sin(radians(u.lat))
+                      ))
+                  )
+              ) <= $2
+            ORDER BY ct.emergencia DESC, distancia ASC
         `
 
         const result = await client.query(sql, [idTrabajador, radioKm])
