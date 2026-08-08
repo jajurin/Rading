@@ -19,7 +19,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 
@@ -78,6 +78,7 @@ const mapearMensaje = (m, idUsuario) => {
 };
 
 export default function ChatCliente({ route, navigation }) {
+  const insets = useSafeAreaInsets();
   const contacto = route?.params?.contacto;
   const usuario = route?.params?.usuario;
 
@@ -777,7 +778,7 @@ export default function ChatCliente({ route, navigation }) {
         )}
 
         {/* Barra de entrada */}
-        <View style={styles.inputBar}>
+        <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
           <TouchableOpacity
             style={styles.adjuntarButton}
             activeOpacity={0.8}
