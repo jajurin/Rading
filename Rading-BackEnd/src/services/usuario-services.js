@@ -28,7 +28,7 @@ if (!esTrabajador) {
 return { ...usuario, tipo: esTrabajador ? 'trabajador' : 'cliente', idCliente, idTrabajador }
 }
     registrarUsuario = async (body) => {
-    const { nombre, apellido, email, direccion, contrasena, telefono, fechaNac, dni, IdCuentaBancaria } = body
+    const { nombre, apellido, email, direccion, contrasena, telefono, fechaNac, dni, IdCuentaBancaria, lat, lng } = body
 
     const emailExiste = await this.#repo.buscarPorEmail(email)
     if (emailExiste) throw new Error(`El email ${email} ya está registrado`)
@@ -36,7 +36,7 @@ return { ...usuario, tipo: esTrabajador ? 'trabajador' : 'cliente', idCliente, i
     const dniExiste = await this.#repo.buscarPorDni(dni)
     if (dniExiste) throw new Error(`El DNI ${dni} ya está registrado`)
 
-    const usuario = new Usuario(nombre, apellido, email, direccion, contrasena, telefono, fechaNac, dni, IdCuentaBancaria ?? null)
+    const usuario = new Usuario(nombre, apellido, email, direccion, contrasena, telefono, fechaNac, dni, IdCuentaBancaria ?? null, lat ?? null, lng ?? null)
 
     return await this.#repo.registrarUsuario(usuario)
 }

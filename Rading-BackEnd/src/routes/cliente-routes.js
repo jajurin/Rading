@@ -40,10 +40,23 @@ router.post("/registrar", async (req, res) => {
  */
 router.get("/buscarTrabajador", async (req, res) => {
     try {
-        const { texto, estrellas, especialidad, horarioDesde, horarioHasta, distancia } = req.query
-        const resultado = await svc.buscarConFiltrosCl(
-            texto, estrellas, especialidad, horarioDesde, horarioHasta, distancia
-        )
+        const {
+            texto, estrellas, especialidad,
+            horarioDesde, horarioHasta,
+            lat, lng, radioKm,
+        } = req.query
+
+        const resultado = await svc.buscarConFiltrosCl({
+            texto,
+            estrellas: estrellas ? Number(estrellas) : null,
+            especialidad,
+            horarioDesde,
+            horarioHasta,
+            lat: lat != null ? Number(lat) : null,
+            lng: lng != null ? Number(lng) : null,
+            radioKm: radioKm ? Number(radioKm) : null,
+        })
+
         res.status(200).json(resultado)
     } catch (error) {
         console.error(error)

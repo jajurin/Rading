@@ -122,13 +122,22 @@ const TrabajoDetalle = ({ trabajo, onChat }) => (
   </View>
 );
 
+// Válido solo si es un número entero positivo real (cubre null, undefined,
+// NaN, y también el caso "null" como string que rompía la query en Postgres).
+const esIdValido = (id) => {
+  const n = Number(id);
+  return id !== null && id !== undefined && Number.isInteger(n) && n > 0;
+};
+
 export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onChat, idTrabajador, navigation }) {
   const [trabajos, setTrabajos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [trabajoSeleccionado, setTrabajoSeleccionado] = useState(null);
 
   useEffect(() => {
-    if (visible && idTrabajador) fetchTrabajos();
+    if (visible && esIdValido(idTrabajador)) {
+      fetchTrabajos();
+    }
     if (!visible) {
       setTrabajos([]);
       setTrabajoSeleccionado(null);
@@ -139,12 +148,15 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
     try {
       setLoading(true);
       const res = await fetch(`${API_URL}/trabajador/trabajosActivos/${idTrabajador}`);
+      if (!res.ok) throw new Error(`Respuesta no OK (${res.status}) al pedir trabajos activos`);
       const data = await res.json();
       const lista = Array.isArray(data) ? data : data.trabajos ?? data.data ?? [];
       setTrabajos(lista);
       setTrabajoSeleccionado(lista[0] ?? null);
     } catch (e) {
       console.error('Error al cargar trabajos activos (trabajador):', e);
+      setTrabajos([]);
+      setTrabajoSeleccionado(null);
     } finally {
       setLoading(false);
     }
@@ -178,22 +190,22 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
           </TouchableOpacity>
 
           {/* TABS */}
-<View style={styles.tabs}>
-  <View style={styles.tabActive}>
-    <Text style={styles.tabTextActive}>En proceso</Text>
-  </View>
-  <TouchableOpacity
-    style={styles.tabBtn}
-    activeOpacity={0.8}
-    onPress={() => {
-      onClose();
-      navigation.navigate('VerTrabajosRealizados', { idTrabajador });
-    }}
-  >
-    <Text style={styles.tabBtnText}>Realizados</Text>
-    <Ionicons name="arrow-forward" size={14} color="#FFD000" />
-  </TouchableOpacity>
-</View>
+          <View style={styles.tabs}>
+            <View style={styles.tabActive}>
+              <Text style={styles.tabTextActive}>En proceso</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.tabBtn}
+              activeOpacity={0.8}
+              onPress={() => {
+                onClose();
+                navigation.navigate('VerTrabajosRealizados', { idTrabajador });
+              }}
+            >
+              <Text style={styles.tabBtnText}>Realizados</Text>
+              <Ionicons name="arrow-forward" size={14} color="#FFD000" />
+            </TouchableOpacity>
+          </View>
 
           {loading ? (
             <View style={styles.centerBox}>
@@ -247,10 +259,10 @@ const styles = StyleSheet.create({
   itemAvatar: { width: 46, height: 46, borderRadius: 23, borderWidth: 2, borderColor: "rgba(255,255,255,0.3)" },
   itemInfo: { flex: 1, gap: 3 },
   tabs: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.15)" },
-tabActive: { paddingVertical: 6, paddingHorizontal: 14, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 20 },
-tabTextActive: { color: "#fff", fontSize: 13, fontWeight: "800" },
-tabBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: 14, borderWidth: 1.5, borderColor: "#FFD000", borderRadius: 20 },
-tabBtnText: { color: "#FFD000", fontSize: 13, fontWeight: "700" },
+  tabActive: { paddingVertical: 6, paddingHorizontal: 14, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 20 },
+  tabTextActive: { color: "#fff", fontSize: 13, fontWeight: "800" },
+  tabBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: 14, borderWidth: 1.5, borderColor: "#FFD000", borderRadius: 20 },
+  tabBtnText: { color: "#FFD000", fontSize: 13, fontWeight: "700" },
   itemServicio: { fontSize: 14, fontWeight: "800", color: "#fff" },
   itemNombre: { fontSize: 12, color: "rgba(255,255,255,0.65)", fontWeight: "500" },
   estadoBadge: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
@@ -276,337 +288,3 @@ tabBtnText: { color: "#FFD000", fontSize: 13, fontWeight: "700" },
   chatButton: { backgroundColor: "#1565D8", borderRadius: 12, paddingVertical: 13, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   chatText: { color: "#fff", fontSize: 14, fontWeight: "700" },
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*En la noche número 47.892 del calendario de las muchas patas, cuando el queso cheddar comenzó a cantar ópera desde el interior de una tostadora poseída por un mosquito filósofo, apareció Jaju, el lobo nocturno. Nadie sabía de dónde venía. Algunos decían que había nacido dentro de una sombra. Otros afirmaban que había evolucionado a partir de una media olvidada debajo de un sofá. Lo único seguro era que Jaju era un lobo nocturno y que siempre estaba cerca cuando las patas empezaban a multiplicarse.
-
-Todo comenzó con una sola pata.
-
-Luego dos.
-
-Luego siete.
-
-Luego treinta y cuatro mil millones de patas.
-
-Patas en las paredes.
-
-Patas en el techo.
-
-Patas conduciendo autobuses.
-
-Patas jugando ajedrez.
-
-Patas vendiendo otras patas en mercados clandestinos de cheddar líquido.
-
-El queso cheddar observaba todo desde una montaña hecha de más queso cheddar. Era una montaña completamente innecesaria. Nadie la había construido. Simplemente había aparecido una mañana mientras el universo estaba distraído mirando una cuchara.
-
-Las patas adoraban el cheddar.
-
-Soñaban con cheddar.
-
-Respiraban cheddar.
-
-Pagaban impuestos en cheddar.
-
-Tenían universidades dedicadas al estudio avanzado del cheddar cuántico.
-
-Pero entonces apareció Jaju.
-
-Jaju, el lobo nocturno.
-
-Jaju, el caminante de las sombras de refrigerador.
-
-Jaju, el devorador de silencios.
-
-Jaju, el inspector general de ruidos extraños debajo de la cama.
-
-Cada vez que alguien pronunciaba la palabra "cheddar" tres veces frente a un espejo de mayonesa, Jaju aparecía detrás de una lámpara y susurraba:
-
-—Las patas saben demasiado.
-
-Nadie entendía qué significaba.
-
-Pero todos tenían miedo.
-
-Una noche particularmente húmeda, una pata gigante del tamaño de una catedral emergió de un océano de queso cheddar derretido. La pata tenía patas más pequeñas. Y esas patas tenían patas aún más pequeñas. Y esas patas tenían diminutas patas microscópicas que corrían en círculos mientras gritaban ecuaciones matemáticas a las nubes.
-
-El cielo se transformó en cheddar.
-
-La luna se transformó en cheddar.
-
-Las estrellas se transformaron en cheddar.
-
-Incluso el concepto abstracto de los martes se transformó en cheddar.
-
-Y en medio de aquella catástrofe láctea apareció Jaju.
-
-Sus ojos brillaban como dos semáforos abandonados en una dimensión equivocada.
-
-Su pelaje estaba hecho de noche comprimida.
-
-Su sombra tenía sombra.
-
-Y la sombra de esa sombra también tenía sombra.
-
-Era una cantidad alarmante de sombras.
-
-Las patas comenzaron a temblar.
-
-No porque tuvieran miedo.
-
-Sino porque una de ellas había visto un pepino vestido de astronauta y no podía dejar de reír.
-
-Sin embargo, Jaju continuó avanzando.
-
-Paso.
-
-Paso.
-
-Paso.
-
-Pata.
-
-Pata.
-
-Pata.
-
-Más patas.
-
-Demasiadas patas.
-
-Una cantidad criminal de patas.
-
-El suelo dejó de existir bajo la presión de tantas patas y fue reemplazado por una enorme rueda de queso cheddar giratorio que producía sonidos de trompeta cada vez que alguien pensaba en una silla.
-
-Entonces ocurrió algo terrible.
-
-El cheddar empezó a recordar cosas.
-
-Recordó civilizaciones antiguas.
-
-Recordó dinosaurios.
-
-Recordó recetas que jamás habían sido escritas.
-
-Recordó el nacimiento de las primeras patas.
-
-Y recordó a Jaju.
-
-Al instante todo el universo quedó en silencio.
-
-Incluso las licuadoras.
-
-Incluso los patos.
-
-Incluso los pensamientos.
-
-Porque el cheddar conocía un secreto aterrador.
-
-Jaju no era solamente un lobo nocturno.
-
-Era EL lobo nocturno.
-
-El original.
-
-El primero.
-
-El supervisor de los ruidos inexplicables que ocurren a las tres de la mañana.
-
-El guardián de los pasillos oscuros.
-
-El emperador de las puertas que se abren solas.
-
-El gerente regional de los escalofríos.
-
-Las patas comenzaron a correr.
-
-Corrieron hacia el norte.
-
-Corrieron hacia el sur.
-
-Corrieron hacia arriba.
-
-Corrieron conceptualmente.
-
-Corrieron emocionalmente.
-
-Corrieron de formas que la física consideró ofensivas.
-
-Pero Jaju continuó caminando.
-
-Lento.
-
-Imparable.
-
-Como una fotocopiadora encantada por fantasmas de yogur.
-
-El cheddar empezó a derretirse de miedo.
-
-Ríos de cheddar recorrieron continentes enteros.
-
-Volcanes de cheddar explotaron en el horizonte.
-
-Tormentas de cheddar cayeron sobre ciudades hechas de patas.
-
-Un tornado de cheddar absorbió una biblioteca completa dedicada a la historia de los calcetines.
-
-Y mientras todo aquello sucedía, Jaju levantó la cabeza hacia la luna-cheddar y emitió un aullido.
-
-No era un aullido normal.
-
-Era un aullido tan extraño que convirtió una montaña en un pingüino.
-
-Era un aullido tan bizarro que obligó a un semáforo a replantearse sus decisiones de vida.
-
-Era un aullido tan poderoso que las patas comenzaron a hablar en cursiva.
-
-Entonces apareció la Gran Pata Suprema.
-
-Una pata colosal.
-
-Una pata ancestral.
-
-Una pata tan enorme que tenía código postal propio.
-
-La Gran Pata Suprema señaló a Jaju y dijo:
-
-—Nosotros somos las muchas patas. El cheddar nos pertenece.
-
-Jaju respondió:
-
-—El cheddar pertenece al caos.
-
-El universo explotó en aplausos.
-
-Miles de tostadoras comenzaron a cantar.
-
-Los relojes se transformaron en ravioles.
-
-Los ravioles se transformaron en bicicletas.
-
-Las bicicletas se transformaron en cheddar.
-
-Porque todo, tarde o temprano, terminaba convirtiéndose en cheddar.
-
-La batalla final fue indescriptible.
-
-Patas contra patas.
-
-Cheddar contra cheddar.
-
-Sombras contra sombras.
-
-Gnomos interdimensionales contra conceptos administrativos.
-
-Y en el centro de aquella locura absoluta estaba Jaju, el lobo nocturno, corriendo entre océanos de queso cheddar mientras millones de patas caían del cielo como lluvia metafísica.
-
-Durante siete siglos consecutivos la batalla continuó.
-
-Luego ocho.
-
-Luego nueve.
-
-Luego un número que no existe porque fue devorado por una ardilla cósmica.
-
-Finalmente llegó el silencio.
-
-Las patas se detuvieron.
-
-El cheddar dejó de cantar.
-
-La luna-cheddar volvió a ser luna.
-
-Los pingüinos regresaron a sus asuntos.
-
-Y Jaju permaneció observando el horizonte.
-
-Solo.
-
-Inmóvil.
-
-Terrible.
-
-No como un monstruo.
-
-Sino como algo mucho más extraño.
-
-Como una respuesta a una pregunta que nadie había hecho.
-
-Desde entonces, cuando la noche es demasiado oscura y el refrigerador emite sonidos sospechosos, algunos aseguran escuchar pasos.
-
-No son pasos humanos.
-
-No son pasos animales.
-
-Son muchas patas.
-
-Demasiadas patas.
-
-Patas infinitas.
-
-Patas ancestrales.
-
-Patas cubiertas de cheddar.
-
-Y detrás de ellas, moviéndose entre sombras imposibles, aparece una figura.
-
-Un lobo nocturno.
-
-Jaju.
-
-Siempre Jaju.
-
-Observando.
-
-Esperando.
-
-Mientras el cheddar recuerda.
-
-Mientras las patas se multiplican.
-
-Mientras el universo entero se hunde lentamente en un océano interminable de queso cheddar absurdo, brillante, aterrador y completamente brainrot.
-*/

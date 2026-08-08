@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import Header from '../Header';
 import BottomNavBar from './NavegadorCliente';
 import TrabajoActivoWidget from './Trabajoactivowidget';
@@ -15,25 +15,32 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-;
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-const BLUE       = '#1565D8';
-const BLUE_DARK  = '#0d47a8';
-const BLUE_LIGHT = '#3b7ff0';
-const STATUS_BAR = '#0D4FD7'
-const BG         = '#F3F5FA';
+// ── Paleta ────────────────────────────────────────────────────────────────
+// Un azul índigo más rico que el celeste plano original, con un acento ámbar
+// reservado para valoraciones y momentos de foco (CTA, insignias).
+const NAVY        = '#0F1B4C';
+const INDIGO      = '#2A3FD6';
+const INDIGO_SOFT = '#5C6DF2';
+const AMBER       = '#F5A623';
+const BG          = '#F4F6FC';
+const CARD        = '#FFFFFF';
+const TEXT_DARK   = '#12172E';
+const TEXT_MUTED  = '#828AA0';
+const BORDER      = 'rgba(15,27,76,0.07)';
 
-const CARD_WIDTH = 92;
+const CARD_WIDTH = 96;
 const CARD_GAP = 12;
-const SCROLL_STEP = (CARD_WIDTH + CARD_GAP) * 2; // avanza de a 2 tarjetas por click
+const SCROLL_STEP = (CARD_WIDTH + CARD_GAP) * 2;
 
-// Mapea el nombre del servicio a un ícono de Ionicons según palabras clave
+// ── Utilidades ───────────────────────────────────────────────────────────
 const normalizar = (str = '') =>
   str
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, ''); // saca tildes
+    .replace(/[\u0300-\u036f]/g, '');
 
 const ICONOS_SERVICIO = [
   { keywords: ['plomer', 'gasista', 'destap', 'cano', 'sanitari'], icon: 'water' },
@@ -59,26 +66,60 @@ const obtenerIconoServicio = (nombre) => {
   const match = ICONOS_SERVICIO.find((entry) =>
     entry.keywords.some((k) => n.includes(k))
   );
-  return match ? match.icon : 'construct'; // fallback genérico
+  return match ? match.icon : 'construct';
 };
+
+// Franja horaria: cambia el saludo, el ícono y el degradé del banner según
+// el momento del día. Es el único gesto "grande" de la pantalla — el resto
+// se mantiene sobrio a propósito.
+const obtenerFranjaHoraria = () => {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) {
+    return {
+      saludo: 'Buenos días',
+      icon: 'sunny',
+      gradient: [INDIGO_SOFT, INDIGO],
+    };
+  }
+  if (h >= 12 && h < 19) {
+    return {
+      saludo: 'Buenas tardes',
+      icon: 'partly-sunny',
+      gradient: [INDIGO, '#1E2E9E'],
+    };
+  }
+  return {
+    saludo: 'Buenas noches',
+    icon: 'moon',
+    gradient: [NAVY, '#25306E'],
+  };
+};
+
+const iniciales = (nombre = '') =>
+  nombre
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase())
+    .join('') || '👤';
 
 export default function HomeCliente({ route, navigation }) {
   const usuario = route?.params?.usuario;
   const buscadorRef = useRef(null);
   const serviciosScrollRef = useRef(null);
-const insets = useSafeAreaInsets()
+
   const [servicios, setServicios] = useState([]);
   const [cargandoServicios, setCargandoServicios] = useState(true);
 
   const [recientes, setRecientes] = useState([]);
   const [cargandoRecientes, setCargandoRecientes] = useState(true);
 
-  // Estado del carrusel de servicios: cuánto se scrolleó y si hay más contenido
   const [serviciosScrollX, setServiciosScrollX] = useState(0);
   const [serviciosContentWidth, setServiciosContentWidth] = useState(0);
   const [serviciosContainerWidth, setServiciosContainerWidth] = useState(0);
 
-  // Trae los servicios de la categoría preferida del cliente
+  const franja = useMemo(() => obtenerFranjaHoraria(), []);
+
   const cargarServicios = useCallback(async () => {
     if (!usuario?.idCliente) {
       setCargandoServicios(false);
@@ -122,9 +163,9 @@ const insets = useSafeAreaInsets()
     cargarRecientes();
   }, [cargarServicios, cargarRecientes]);
 
-const buscarServicio = (nombreServicio) => {
-  buscadorRef.current?.buscarPorEspecialidad(nombreServicio);
-};
+  const buscarServicio = (nombreServicio) => {
+    buscadorRef.current?.buscarPorEspecialidad(nombreServicio);
+  };
 
   const scrollServicios = (direccion) => {
     const nuevoX = direccion === 'right'
@@ -133,16 +174,14 @@ const buscarServicio = (nombreServicio) => {
     serviciosScrollRef.current?.scrollTo({ x: Math.max(0, nuevoX), animated: true });
   };
 
-  // Solo mostramos flechas si el contenido es más ancho que el contenedor visible
   const hayOverflowServicios = serviciosContentWidth > serviciosContainerWidth;
   const puedeIrIzquierda = hayOverflowServicios && serviciosScrollX > 4;
   const puedeIrDerecha = hayOverflowServicios &&
     serviciosScrollX < (serviciosContentWidth - serviciosContainerWidth - 4);
 
   return (
-    <SafeAreaView style={styles.container}>
-      
-    <StatusBar barStyle="light-content" backgroundColor={STATUS_BAR} />
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <StatusBar barStyle="light-content" backgroundColor={NAVY} />
       <Header />
 
       <ScrollView
@@ -150,28 +189,53 @@ const buscarServicio = (nombreServicio) => {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
+        {/* ── Saludo + avatar ─────────────────────────────────────────── */}
         <View style={styles.saludoRow}>
-          <Text style={styles.saludoTexto}>
-            Hola{usuario?.nombre ? `, ${usuario.nombre}` : ''} 👋
-          </Text>
-          <Text style={styles.saludoSub}>¿Qué necesitás resolver hoy?</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.saludoEyebrow}>{franja.saludo.toUpperCase()}</Text>
+            <Text style={styles.saludoTexto} numberOfLines={1}>
+              {usuario?.nombre ?? 'Bienvenido'}
+            </Text>
+            <Text style={styles.saludoSub}>¿Qué necesitás resolver hoy?</Text>
+          </View>
+
+          <View style={styles.avatarChip}>
+            {usuario?.foto ? (
+              <Image source={{ uri: usuario.foto }} style={styles.avatarChipImg} />
+            ) : (
+              <Text style={styles.avatarChipText}>{iniciales(usuario?.nombre)}</Text>
+            )}
+          </View>
         </View>
 
-        <View style={styles.banner}>
+        {/* ── Banner hero con degradé según franja horaria ────────────── */}
+        <LinearGradient
+          colors={franja.gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.banner}
+        >
           <View style={styles.bannerGlowTop} />
           <View style={styles.bannerGlowBottom} />
-          <Text style={styles.bannerTag}>NOVEDADES</Text>
+
+          <View style={styles.bannerTopRow}>
+            <View style={styles.bannerTag}>
+              <Ionicons name={franja.icon} size={12} color="#fff" />
+              <Text style={styles.bannerTagText}>NOVEDADES</Text>
+            </View>
+          </View>
+
           <Text style={styles.bannerTitle}>
-            Nuevas funciones y ofertas para vos
+            Nuevas funciones y{'\n'}ofertas para vos
           </Text>
           <Text style={styles.bannerText}>
             Descubrí todo lo nuevo que preparamos
           </Text>
           <TouchableOpacity style={styles.bannerButton} activeOpacity={0.85}>
             <Text style={styles.bannerButtonText}>Ver novedades</Text>
-            <Text style={styles.bannerButtonArrow}>→</Text>
+            <Ionicons name="arrow-forward" size={15} color={INDIGO} />
           </TouchableOpacity>
-        </View>
+        </LinearGradient>
 
         <BuscadorTrabajadorWidget
           ref={buscadorRef}
@@ -179,15 +243,27 @@ const buscarServicio = (nombreServicio) => {
           navigation={navigation}
         />
 
-        {/* SERVICIOS de la categoría preferida del cliente */}
+        {/* ── SERVICIOS de la categoría preferida ─────────────────────── */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Servicios para vos</Text>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionTitle}>Servicios para vos</Text>
+            {servicios.length > 0 && (
+              <View style={styles.countBadge}>
+                <Text style={styles.countBadgeText}>{servicios.length}</Text>
+              </View>
+            )}
+          </View>
         </View>
 
         {cargandoServicios ? (
-          <ActivityIndicator style={{ marginTop: 14 }} color={BLUE} />
+          <View style={styles.loaderBox}>
+            <ActivityIndicator color={INDIGO} />
+          </View>
         ) : servicios.length === 0 ? (
-          <Text style={styles.emptyText}>No hay servicios disponibles para tu categoría</Text>
+          <EstadoVacio
+            icon="albums-outline"
+            texto="No hay servicios disponibles para tu categoría"
+          />
         ) : (
           <View
             style={styles.carruselWrapper}
@@ -225,7 +301,7 @@ const buscarServicio = (nombreServicio) => {
                 onPress={() => scrollServicios('left')}
                 activeOpacity={0.8}
               >
-                <Ionicons name="chevron-back" size={18} color={BLUE_DARK} />
+                <Ionicons name="chevron-back" size={18} color={NAVY} />
               </TouchableOpacity>
             )}
 
@@ -235,24 +311,38 @@ const buscarServicio = (nombreServicio) => {
                 onPress={() => scrollServicios('right')}
                 activeOpacity={0.8}
               >
-                <Ionicons name="chevron-forward" size={18} color={BLUE_DARK} />
+                <Ionicons name="chevron-forward" size={18} color={NAVY} />
               </TouchableOpacity>
             )}
           </View>
         )}
 
-        {/* RECIENTES */}
+        {/* ── RECIENTES ────────────────────────────────────────────────── */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recientes</Text>
-          <TouchableOpacity>
-            <Text style={styles.verMas}>Ver más</Text>
-          </TouchableOpacity>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionTitle}>Recientes</Text>
+            {recientes.length > 0 && (
+              <View style={styles.countBadge}>
+                <Text style={styles.countBadgeText}>{recientes.length}</Text>
+              </View>
+            )}
+          </View>
+          {recientes.length > 0 && (
+            <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.verMas}>Ver más</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {cargandoRecientes ? (
-          <ActivityIndicator style={{ marginTop: 14 }} color={BLUE} />
+          <View style={styles.loaderBox}>
+            <ActivityIndicator color={INDIGO} />
+          </View>
         ) : recientes.length === 0 ? (
-          <Text style={styles.emptyText}>No hay trabajadores recientes</Text>
+          <EstadoVacio
+            icon="people-outline"
+            texto="Todavía no contactaste a ningún trabajador"
+          />
         ) : (
           <ScrollView
             horizontal
@@ -269,7 +359,9 @@ const buscarServicio = (nombreServicio) => {
                   <Image source={{ uri: item.foto }} style={styles.avatar} />
                 ) : (
                   <View style={styles.avatarPlaceholder}>
-                    <Text style={styles.avatarPlaceholderText}>👤</Text>
+                    <Text style={styles.avatarPlaceholderText}>
+                      {iniciales(item.nombre)}
+                    </Text>
                   </View>
                 )}
                 <Text style={styles.recentName} numberOfLines={1}>
@@ -281,92 +373,189 @@ const buscarServicio = (nombreServicio) => {
         )}
       </ScrollView>
 
-     {usuario?.idCliente != null && (
-  <TrabajoActivoWidget
-    idCliente={usuario.idCliente}
-    usuario={usuario}
-    navigation={navigation}
-  />
-)}
+      {usuario?.idCliente != null && (
+        <TrabajoActivoWidget
+          idCliente={usuario.idCliente}
+          usuario={usuario}
+          navigation={navigation}
+        />
+      )}
 
-<BottomNavBar usuario={usuario} />
+      <BottomNavBar usuario={usuario} />
     </SafeAreaView>
   );
 }
 
+// Estado vacío reutilizable: siempre con ícono + mensaje accionable en vez
+// de un simple texto gris perdido en la pantalla.
+const EstadoVacio = ({ icon, texto }) => (
+  <View style={styles.emptyBox}>
+    <View style={styles.emptyIconWrap}>
+      <Ionicons name={icon} size={20} color={INDIGO} />
+    </View>
+    <Text style={styles.emptyText}>{texto}</Text>
+  </View>
+);
+
 const styles = StyleSheet.create({
-  
   container: { flex: 1, backgroundColor: BG },
-  scrollContent: {  paddingBottom: 180 },
-  emptyText: { marginTop: 14, marginHorizontal: 16, color: '#8A94A6', fontSize: 13 },
-  saludoRow: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 4 },
-  saludoTexto: { fontSize: 20, fontWeight: '800', color: '#1A202C' },
-  saludoSub: { fontSize: 13, color: '#8A94A6', marginTop: 2 },
-  banner: {
-    margin: 16, marginTop: 14, backgroundColor: BLUE_DARK, borderRadius: 26,
-    padding: 22, overflow: 'hidden', shadowColor: BLUE_DARK,
-    shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.28, shadowRadius: 18, elevation: 8,
+  scrollContent: { paddingBottom: 180 },
+
+  loaderBox: { paddingVertical: 26, alignItems: 'center' },
+
+  emptyBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 14,
+    marginHorizontal: 16,
+    backgroundColor: CARD,
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
-  bannerGlowTop: { position: 'absolute', top: -40, right: -40, width: 140, height: 140, borderRadius: 70, backgroundColor: BLUE_LIGHT, opacity: 0.35 },
-  bannerGlowBottom: { position: 'absolute', bottom: -50, left: -30, width: 120, height: 120, borderRadius: 60, backgroundColor: BLUE, opacity: 0.25 },
-  bannerTag: { backgroundColor: 'rgba(255,255,255,0.18)', alignSelf: 'flex-start', color: '#fff', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 15, fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
-  bannerTitle: { color: '#fff', fontSize: 22, fontWeight: '800', marginTop: 12, lineHeight: 28 },
-  bannerText: { color: 'rgba(255,255,255,0.75)', marginTop: 6, fontSize: 13 },
-  bannerButton: { marginTop: 16, backgroundColor: '#fff', alignSelf: 'flex-start', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  bannerButtonText: { color: BLUE_DARK, fontWeight: '700', fontSize: 13 },
-  bannerButtonArrow: { color: BLUE_DARK, fontWeight: '700', fontSize: 13 },
-  sectionHeader: { marginTop: 26, marginHorizontal: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  sectionTitle: { color: '#1A202C', fontWeight: '800', fontSize: 17 },
-  verMas: { color: BLUE, fontWeight: '600', fontSize: 13 },
+  emptyIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(42,63,214,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: { flex: 1, color: TEXT_MUTED, fontSize: 13, lineHeight: 18 },
+
+  saludoRow: {
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 4,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  saludoEyebrow: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: INDIGO,
+    letterSpacing: 1,
+    marginBottom: 3,
+  },
+  saludoTexto: { fontSize: 22, fontWeight: '800', color: TEXT_DARK },
+  saludoSub: { fontSize: 13, color: TEXT_MUTED, marginTop: 3 },
+  avatarChip: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: NAVY,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    shadowColor: NAVY,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  avatarChipImg: { width: '100%', height: '100%' },
+  avatarChipText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+
+  banner: {
+    margin: 16,
+    marginTop: 14,
+    borderRadius: 26,
+    padding: 22,
+    overflow: 'hidden',
+    shadowColor: NAVY,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  bannerGlowTop: {
+    position: 'absolute', top: -40, right: -40, width: 150, height: 150,
+    borderRadius: 75, backgroundColor: '#fff', opacity: 0.12,
+  },
+  bannerGlowBottom: {
+    position: 'absolute', bottom: -55, left: -30, width: 130, height: 130,
+    borderRadius: 65, backgroundColor: '#fff', opacity: 0.08,
+  },
+  bannerTopRow: { flexDirection: 'row' },
+  bannerTag: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.18)', alignSelf: 'flex-start',
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 15,
+  },
+  bannerTagText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
+  bannerTitle: { color: '#fff', fontSize: 22, fontWeight: '800', marginTop: 14, lineHeight: 28 },
+  bannerText: { color: 'rgba(255,255,255,0.78)', marginTop: 6, fontSize: 13 },
+  bannerButton: {
+    marginTop: 16, backgroundColor: '#fff', alignSelf: 'flex-start', borderRadius: 20,
+    paddingHorizontal: 16, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 6,
+  },
+  bannerButtonText: { color: INDIGO, fontWeight: '800', fontSize: 13 },
+
+  sectionHeader: {
+    marginTop: 28, marginHorizontal: 16,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+  },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionTitle: { color: TEXT_DARK, fontWeight: '800', fontSize: 17 },
+  countBadge: {
+    minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6,
+    backgroundColor: 'rgba(42,63,214,0.1)', alignItems: 'center', justifyContent: 'center',
+  },
+  countBadgeText: { color: INDIGO, fontSize: 11, fontWeight: '800' },
+  verMas: { color: INDIGO, fontWeight: '700', fontSize: 13 },
+
   horizontalContainer: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4, gap: 12 },
+
   categoryCard: {
-    width: 92,
-    height: 108,
-    backgroundColor: '#fff',
+    width: CARD_WIDTH,
+    height: 112,
+    backgroundColor: CARD,
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: 'rgba(21,101,216,0.08)',
-    shadowColor: BLUE_DARK,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
+    borderColor: BORDER,
+    shadowColor: NAVY,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
     elevation: 3,
   },
   categoryIconWrap: {
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: BLUE,
+    backgroundColor: INDIGO,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 10,
-    shadowColor: BLUE,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    shadowColor: INDIGO,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.32,
+    shadowRadius: 8,
     elevation: 3,
   },
-  categoryText: {
-    color: '#2D3748',
-    fontSize: 12,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  recentCard: { width: 92, backgroundColor: '#fff', borderRadius: 16, alignItems: 'center', paddingVertical: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
-  avatar: { width: 52, height: 52, borderRadius: 26, borderWidth: 2, borderColor: 'rgba(21,101,216,0.15)' },
-  avatarPlaceholder: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#EDF1F7', justifyContent: 'center', alignItems: 'center' },
-  avatarPlaceholderText: { fontSize: 20 },
-  recentName: { color: '#4A5568', marginTop: 8, fontSize: 12, fontWeight: '600' },
+  categoryText: { color: '#2D3348', fontSize: 12, fontWeight: '700', textAlign: 'center' },
 
-  // Carrusel de servicios con flechas
-  carruselWrapper: {
-    position: 'relative',
-    justifyContent: 'center',
+  recentCard: {
+    width: 96, backgroundColor: CARD, borderRadius: 18, alignItems: 'center',
+    paddingVertical: 16, borderWidth: 1, borderColor: BORDER,
+    shadowColor: NAVY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
   },
+  avatar: { width: 54, height: 54, borderRadius: 27, borderWidth: 2, borderColor: 'rgba(42,63,214,0.15)' },
+  avatarPlaceholder: {
+    width: 54, height: 54, borderRadius: 27, backgroundColor: NAVY,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  avatarPlaceholderText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  recentName: { color: '#3E4560', marginTop: 9, fontSize: 12, fontWeight: '700' },
+
+  carruselWrapper: { position: 'relative', justifyContent: 'center' },
   carruselArrow: {
     position: 'absolute',
     top: '50%',
@@ -377,16 +566,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
+    borderWidth: 1,
+    borderColor: BORDER,
+    shadowColor: NAVY,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
     elevation: 4,
   },
-  carruselArrowLeft: {
-    left: 4,
-  },
-  carruselArrowRight: {
-    right: 4,
-  },
+  carruselArrowLeft: { left: 4 },
+  carruselArrowRight: { right: 4 },
 });

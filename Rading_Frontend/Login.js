@@ -39,7 +39,7 @@ export default function Login({ navigation }) {
       console.log('tipo de usuario:', usuario.tipo);
 
     if (usuario.tipo === 'trabajador') {
-  navigation.navigate('BuscadorTrabajador', { usuario });
+  navigation.navigate('HomeTrabajador', { usuario });
 } else if (usuario.tipo === 'cliente') {
   navigation.navigate('HomeCliente', { usuario });
 } else {

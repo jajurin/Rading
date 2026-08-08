@@ -127,6 +127,76 @@ export default class trabajadorRepository {
         await client.end()
     }
 }
+
+    /**
+     * Resumen del día para el trabajador: ganancias, trabajos completados
+     * y rating promedio, todo calculado sobre HOY (CURRENT_DATE).
+     *
+     * - ganancias_hoy y trabajos_completados: se calculan sobre
+     *   "Cliente-Trabajador" con estado = 'TERMINADO' y fecha_acabado = hoy.
+     * - rating: promedio de "ReseñaCliente".estrellas recibidas hoy.
+     *   Si el trabajador no tiene reseñas hoy, devuelve null (el front puede
+     *   mostrar el estrellas general del Trabajador como fallback).
+     */
+    obtenerResumenDiario = async (idTrabajador) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+
+            const sql = `
+                SELECT
+                    COALESCE((
+                        SELECT SUM(ct.precio)
+                        FROM "Cliente-Trabajador" ct
+                        WHERE ct."IdTrabajador" = $1
+                          AND ct.estado = 'TERMINADO'
+                          AND ct.fecha_acabado = CURRENT_DATE
+                    ), 0) AS ganancias_hoy,
+                    COALESCE((
+                        SELECT COUNT(*)
+                        FROM "Cliente-Trabajador" ct
+                        WHERE ct."IdTrabajador" = $1
+                          AND ct.estado = 'TERMINADO'
+                          AND ct.fecha_acabado = CURRENT_DATE
+                    ), 0) AS trabajos_completados,
+                    (
+                        SELECT AVG(r.estrellas)
+                        FROM "ReseñaCliente" r
+                        WHERE r."idTrabajador" = $1
+                          AND r."fechaCreacion"::date = CURRENT_DATE
+                    ) AS rating_hoy,
+                    (
+                        SELECT t.estrellas
+                        FROM "Trabajador" t
+                        WHERE t.id = $1
+                    ) AS rating_general
+            `
+
+            const result = await client.query(sql, [idTrabajador])
+            const row = result?.rows?.[0]
+
+            if (!row) {
+                return { ganancias_hoy: 0, trabajos_completados: 0, rating: 0 }
+            }
+
+            // Si hoy no tuvo reseñas, caemos al rating general del trabajador.
+            const rating = row.rating_hoy !== null
+                ? Number(row.rating_hoy)
+                : Number(row.rating_general ?? 0)
+
+            return {
+                ganancias_hoy: Number(row.ganancias_hoy),
+                trabajos_completados: Number(row.trabajos_completados),
+                rating,
+            }
+        } catch (err) {
+            console.error('Error en obtenerResumenDiario:', err)
+            throw err
+        } finally {
+            await client.end()
+        }
+    }
+
     /**
      * Registra un trabajador: inserta en Usuario y luego en Trabajador.
      * Recibe un objeto con todos los campos del modelo.

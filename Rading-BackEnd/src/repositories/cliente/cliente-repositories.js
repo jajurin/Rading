@@ -6,53 +6,120 @@ import config from '../../configs/dbconfig.js'
     export default class clienteRepository {
         #usuarioRepo = new usuarioRepository()
 
-        buscarTrabajador = async (texto, ids = []) => {
-            const client = new Client(config)
-            let result
+       buscarTrabajador = async (filtros = {}) => {
+    const {
+        texto, estrellas, especialidad,
+        horarioDesde, horarioHasta,
+        lat, lng, radioKm,
+    } = filtros
 
-            try {
-                await client.connect()
+    const client = new Client(config)
+    let result
 
-                let sql = `
-                    SELECT
-                        t.id,
-                        u.nombre,
-                        u.apellido,
-                        u.email,
-                        u.direccion,
-                        u.telefono,
-                        t.descripcion,
-                        t."zonaTrabajo",
-                        t."DispComienzo",
-                        t."DispFinal",
-                        t.foto,
-                        t.estrellas
-                    FROM "Trabajador" t
-                    INNER JOIN "Usuario" u ON t."IdPersona" = u.id
-                    WHERE (
-                        u.nombre ILIKE $1
-                        OR u.apellido ILIKE $1
-                    )
-                `
+    try {
+        await client.connect()
 
-                const values = [`%${texto}%`]
+        const values = []
+        let i = 1
 
-                if (ids.length > 0) {
-                    sql += ` AND t.id = ANY($2)`
-                    values.push(ids)
-                }
+        const distanciaSelect = (lat != null && lng != null)
+            ? `, (
+                6371 * acos(
+                    LEAST(1, GREATEST(-1,
+                        cos(radians($${i})) * cos(radians(u.lat)) *
+                        cos(radians(u.lng) - radians($${i + 1})) +
+                        sin(radians($${i})) * sin(radians(u.lat))
+                    ))
+                )
+              ) AS distancia_km`
+            : ''
 
-                result = await client.query(sql, values)
-
-            } catch (err) {
-                console.error('Error en buscarTrabajador:', err)
-                throw err
-            } finally {
-                await client.end()
-            }
-
-            return result?.rows ?? []
+        if (lat != null && lng != null) {
+            values.push(lat, lng)
+            i += 2
         }
+
+        let sql = `
+            SELECT
+                t.id,
+                u.nombre,
+                u.apellido,
+                u.email,
+                u.direccion,
+                u.telefono,
+                t.descripcion,
+                t."zonaTrabajo",
+                t."DispComienzo",
+                t."DispFinal",
+                t.foto,
+                t.estrellas
+                ${distanciaSelect}
+            FROM "Trabajador" t
+            INNER JOIN "Usuario" u ON t."IdPersona" = u.id
+            WHERE 1=1
+        `
+
+        if (texto && texto.trim()) {
+            sql += ` AND (u.nombre ILIKE $${i} OR u.apellido ILIKE $${i})`
+            values.push(`%${texto.trim()}%`)
+            i++
+        }
+
+        if (estrellas) {
+            sql += ` AND t.estrellas >= $${i}`
+            values.push(Number(estrellas))
+            i++
+        }
+
+        if (especialidad) {
+            sql += ` AND t.id IN (
+                SELECT ts.trabajadores_id FROM "Trabajador_Servicio" ts
+                INNER JOIN "Servicio" s ON s.id = ts.servicios_id
+                WHERE s.nombre = $${i}
+            )`
+            values.push(especialidad)
+            i++
+        }
+
+        if (horarioDesde) {
+            sql += ` AND t."DispComienzo" <= $${i}::time`
+            values.push(horarioDesde)
+            i++
+        }
+
+        if (horarioHasta) {
+            sql += ` AND t."DispFinal" >= $${i}::time`
+            values.push(horarioHasta)
+            i++
+        }
+
+        if (lat != null && lng != null && radioKm) {
+            sql += ` AND (
+                6371 * acos(
+                    LEAST(1, GREATEST(-1,
+                        cos(radians($1)) * cos(radians(u.lat)) *
+                        cos(radians(u.lng) - radians($2)) +
+                        sin(radians($1)) * sin(radians(u.lat))
+                    ))
+                )
+            ) <= $${i}`
+            values.push(radioKm)
+            i++
+        }
+
+        sql += (lat != null && lng != null) ? ` ORDER BY distancia_km ASC` : ` ORDER BY u.nombre ASC`
+
+        result = await client.query(sql, values)
+
+    } catch (err) {
+        console.error('Error en buscarTrabajador:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+
+    return result?.rows ?? []
+}
 
         buscarTrabajadorPorIds = async (ids) => {
             if (!ids || ids.length === 0) return []
@@ -187,52 +254,62 @@ import config from '../../configs/dbconfig.js'
             return result?.rows ?? []
         }
 
-        registrarCliente = async (cliente) => {
-            const client = new Client(config)
+       registrarCliente = async (cliente) => {
+    const client = new Client(config)
 
-            try {
-                const usuario = await this.#usuarioRepo.buscarPorEmail(cliente.email)
+    try {
+        const usuario = await this.#usuarioRepo.buscarPorEmail(cliente.email)
 
-                if (!usuario) {
-                    throw new Error(`No existe un usuario con el email ${cliente.email}`)
-                }
+        if (!usuario) {
+            throw new Error(`No existe un usuario con el email ${cliente.email}`)
+        }
 
-                await client.connect()
+        await client.connect()
 
-                const existeCliente = await client.query(
-                    `SELECT id FROM "Cliente" WHERE "IdPersona" = $1`,
-                    [usuario.id]
-                )
+        const existeCliente = await client.query(
+            `SELECT id FROM "Cliente" WHERE "IdPersona" = $1`,
+            [usuario.id]
+        )
 
-                if (existeCliente.rows.length > 0) {
-                    throw new Error(`El usuario ${cliente.email} ya es cliente`)
-                }
+        if (existeCliente.rows.length > 0) {
+            throw new Error(`El usuario ${cliente.email} ya es cliente`)
+        }
 
-                const sqlCliente = `
-                    INSERT INTO "Cliente"
-                    ("IdPersona", estrellas, categoria_id)
-                    VALUES ($1, $2, $3)
-                    RETURNING id
-                `
-                const resultCliente = await client.query(sqlCliente, [
-                    usuario.id,
-                    cliente.estrellas,
-                    cliente.categoriaId ?? null
-                ])
+        const sqlCliente = `
+            INSERT INTO "Cliente"
+            ("IdPersona", estrellas, categoria_id)
+            VALUES ($1, $2, $3)
+            RETURNING id
+        `
+        const resultCliente = await client.query(sqlCliente, [
+            usuario.id,
+            cliente.estrellas,
+            cliente.categoriaId ?? null
+        ])
 
-                return {
-                    success: true,
-                    idUsuario: usuario.id,
-                    idCliente: resultCliente.rows[0].id
-                }
-
-            } catch (err) {
-                console.error('Error en registrarCliente:', err)
-                throw err
-            } finally {
-                await client.end()
+        return {
+            success: true,
+            usuario: {
+                id: usuario.id,
+                idCliente: resultCliente.rows[0].id,
+                nombre: usuario.nombre,
+                apellido: usuario.apellido,
+                email: usuario.email,
+                telefono: usuario.telefono,
+                direccion: usuario.direccion,
+                lat: usuario.lat ?? null,
+                lng: usuario.lng ?? null,
+                tipo: 'cliente',
             }
         }
+
+    } catch (err) {
+        console.error('Error en registrarCliente:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
 
         mostrarTodosLosClientes = async () => {
             const client = new Client(config)

@@ -5,39 +5,40 @@ const { Client } = pkg
 export default class usuarioRepository {
 
     registrarUsuario = async (usuario) => {
-        const client = new Client(config)
-        try {
-            await client.connect()
+    const client = new Client(config)
+    try {
+        await client.connect()
 
-            const sql = `
-                INSERT INTO "Usuario"
-                (nombre, apellido, email, direccion, contrasena, telefono, "fechaNac", "DNI", "IdCuentaBancaria")
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-                RETURNING id
-            `
-            const values = [
-                usuario.nombre,
-                usuario.apellido,
-                usuario.email,
-                usuario.direccion,
-                usuario.contrasena,
-                usuario.telefono,
-                usuario.fechaNac,
-                usuario.dni,
-                usuario.IdCuentaBancaria ?? null
-            ]
+        const sql = `
+            INSERT INTO "Usuario"
+            (nombre, apellido, email, direccion, contrasena, telefono, "fechaNac", "DNI", "IdCuentaBancaria", lat, lng)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+            RETURNING id
+        `
+        const values = [
+            usuario.nombre,
+            usuario.apellido,
+            usuario.email,
+            usuario.direccion,
+            usuario.contrasena,
+            usuario.telefono,
+            usuario.fechaNac,
+            usuario.dni,
+            usuario.IdCuentaBancaria ?? null,
+            usuario.lat ?? null,
+            usuario.lng ?? null
+        ]
 
-            const result = await client.query(sql, values)
-            return result.rows[0].id
+        const result = await client.query(sql, values)
+        return result.rows[0].id
 
-        } catch (err) {
-            console.error('Error en registrarUsuario:', err)
-            throw err
-        } finally {
-            await client.end()
-        }
+    } catch (err) {
+        console.error('Error en registrarUsuario:', err)
+        throw err
+    } finally {
+        await client.end()
     }
-
+}
     buscarPorEmail = async (email) => {
         const client = new Client(config)
         try {

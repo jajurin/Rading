@@ -9,8 +9,10 @@ class Usuario {
   fechaNac;
   dni;
   IdCuentaBancaria; // FK a CuentaBancaria (según el diagrama)
- 
-  constructor(nombre, apellido, email, direccion, contrasena, telefono, fechaNac, dni, IdCuentaBancaria = null) {
+  lat;
+  lng;
+
+  constructor(nombre, apellido, email, direccion, contrasena, telefono, fechaNac, dni, IdCuentaBancaria = null, lat = null, lng = null) {
     this.nombre = nombre;
     this.apellido = apellido;
     this.email = email;
@@ -20,7 +22,9 @@ class Usuario {
     this.fechaNac = fechaNac;
     this.dni = dni;
     this.IdCuentaBancaria = IdCuentaBancaria;
+    this.lat = lat;
+    this.lng = lng;
   }
 }
- 
+
 export default Usuario;

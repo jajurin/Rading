@@ -66,24 +66,23 @@ mostrarRecientes = async (idCliente) => {
         return await this.#repo.mostrarTrabajosActivos(idCliente)
     }
 
-    buscarConFiltrosCl = async (texto, estrellas, especialidad, horarioDesde, horarioHasta) => {
-        const hayTexto   = texto && texto.trim();
-        const hayFiltros = estrellas || especialidad || horarioDesde || horarioHasta;
+    buscarConFiltrosCl = async (filtros) => {
+    const { texto, estrellas, especialidad, horarioDesde, horarioHasta, lat, lng, radioKm } = filtros
 
-        if (!hayTexto && !hayFiltros) return [];
+    const hayTexto   = texto && texto.trim()
+    const hayFiltros = estrellas || especialidad || horarioDesde || horarioHasta || radioKm
 
-        let ids = null;
+    if (!hayTexto && !hayFiltros) return []
 
-        if (hayFiltros) {
-            const filtrados = await this.#repo.filtrarTr(estrellas, especialidad, horarioDesde, horarioHasta);
-            ids = filtrados.map(r => r.id);
-            if (ids.length === 0) return [];
-        }
-
-        if (!hayTexto && ids !== null) {
-            return await this.#repo.buscarTrabajadorPorIds(ids);
-        }
-
-        return await this.#repo.buscarTrabajador(texto.trim(), ids ?? []);
-    }
+    return await this.#repo.buscarTrabajador({
+        texto,
+        estrellas,
+        especialidad,
+        horarioDesde,
+        horarioHasta,
+        lat,
+        lng,
+        radioKm,
+    })
+}
 }

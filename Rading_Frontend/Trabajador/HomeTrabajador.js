@@ -1,378 +1,532 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
-  TextInput,
-  Image,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
+  ScrollView,
+  Image,
+  StatusBar,
+  ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-// Header y BottomNavBar ya existen en el proyecto, solo los importamos y usamos
 import Header from '../Header';
 import BottomNavBar from '../Cliente/NavegadorCliente';
+import TrabajoActivoTrabajador from './TrabajoActivoTrabajador';
+import TrabajoActivoOverlayTrabajador from './TrabajoActivoOverlayTrabajador';
+import Search from './Search';
+import API_URL from '../configS';
 
-// --- Datos de ejemplo ---
-const OFERTAS = [
-  {
-    id: '1',
-    nombre: 'Rodrigo Perez',
-    categoria: 'Plomeria',
-    horario: '17:30',
-    distancia: '1.2km',
-    tipo: 'fijo',
-    monto: '23.000$',
-    avatar: 'https://randomuser.me/api/portraits/men/32.jpg',
-  },
-  {
-    id: '2',
-    nombre: 'Andre Díaz',
-    categoria: 'Plomeria',
-    horario: '16:30',
-    distancia: '1.8km',
-    tipo: 'sub',
-    avatar: 'https://randomuser.me/api/portraits/women/44.jpg',
-  },
-];
+// ── Paleta ─────────────────────────────────────────────────────────────────
+// Misma identidad que el lado cliente: índigo de marca, navy para
+// superficies oscuras, ámbar como único acento (rating / urgente).
+const NAVY         = '#0F1B4C';
+const NAVY_SOFT    = '#161F52';
+const INDIGO       = '#2A3FD6';
+const INDIGO_SOFT  = '#5C6DF2';
+const AMBER        = '#F5A623';
+const GREEN        = '#22C55E';
+const RED          = '#EF4444';
+const BG           = '#F4F6FC';
+const CARD         = '#FFFFFF';
+const TEXT_DARK    = '#12172E';
+const TEXT_MUTED   = '#828AA0';
+const BORDER       = 'rgba(15,27,76,0.07)';
 
-const TRABAJOS = [
-  {
-    id: '1',
-    nombre: 'Juan Perez',
-    avatar: 'https://randomuser.me/api/portraits/men/22.jpg',
-    color: '#2E6BFF',
-  },
-  {
-    id: '2',
-    nombre: 'Laura Choe',
-    avatar: 'https://randomuser.me/api/portraits/women/68.jpg',
-    color: '#A94FE0',
-  },
-  {
-    id: '3',
-    nombre: 'Elina Gómez',
-    avatar: 'https://randomuser.me/api/portraits/women/12.jpg',
-    color: '#3ECF6E',
-  },
-];
+const AVATAR_CLIENTE = (nombre = '', apellido = '') =>
+  `https://ui-avatars.com/api/?name=${nombre}+${apellido}&background=2A3FD6&color=fff&size=150`;
 
-// --- Subcomponentes ---
+// Franja horaria: mismo gesto que HomeCliente — el saludo y el degradé
+// cambian según el momento del día.
+const obtenerFranjaHoraria = () => {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return { saludo: 'Buenos días', icon: 'sunny', gradient: [INDIGO_SOFT, INDIGO] };
+  if (h >= 12 && h < 19) return { saludo: 'Buenas tardes', icon: 'partly-sunny', gradient: [INDIGO, '#1E2E9E'] };
+  return { saludo: 'Buenas noches', icon: 'moon', gradient: [NAVY, '#25306E'] };
+};
 
-function BannerPatrocinios() {
-  return (
-    <View style={styles.bannerContainer}>
-      <View style={styles.bannerTagFila}>
-        <Ionicons name="megaphone-outline" size={14} color="#FFFFFF" />
-        <Text style={styles.bannerTag}>PATROCINIOS</Text>
+const iniciales = (nombre = '') =>
+  nombre.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase()).join('') || '👤';
+
+// ── Sub-componentes ──────────────────────────────────────────────────────
+
+const EstadoVacio = ({ icon, texto }) => (
+  <View style={styles.emptyBox}>
+    <View style={styles.emptyIconWrap}>
+      <Ionicons name={icon} size={20} color={INDIGO} />
+    </View>
+    <Text style={styles.emptyText}>{texto}</Text>
+  </View>
+);
+
+const SolicitudCard = ({ item, onAceptar, onVer }) => (
+  <TouchableOpacity style={styles.solicitudCard} activeOpacity={0.88} onPress={() => onVer?.(item)}>
+    <Image source={{ uri: AVATAR_CLIENTE(item.nombre, item.apellido) }} style={styles.solicitudAvatar} />
+
+    <View style={styles.solicitudBody}>
+      <View style={styles.solicitudTopRow}>
+        <Text style={styles.solicitudNombre} numberOfLines={1}>
+          {item.nombre} {item.apellido}
+        </Text>
+        {item.emergencia && (
+          <View style={styles.badgeUrgente}>
+            <Ionicons name="flash" size={10} color="#fff" />
+            <Text style={styles.badgeUrgenteText}>Urgente</Text>
+          </View>
+        )}
       </View>
 
-      <Text style={styles.bannerTitulo}>¿Querés más{'\n'}visibilidad?</Text>
-      <Text style={styles.bannerSubtitulo}>
-        Patrocinate y llegá a miles de clientes{'\n'}que ya usan la app.
+      <Text style={styles.solicitudServicio} numberOfLines={1}>
+        {item.especialidad ?? item.servicio_nombre ?? 'Servicio'}
       </Text>
 
-      <View style={styles.bannerBotonesFila}>
-        <TouchableOpacity style={styles.bannerBotonSecundario}>
-          <Text style={styles.bannerBotonSecundarioTexto}>Ver planes</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.bannerBotonPrimario}>
-          <Text style={styles.bannerBotonPrimarioTexto}>¡Quiero patrocinarme!</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.bannerIconoWrapper}>
-        <Ionicons name="phone-portrait-outline" size={40} color="rgba(255,255,255,0.35)" />
+      <View style={styles.solicitudMetaRow}>
+        {item.distancia != null && (
+          <View style={styles.metaChip}>
+            <Ionicons name="location" size={10} color={INDIGO} />
+            <Text style={styles.metaChipText}>{item.distancia} km</Text>
+          </View>
+        )}
+        {item.horario_requerido && (
+          <View style={styles.metaChip}>
+            <Ionicons name="time" size={10} color={INDIGO} />
+            <Text style={styles.metaChipText}>{item.horario_requerido}</Text>
+          </View>
+        )}
+        {item.fijo && item.precio != null ? (
+          <View style={styles.metaChipPrecio}>
+            <Text style={styles.metaChipPrecioText}>${Number(item.precio).toLocaleString('es-AR')}</Text>
+          </View>
+        ) : (
+          <View style={styles.metaChip}>
+            <Text style={styles.metaChipText}>Subasta</Text>
+          </View>
+        )}
       </View>
     </View>
-  );
-}
 
-function BarraBusqueda() {
+    <TouchableOpacity style={styles.aceptarBtn} activeOpacity={0.85} onPress={() => onAceptar?.(item)}>
+      <Ionicons name="checkmark" size={20} color="#fff" />
+    </TouchableOpacity>
+  </TouchableOpacity>
+);
+
+// ── Pantalla principal ───────────────────────────────────────────────────
+
+export default function HomeTrabajador({ route, navigation }) {
+  const usuario = route?.params?.usuario;
+  const idTrabajador = usuario?.idTrabajador;
+
+  const franja = useMemo(() => obtenerFranjaHoraria(), []);
+
+  const [disponible, setDisponible] = useState(true);
+  const [cambiandoDisponibilidad, setCambiandoDisponibilidad] = useState(false);
+
+  const [resumen, setResumen] = useState({ ganancias_hoy: 0, trabajos_completados: 0, rating: 0 });
+  const [cargandoResumen, setCargandoResumen] = useState(true);
+
+  const [solicitudes, setSolicitudes] = useState([]);
+  const [cargandoSolicitudes, setCargandoSolicitudes] = useState(true);
+
+  const [showTrabajoActivo, setShowTrabajoActivo] = useState(false);
+
+  // NOTA: ajustar estos endpoints al contrato real del backend.
+  const cargarResumen = useCallback(async () => {
+    if (!idTrabajador) { setCargandoResumen(false); return; }
+    try {
+      setCargandoResumen(true);
+      const resp = await fetch(`${API_URL}/trabajador/resumen/${idTrabajador}`);
+      if (!resp.ok) throw new Error('Respuesta no OK al pedir resumen');
+      const data = await resp.json();
+      setResumen({
+        ganancias_hoy: data.ganancias_hoy ?? 0,
+        trabajos_completados: data.trabajos_completados ?? 0,
+        rating: data.rating ?? 0,
+      });
+      if (typeof data.disponible === 'boolean') setDisponible(data.disponible);
+    } catch (err) {
+      console.error('Error al cargar resumen del trabajador:', err);
+    } finally {
+      setCargandoResumen(false);
+    }
+  }, [idTrabajador]);
+
+  const cargarSolicitudes = useCallback(async () => {
+    if (!idTrabajador) { setCargandoSolicitudes(false); return; }
+    try {
+      setCargandoSolicitudes(true);
+      const resp = await fetch(`${API_URL}/trabajador/solicitudesNuevas/${idTrabajador}`);
+      if (!resp.ok) throw new Error('Respuesta no OK al pedir solicitudes');
+      const data = await resp.json();
+      setSolicitudes(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Error al cargar solicitudes nuevas:', err);
+      setSolicitudes([]);
+    } finally {
+      setCargandoSolicitudes(false);
+    }
+  }, [idTrabajador]);
+
+  useEffect(() => {
+    cargarResumen();
+    cargarSolicitudes();
+  }, [cargarResumen, cargarSolicitudes]);
+
+  const toggleDisponibilidad = async (valor) => {
+    setDisponible(valor);
+    setCambiandoDisponibilidad(true);
+    try {
+      await fetch(`${API_URL}/trabajador/disponibilidad/${idTrabajador}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ disponible: valor }),
+      });
+    } catch (err) {
+      console.error('Error al actualizar disponibilidad:', err);
+      setDisponible(!valor); // revertimos si falló
+    } finally {
+      setCambiandoDisponibilidad(false);
+    }
+  };
+
+  const irABuscador = (texto = '') => {
+    navigation?.navigate('BuscadorTrabajador', { usuario, textoInicial: texto });
+  };
+
+  const aceptarSolicitud = (item) => {
+    // TODO: conectar con el endpoint real de aceptación de trabajo.
+    console.log('Aceptar solicitud:', item.id);
+  };
+
   return (
-    <View style={styles.searchBar}>
-      <Ionicons name="search" size={18} color="#8A8FA3" style={{ marginRight: 8 }} />
-      <TextInput
-        style={styles.searchInput}
-        placeholder="¿Qué prefiere? Ej: precio, ubi, etc"
-        placeholderTextColor="#8A8FA3"
-      />
-    </View>
-  );
-}
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <StatusBar barStyle="light-content" backgroundColor={NAVY} />
+      <Header />
 
-function TarjetaOferta({ oferta }) {
-  return (
-    <View style={styles.ofertaCard}>
-      <Image source={{ uri: oferta.avatar }} style={styles.ofertaAvatar} />
-
-      <View style={{ flex: 1, marginLeft: 12 }}>
-        <Text style={styles.ofertaNombre}>{oferta.nombre}</Text>
-
-        <View style={styles.ofertaFila}>
-          <View style={styles.ofertaColumna}>
-            <Text style={styles.ofertaLabel}>Categoria:</Text>
-            <Text style={styles.ofertaValor}>{oferta.categoria}</Text>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* ── Saludo + avatar + disponibilidad ──────────────────────── */}
+        <View style={styles.saludoRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.saludoEyebrow}>{franja.saludo.toUpperCase()}</Text>
+            <Text style={styles.saludoTexto} numberOfLines={1}>
+              {usuario?.nombre ?? 'Bienvenido'}
+            </Text>
           </View>
-          <View style={styles.ofertaColumna}>
-            <Text style={styles.ofertaLabel}>Horario:</Text>
-            <Text style={styles.ofertaValor}>{oferta.horario}</Text>
-          </View>
-        </View>
 
-        <View style={styles.ofertaFila}>
-          <View style={styles.ofertaColumna}>
-            <Text style={styles.ofertaLabel}>Distancia:</Text>
-            <Text style={styles.ofertaValor}>{oferta.distancia}</Text>
-          </View>
-          <View style={styles.ofertaColumna}>
-            {oferta.tipo === 'fijo' ? (
-              <>
-                <Text style={styles.ofertaLabel}>Fijo:</Text>
-                <Text style={styles.ofertaValor}>{oferta.monto}</Text>
-              </>
+          <View style={styles.avatarChip}>
+            {usuario?.foto ? (
+              <Image source={{ uri: usuario.foto }} style={styles.avatarChipImg} />
             ) : (
-              <>
-                <Text style={styles.ofertaLabel}>Sub:</Text>
-                <TouchableOpacity>
-                  <Text style={styles.ofertaValor}>•••</Text>
-                </TouchableOpacity>
-              </>
+              <Text style={styles.avatarChipText}>{iniciales(usuario?.nombre)}</Text>
             )}
           </View>
         </View>
-      </View>
-    </View>
-  );
-}
 
-function AvatarTrabajo({ trabajo }) {
-  return (
-    <View style={styles.trabajoItem}>
-      <View style={[styles.trabajoAvatarWrapper, { borderColor: trabajo.color }]}>
-        <Image source={{ uri: trabajo.avatar }} style={styles.trabajoAvatar} />
-      </View>
-      <Text style={styles.trabajoNombre} numberOfLines={1}>
-        {trabajo.nombre}
-      </Text>
-    </View>
-  );
-}
+        <View style={styles.dispoRow}>
+          <View style={styles.dispoLeft}>
+            <View style={[styles.dispoDot, { backgroundColor: disponible ? GREEN : RED }]} />
+            <Text style={styles.dispoText}>
+              {disponible ? 'Estás disponible para recibir trabajos' : 'No estás recibiendo trabajos'}
+            </Text>
+          </View>
+          {cambiandoDisponibilidad ? (
+            <ActivityIndicator size="small" color={INDIGO} />
+          ) : (
+            <Switch
+              value={disponible}
+              onValueChange={toggleDisponibilidad}
+              trackColor={{ false: '#DADFEE', true: INDIGO_SOFT }}
+              thumbColor={disponible ? INDIGO : '#fff'}
+            />
+          )}
+        </View>
 
-function TituloConMas({ titulo }) {
-  return (
-    <View style={styles.tituloFila}>
-      <Text style={styles.tituloSeccion}>{titulo}</Text>
-      <TouchableOpacity>
-        <Text style={styles.masLink}>Más...</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
+        {/* ── Resumen del día (reemplaza al banner promocional) ───────── */}
+        <LinearGradient
+          colors={franja.gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.banner}
+        >
+          <View style={styles.bannerGlowTop} />
+          <View style={styles.bannerGlowBottom} />
 
-// --- Componente principal ---
+          <View style={styles.bannerTag}>
+            <Ionicons name="stats-chart" size={12} color="#fff" />
+            <Text style={styles.bannerTagText}>TU DÍA</Text>
+          </View>
 
-export default function OfertasScreen() {
-  return (
-    <View style={styles.pantalla}>
-      <Header />
+          {cargandoResumen ? (
+            <ActivityIndicator style={{ marginTop: 24 }} color="#fff" />
+          ) : (
+            <View style={styles.resumenGrid}>
+              <View style={styles.resumenItem}>
+                <Text style={styles.resumenValor}>
+                  ${Number(resumen.ganancias_hoy).toLocaleString('es-AR')}
+                </Text>
+                <Text style={styles.resumenLabel}>Ganado hoy</Text>
+              </View>
+              <View style={styles.resumenDivider} />
+              <View style={styles.resumenItem}>
+                <Text style={styles.resumenValor}>{resumen.trabajos_completados}</Text>
+                <Text style={styles.resumenLabel}>Completados</Text>
+              </View>
+              <View style={styles.resumenDivider} />
+              <View style={styles.resumenItem}>
+                <View style={styles.resumenRatingRow}>
+                  <Ionicons name="star" size={15} color={AMBER} />
+                  <Text style={styles.resumenValor}>{Number(resumen.rating).toFixed(1)}</Text>
+                </View>
+                <Text style={styles.resumenLabel}>Tu rating</Text>
+              </View>
+            </View>
+          )}
 
-      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 100 }}>
-        <BannerPatrocinios />
-        <BarraBusqueda />
+          <TouchableOpacity
+            style={styles.bannerButton}
+            activeOpacity={0.85}
+            onPress={() => navigation?.navigate('VerTrabajosRealizados', { idTrabajador })}
+          >
+            <Text style={styles.bannerButtonText}>Ver historial completo</Text>
+            <Ionicons name="arrow-forward" size={15} color={INDIGO} />
+          </TouchableOpacity>
+        </LinearGradient>
 
-        <TituloConMas titulo="Ofertas cercanas:" />
-        {OFERTAS.map((oferta) => (
-          <TarjetaOferta key={oferta.id} oferta={oferta} />
-        ))}
+        {/* ── Búsqueda rápida ───────────────────────────────────────── */}
+        <View style={styles.searchWrap}>
+          <Search onSearch={irABuscador} />
+        </View>
 
-        <TituloConMas titulo="Mis trabajos" />
-        <View style={styles.trabajosFila}>
-          {TRABAJOS.map((trabajo) => (
-            <AvatarTrabajo key={trabajo.id} trabajo={trabajo} />
-          ))}
+        {/* ── Solicitudes nuevas ───────────────────────────────────── */}
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionTitle}>Solicitudes nuevas</Text>
+            {solicitudes.length > 0 && (
+              <View style={styles.countBadge}>
+                <Text style={styles.countBadgeText}>{solicitudes.length}</Text>
+              </View>
+            )}
+          </View>
+          {solicitudes.length > 0 && (
+            <TouchableOpacity onPress={() => irABuscador('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.verMas}>Ver todas</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {cargandoSolicitudes ? (
+          <View style={styles.loaderBox}>
+            <ActivityIndicator color={INDIGO} />
+          </View>
+        ) : solicitudes.length === 0 ? (
+          <EstadoVacio icon="mail-open-outline" texto="No tenés solicitudes nuevas por ahora" />
+        ) : (
+          <View style={styles.solicitudesList}>
+            {solicitudes.slice(0, 3).map((item) => (
+              <SolicitudCard
+                key={item.id}
+                item={item}
+                onAceptar={aceptarSolicitud}
+                onVer={() => irABuscador('')}
+              />
+            ))}
+          </View>
+        )}
+
+        {/* ── Accesos rápidos ──────────────────────────────────────── */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Accesos rápidos</Text>
+        </View>
+
+        <View style={styles.accesosGrid}>
+          <TouchableOpacity
+            style={styles.accesoCard}
+            activeOpacity={0.85}
+            onPress={() => navigation?.navigate('VerTrabajosRealizados', { idTrabajador })}
+          >
+            <View style={styles.accesoIconWrap}>
+              <Ionicons name="time-outline" size={20} color="#fff" />
+            </View>
+            <Text style={styles.accesoText}>Historial</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.accesoCard} activeOpacity={0.85}>
+            <View style={styles.accesoIconWrap}>
+              <Ionicons name="wallet-outline" size={20} color="#fff" />
+            </View>
+            <Text style={styles.accesoText}>Ganancias</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.accesoCard} activeOpacity={0.85}>
+            <View style={styles.accesoIconWrap}>
+              <Ionicons name="person-outline" size={20} color="#fff" />
+            </View>
+            <Text style={styles.accesoText}>Mi perfil</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.accesoCard} activeOpacity={0.85}>
+            <View style={styles.accesoIconWrap}>
+              <Ionicons name="megaphone-outline" size={20} color="#fff" />
+            </View>
+            <Text style={styles.accesoText}>Patrocinios</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
-      <BottomNavBar pantallaActiva="inicio" />
-    </View>
+      {idTrabajador != null && (
+        <TrabajoActivoTrabajador
+          onPress={() => setShowTrabajoActivo(true)}
+          expanded={showTrabajoActivo}
+        />
+      )}
+
+      {showTrabajoActivo && (
+        <TrabajoActivoOverlayTrabajador
+          visible={showTrabajoActivo}
+          onClose={() => setShowTrabajoActivo(false)}
+          onChat={(trabajo) => console.log('chat con cliente:', trabajo)}
+          idTrabajador={idTrabajador}
+          navigation={navigation}
+        />
+      )}
+
+      <BottomNavBar pantallaActiva="inicio" usuario={usuario} />
+    </SafeAreaView>
   );
 }
 
-// --- Estilos ---
-
 const styles = StyleSheet.create({
-  pantalla: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
+  container: { flex: 1, backgroundColor: BG },
+  scrollContent: { paddingBottom: 190 },
+
+  loaderBox: { paddingVertical: 26, alignItems: 'center' },
+
+  emptyBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginTop: 14, marginHorizontal: 16, backgroundColor: CARD, borderRadius: 16,
+    paddingVertical: 14, paddingHorizontal: 14, borderWidth: 1, borderColor: BORDER,
   },
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
+  emptyIconWrap: {
+    width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(42,63,214,0.08)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  bannerContainer: {
-    backgroundColor: '#1D3FBF',
-    borderRadius: 20,
-    padding: 18,
-    marginTop: 16,
-    overflow: 'hidden',
+  emptyText: { flex: 1, color: TEXT_MUTED, fontSize: 13, lineHeight: 18 },
+
+  saludoRow: {
+    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 4,
+    flexDirection: 'row', alignItems: 'flex-start',
   },
-  bannerTagFila: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
+  saludoEyebrow: { fontSize: 10.5, fontWeight: '800', color: INDIGO, letterSpacing: 1, marginBottom: 3 },
+  saludoTexto: { fontSize: 22, fontWeight: '800', color: TEXT_DARK },
+  avatarChip: {
+    width: 44, height: 44, borderRadius: 14, backgroundColor: NAVY,
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    shadowColor: NAVY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
   },
+  avatarChipImg: { width: '100%', height: '100%' },
+  avatarChipText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+
+  dispoRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginHorizontal: 16, marginTop: 14, backgroundColor: CARD, borderRadius: 16,
+    paddingVertical: 12, paddingHorizontal: 14, borderWidth: 1, borderColor: BORDER,
+    shadowColor: NAVY, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
+  },
+  dispoLeft: { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1, marginRight: 10 },
+  dispoDot: { width: 9, height: 9, borderRadius: 4.5 },
+  dispoText: { color: TEXT_DARK, fontSize: 12.5, fontWeight: '600', flexShrink: 1 },
+
+  banner: {
+    margin: 16, marginTop: 14, borderRadius: 26, padding: 22, overflow: 'hidden',
+    shadowColor: NAVY, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 8,
+  },
+  bannerGlowTop: { position: 'absolute', top: -40, right: -40, width: 150, height: 150, borderRadius: 75, backgroundColor: '#fff', opacity: 0.12 },
+  bannerGlowBottom: { position: 'absolute', bottom: -55, left: -30, width: 130, height: 130, borderRadius: 65, backgroundColor: '#fff', opacity: 0.08 },
   bannerTag: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginLeft: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.18)',
+    alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 15,
   },
-  bannerTitulo: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '800',
-    lineHeight: 26,
-    marginBottom: 8,
+  bannerTagText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
+
+  resumenGrid: { flexDirection: 'row', alignItems: 'center', marginTop: 18 },
+  resumenItem: { flex: 1, alignItems: 'center' },
+  resumenValor: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  resumenLabel: { color: 'rgba(255,255,255,0.75)', fontSize: 11, marginTop: 3 },
+  resumenRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  resumenDivider: { width: 1, height: 34, backgroundColor: 'rgba(255,255,255,0.18)' },
+
+  bannerButton: {
+    marginTop: 18, backgroundColor: '#fff', alignSelf: 'flex-start', borderRadius: 20,
+    paddingHorizontal: 16, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 6,
   },
-  bannerSubtitulo: {
-    color: '#CBD5F5',
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 16,
+  bannerButtonText: { color: INDIGO, fontWeight: '800', fontSize: 13 },
+
+  searchWrap: { marginTop: 2, marginBottom: 4 },
+
+  sectionHeader: {
+    marginTop: 26, marginHorizontal: 16,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
-  bannerBotonesFila: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionTitle: { color: TEXT_DARK, fontWeight: '800', fontSize: 17 },
+  countBadge: {
+    minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6,
+    backgroundColor: 'rgba(42,63,214,0.1)', alignItems: 'center', justifyContent: 'center',
   },
-  bannerBotonSecundario: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginRight: 10,
-    marginBottom: 6,
+  countBadgeText: { color: INDIGO, fontSize: 11, fontWeight: '800' },
+  verMas: { color: INDIGO, fontWeight: '700', fontSize: 13 },
+
+  solicitudesList: { paddingHorizontal: 16, paddingTop: 14, gap: 10 },
+  solicitudCard: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: CARD, borderRadius: 18,
+    padding: 12, gap: 12, borderWidth: 1, borderColor: BORDER,
+    shadowColor: NAVY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 3,
   },
-  bannerBotonSecundarioTexto: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
+  solicitudAvatar: { width: 52, height: 52, borderRadius: 26, borderWidth: 2, borderColor: 'rgba(42,63,214,0.15)' },
+  solicitudBody: { flex: 1, gap: 4 },
+  solicitudTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  solicitudNombre: { color: TEXT_DARK, fontWeight: '800', fontSize: 14.5, flexShrink: 1 },
+  solicitudServicio: { color: INDIGO, fontSize: 12, fontWeight: '700' },
+  badgeUrgente: {
+    flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: RED,
+    borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2,
   },
-  bannerBotonPrimario: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginBottom: 6,
+  badgeUrgenteText: { color: '#fff', fontSize: 9.5, fontWeight: '800' },
+  solicitudMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 },
+  metaChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: 'rgba(42,63,214,0.08)', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3,
   },
-  bannerBotonPrimarioTexto: {
-    color: '#1D3FBF',
-    fontSize: 12,
-    fontWeight: '700',
+  metaChipText: { color: INDIGO, fontSize: 10.5, fontWeight: '700' },
+  metaChipPrecio: { backgroundColor: 'rgba(245,166,35,0.15)', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3 },
+  metaChipPrecioText: { color: '#95650B', fontSize: 10.5, fontWeight: '800' },
+  aceptarBtn: {
+    width: 38, height: 38, borderRadius: 19, backgroundColor: GREEN,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: GREEN, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 2,
   },
-  bannerIconoWrapper: {
-    position: 'absolute',
-    right: 16,
-    top: 16,
+
+  accesosGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 12,
+    paddingHorizontal: 16, paddingTop: 14,
   },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F1F2F6',
-    borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginTop: 16,
+  accesoCard: {
+    width: '47%', backgroundColor: CARD, borderRadius: 18, alignItems: 'center',
+    paddingVertical: 16, gap: 8, borderWidth: 1, borderColor: BORDER,
+    shadowColor: NAVY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: '#1A1A2E',
+  accesoIconWrap: {
+    width: 44, height: 44, borderRadius: 14, backgroundColor: INDIGO,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: INDIGO, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 2,
   },
-  tituloFila: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 10,
-  },
-  tituloSeccion: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1D3FBF',
-  },
-  masLink: {
-    fontSize: 13,
-    color: '#1D3FBF',
-    textDecorationLine: 'underline',
-  },
-  ofertaCard: {
-    flexDirection: 'row',
-    backgroundColor: '#1D3FBF',
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 10,
-    alignItems: 'center',
-  },
-  ofertaAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  ofertaNombre: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
-    marginBottom: 6,
-  },
-  ofertaFila: {
-    flexDirection: 'row',
-    marginBottom: 2,
-  },
-  ofertaColumna: {
-    flex: 1,
-  },
-  ofertaLabel: {
-    color: '#CBD5F5',
-    fontSize: 11,
-  },
-  ofertaValor: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  trabajosFila: {
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-  },
-  trabajoItem: {
-    alignItems: 'center',
-    marginRight: 20,
-    width: 72,
-  },
-  trabajoAvatarWrapper: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 3,
-    padding: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  trabajoAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-  },
-  trabajoNombre: {
-    marginTop: 6,
-    fontSize: 12,
-    color: '#1A1A2E',
-    textAlign: 'center',
-  },
+  accesoText: { color: TEXT_DARK, fontSize: 12.5, fontWeight: '700' },
 });
