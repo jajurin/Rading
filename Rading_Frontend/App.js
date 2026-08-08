@@ -5,7 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import ChatCliente from './Cliente/Chat';
 import ChatsCliente from './Cliente/PreviaChat';
-
+import BottomNavBarTrabajador from './Trabajador/Navegadortrabajador';
 import Login from './Login';
 import Registrarse from './Registrarse';
 import TipoUsuario from './TipoUsuario';
@@ -55,7 +55,7 @@ export default function App() {
           <Stack.Screen name="RegistrarseCliente" component={RegistrarseCliente} />
           <Stack.Screen name="BuscadorCliente" component={BuscadorCliente} />
           <Stack.Screen name="BuscadorTrabajador" component={BuscadorTrabajador} />
-
+ <Stack.Screen name="BottomNavBarTrabajador" component={BottomNavBarTrabajador} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

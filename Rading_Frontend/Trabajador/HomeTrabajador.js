@@ -12,10 +12,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Header from '../Header';
-import BottomNavBar from '../Cliente/NavegadorCliente';
+import BottomNavBarTrabajador from './Navegadortrabajador';
 import TrabajoActivoTrabajador from './TrabajoActivoTrabajador';
 import TrabajoActivoOverlayTrabajador from './TrabajoActivoOverlayTrabajador';
 import Search from './Search';
@@ -36,6 +36,14 @@ const CARD         = '#FFFFFF';
 const TEXT_DARK    = '#12172E';
 const TEXT_MUTED   = '#828AA0';
 const BORDER       = 'rgba(15,27,76,0.07)';
+
+// Altura "base" del BottomNavBar (ver NavegadorCliente.jsx):
+// bar = 52 (tabsRow) + 6+6 (paddingVertical) = 64
+// wrapper suma además Math.max(insets.bottom, 10) de paddingBottom.
+// La calculamos acá también para poder anclar el widget justo arriba,
+// sin superponerse, sea cual sea el dispositivo/inset.
+const NAVBAR_BASE_HEIGHT = 30;
+const WIDGET_GAP = 10; // separación entre el widget y el nav bar
 
 const AVATAR_CLIENTE = (nombre = '', apellido = '') =>
   `https://ui-avatars.com/api/?name=${nombre}+${apellido}&background=2A3FD6&color=fff&size=150`;
@@ -122,6 +130,12 @@ export default function HomeTrabajador({ route, navigation }) {
   const idTrabajador = usuario?.idTrabajador;
 
   const franja = useMemo(() => obtenerFranjaHoraria(), []);
+  const insets = useSafeAreaInsets();
+
+  // Altura real del nav bar (base + su propio padding inferior de safe area),
+  // usada para anclar el widget de trabajo activo justo por encima.
+  const navBarHeight = NAVBAR_BASE_HEIGHT + Math.max(insets.bottom, 10);
+  const widgetBottomOffset = navBarHeight + WIDGET_GAP;
 
   const [disponible, setDisponible] = useState(true);
   const [cambiandoDisponibilidad, setCambiandoDisponibilidad] = useState(false);
@@ -134,7 +148,6 @@ export default function HomeTrabajador({ route, navigation }) {
 
   const [showTrabajoActivo, setShowTrabajoActivo] = useState(false);
 
-  // NOTA: ajustar estos endpoints al contrato real del backend.
   const cargarResumen = useCallback(async () => {
     if (!idTrabajador) { setCargandoResumen(false); return; }
     try {
@@ -209,7 +222,12 @@ export default function HomeTrabajador({ route, navigation }) {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          // Si hay widget de trabajo activo, dejamos aire extra abajo para
+          // que el último contenido no quede tapado por widget + nav bar.
+          idTrabajador != null && { paddingBottom: widgetBottomOffset + 90 },
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         {/* ── Saludo + avatar + disponibilidad ──────────────────────── */}
@@ -381,11 +399,24 @@ export default function HomeTrabajador({ route, navigation }) {
         </View>
       </ScrollView>
 
+      {/*
+        FIX: el widget de "trabajo en curso" antes vivía en el flujo normal,
+        justo antes del BottomNavBar. Como BottomNavBar usa position:absolute
+        (ver NavegadorCliente.jsx), se pintaba por encima y tapaba el widget.
+        Ahora el widget también es absolute y se ancla dinámicamente por
+        encima del nav bar usando los mismos insets de safe area, así nunca
+        se superponen sea cual sea el dispositivo.
+      */}
       {idTrabajador != null && (
-        <TrabajoActivoTrabajador
-          onPress={() => setShowTrabajoActivo(true)}
-          expanded={showTrabajoActivo}
-        />
+        <View
+          style={[styles.trabajoActivoWrap, { bottom: widgetBottomOffset }]}
+          pointerEvents="box-none"
+        >
+          <TrabajoActivoTrabajador
+            onPress={() => setShowTrabajoActivo(true)}
+            expanded={showTrabajoActivo}
+          />
+        </View>
       )}
 
       {showTrabajoActivo && (
@@ -398,14 +429,23 @@ export default function HomeTrabajador({ route, navigation }) {
         />
       )}
 
-      <BottomNavBar pantallaActiva="inicio" usuario={usuario} />
-    </SafeAreaView>
+<BottomNavBarTrabajador usuario={usuario} pantallaActiva="inicio" />    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
   scrollContent: { paddingBottom: 190 },
+
+  // Contenedor flotante del widget "trabajo en curso". Se posiciona con
+  // 'bottom' dinámico (widgetBottomOffset) desde el componente, calculado
+  // para quedar siempre arriba del BottomNavBar.
+  trabajoActivoWrap: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 5,
+  },
 
   loaderBox: { paddingVertical: 26, alignItems: 'center' },
 
