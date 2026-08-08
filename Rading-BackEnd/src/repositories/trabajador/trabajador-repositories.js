@@ -200,8 +200,19 @@ export default class trabajadorRepository {
  * Ofertas cercanas para el trabajador: solo solicitudes PENDIENTE sin
  * asignar. Calcula la distancia real (haversine) entre la ubicación
  * del trabajador (obtenida de su propio Usuario vía IdPersona) y la
- * del cliente (u.lat, u.lng) de cada solicitud. Solo servicios que
- * este trabajador ofrece.
+ * de LA SOLICITUD (ct.lat/ct.lng en Cliente-Trabajador). Solo servicios
+ * que este trabajador ofrece.
+ *
+ * 👇 IMPORTANTE: se usa ct.lat/ct.lng (la ubicación puntual de ESE
+ * pedido), NO u.lat/u.lng (la dirección default del perfil del
+ * cliente). Desde que CrearSolicitud.js permite elegir "otra
+ * dirección" para un pedido específico, el trabajo puede estar en un
+ * lugar distinto al del perfil del cliente — y es esa ubicación la que
+ * hay que usar para calcular distancia y decidir si entra en el radio.
+ * Si el cliente no tocó nada al crear la solicitud, ct.lat/ct.lng ya
+ * vienen copiados de su perfil (ver confirmarSolicitud en
+ * solicitud-services.js), así que el comportamiento por defecto es el
+ * mismo de antes.
  */
 buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
     const client = new Client(config)
@@ -227,6 +238,9 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
                 ct.descripcion,
                 ct.estado,
                 ct.fecha_iniciado,
+                ct.direccion,
+                ct.lat,
+                ct.lng,
                 u.nombre,
                 u.apellido,
                 c.estrellas,
@@ -235,9 +249,9 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
                 (
                     6371 * acos(
                         LEAST(1, GREATEST(-1,
-                            cos(radians(trab.lat)) * cos(radians(u.lat)) *
-                            cos(radians(u.lng) - radians(trab.lng)) +
-                            sin(radians(trab.lat)) * sin(radians(u.lat))
+                            cos(radians(trab.lat)) * cos(radians(ct.lat)) *
+                            cos(radians(ct.lng) - radians(trab.lng)) +
+                            sin(radians(trab.lat)) * sin(radians(ct.lat))
                         ))
                     )
                 ) AS distancia
@@ -250,7 +264,7 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
             WHERE ct.estado = 'PENDIENTE'
               AND ct."IdTrabajador" IS NULL
               AND trab.lat IS NOT NULL AND trab.lng IS NOT NULL
-              AND u.lat IS NOT NULL AND u.lng IS NOT NULL
+              AND ct.lat IS NOT NULL AND ct.lng IS NOT NULL
               AND ct.servicio_id IN (
                   SELECT servicios_id
                   FROM "Trabajador_Servicio"
@@ -259,9 +273,9 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
               AND (
                   6371 * acos(
                       LEAST(1, GREATEST(-1,
-                          cos(radians(trab.lat)) * cos(radians(u.lat)) *
-                          cos(radians(u.lng) - radians(trab.lng)) +
-                          sin(radians(trab.lat)) * sin(radians(u.lat))
+                          cos(radians(trab.lat)) * cos(radians(ct.lat)) *
+                          cos(radians(ct.lng) - radians(trab.lng)) +
+                          sin(radians(trab.lat)) * sin(radians(ct.lat))
                       ))
                   )
               ) <= $2
@@ -277,7 +291,7 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
         await client.end()
     }
 }
-    obtenerDetalleOferta = async (idTrabajo) => {
+   obtenerDetalleOferta = async (idTrabajo, idTrabajador = null) => {
     const client = new Client(config)
     try {
         await client.connect()
@@ -311,7 +325,24 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
                         FROM "SolicitudImagen" si
                         WHERE si."idTrabajo" = ct.id
                     ), '[]'
-                ) AS imagenes
+                ) AS imagenes,
+                CASE
+                    WHEN $2::int IS NOT NULL AND ct.lat IS NOT NULL AND ct.lng IS NOT NULL THEN (
+                        SELECT
+                            6371 * acos(
+                                LEAST(1, GREATEST(-1,
+                                    cos(radians(ut.lat)) * cos(radians(ct.lat)) *
+                                    cos(radians(ct.lng) - radians(ut.lng)) +
+                                    sin(radians(ut.lat)) * sin(radians(ct.lat))
+                                ))
+                            )
+                        FROM "Trabajador" t
+                        INNER JOIN "Usuario" ut ON ut.id = t."IdPersona"
+                        WHERE t.id = $2::int
+                          AND ut.lat IS NOT NULL AND ut.lng IS NOT NULL
+                    )
+                    ELSE NULL
+                END AS distancia
             FROM "Cliente-Trabajador" ct
             INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
             INNER JOIN "Usuario" u ON c."IdPersona" = u.id
@@ -320,7 +351,7 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
             WHERE ct.id = $1
         `
 
-        const result = await client.query(sql, [idTrabajo])
+        const result = await client.query(sql, [idTrabajo, idTrabajador])
         return result?.rows?.[0] ?? null
     } catch (err) {
         console.error('Error en obtenerDetalleOferta:', err)

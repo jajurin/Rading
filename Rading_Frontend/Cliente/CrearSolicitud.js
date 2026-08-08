@@ -3,10 +3,13 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import {
   View, Text, TextInput, Pressable, ScrollView,
   ActivityIndicator, StyleSheet, Platform, Animated, KeyboardAvoidingView, Modal,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import * as ImagePicker from "expo-image-picker";
+import axios from "axios";
 import Header from "../Header";
 import BottomNavBar from "./NavegadorCliente";
 import API_URL from "../configS";
@@ -16,6 +19,9 @@ const API_BASE_URL = API_URL;
 // Valor especial usado internamente para representar "el cliente prefiere
 // escribir su propia respuesta" en vez de tocar uno de los chips de la IA.
 const OPCION_OTRO = "__otro__";
+
+// Cuántas fotos como máximo se pueden adjuntar a una solicitud.
+const MAX_IMAGENES = 5;
 
 /* ── Sistema de diseño ────────────────────────────────────────────────
    Paleta profesional tipo "fintech de confianza": azul profundo como
@@ -43,6 +49,8 @@ const COLORS = {
 
   danger: "#C0392B",
   dangerSoft: "#FBEAE8",
+
+  success: "#1E9E6B",
 
   overlay: "rgba(11,23,53,0.55)",
 };
@@ -213,6 +221,23 @@ function AclaracionBox({ preguntas, respuestas, textosOtro, onSeleccionar, onCam
   );
 }
 
+/* ── Miniatura de una foto adjunta, con botón para sacarla ───────────── */
+function ImagenAdjuntaThumb({ uri, onQuitar, deshabilitado }) {
+  return (
+    <View style={styles.imagenThumbWrap}>
+      <Image source={{ uri }} style={styles.imagenThumb} />
+      <Pressable
+        style={styles.imagenThumbQuitar}
+        onPress={onQuitar}
+        disabled={deshabilitado}
+        hitSlop={6}
+      >
+        <Ionicons name="close" size={12} color="#fff" />
+      </Pressable>
+    </View>
+  );
+}
+
 /* ── Pantalla principal ──────────────────────────────────────────────── */
 export default function CrearSolicitud({ route, navigation }) {
   const usuario = route?.params?.usuario;
@@ -255,6 +280,33 @@ export default function CrearSolicitud({ route, navigation }) {
   // botón), pero nunca se la bajamos si el cliente ya la marcó a mano.
   const [emergencia,       setEmergencia]       = useState(false);
   const [selectorAbierto,  setSelectorAbierto]  = useState(false);
+
+  // 👇 Dirección del trabajo: por defecto usamos la del perfil del cliente
+  // (usuario.direccion / usuario.lat / usuario.lng), tal como se guardó al
+  // registrarse (ver Registrarse.js). El cliente puede, opcionalmente,
+  // usar otra dirección SOLO para esta solicitud puntual. El autocomplete
+  // es el mismo que en Registrarse.js (Nominatim), y el resultado nos da
+  // lat/lng reales, que es lo que el backend necesita para calcular
+  // distancia contra los trabajadores (mismo cálculo por haversine que
+  // ya usás en trabajadorRepository.buscarOfertasCercanas).
+  const [usarOtraDireccion, setUsarOtraDireccion] = useState(false);
+  const [direccionTrabajo, setDireccionTrabajo] = useState("");
+  const [latTrabajo, setLatTrabajo] = useState(null);
+  const [lngTrabajo, setLngTrabajo] = useState(null);
+  const [direccionValidada, setDireccionValidada] = useState(false);
+  const [sugerenciasDireccion, setSugerenciasDireccion] = useState([]);
+  const [mostrarSugerenciasDireccion, setMostrarSugerenciasDireccion] = useState(false);
+  const [buscandoDireccion, setBuscandoDireccion] = useState(false);
+  const debounceDireccionRef = useRef(null);
+
+  // 👇 Fotos adjuntas a la solicitud. Se guardan localmente (uri del
+  // picker) y recién se suben al backend DESPUÉS de crear la solicitud,
+  // porque necesitamos el id del trabajo (Cliente-Trabajador.id) para
+  // asociarlas en SolicitudImagen. Mismo patrón de ImagePicker + FormData
+  // que ya usás para adjuntar archivos en el chat (ChatCliente.js).
+  const [imagenes, setImagenes] = useState([]); // [{uri, fileName, mimeType}]
+  const [errorImagenes, setErrorImagenes] = useState(null);
+  const [subiendoImagenes, setSubiendoImagenes] = useState(false);
 
   const [enviando,    setEnviando]    = useState(false);
   const [errorEnvio,  setErrorEnvio]  = useState(null);
@@ -329,6 +381,156 @@ export default function CrearSolicitud({ route, navigation }) {
     });
     invalidarAnalisisPrevio();
   }, [invalidarAnalisisPrevio]);
+
+  // ── Autocomplete de dirección (mismo patrón que Registrarse.js) ─────
+  // Busca en Nominatim a medida que el usuario tipea (con debounce), y
+  // guarda lat/lng reales de la sugerencia elegida. Si cambia el texto a
+  // mano después de haber elegido una sugerencia, se invalida esa
+  // dirección hasta que vuelva a elegir una de la lista.
+  const buscarDireccionTrabajo = useCallback((texto) => {
+    setDireccionTrabajo(texto);
+    setDireccionValidada(false);
+    setLatTrabajo(null);
+    setLngTrabajo(null);
+
+    if (texto.length < 4) {
+      setSugerenciasDireccion([]);
+      return;
+    }
+
+    if (debounceDireccionRef.current) clearTimeout(debounceDireccionRef.current);
+    debounceDireccionRef.current = setTimeout(async () => {
+      setBuscandoDireccion(true);
+      try {
+        // 👇 Con axios en vez de fetch: en React Native, fetch() no deja
+        // mandar un header "User-Agent" custom (el runtime lo descarta),
+        // pero Nominatim lo exige por su política de uso — sin eso, las
+        // requests venían fallando (403 / respuesta no-JSON) y como acá
+        // solo logueábamos el error, la lista de sugerencias quedaba
+        // siempre vacía. axios corre sobre XMLHttpRequest en RN, que sí
+        // permite setear ese header (mismo patrón que Registrarse.js).
+        const res = await axios.get("https://nominatim.openstreetmap.org/search", {
+          params: { q: texto, format: "json", addressdetails: 1, limit: 5, countrycodes: "ar" },
+          headers: { "Accept-Language": "es", "User-Agent": "RadingApp/1.0" },
+        });
+        setSugerenciasDireccion(res.data);
+        setMostrarSugerenciasDireccion(true);
+      } catch (e) {
+        console.error("Error buscando dirección:", e);
+      } finally {
+        setBuscandoDireccion(false);
+      }
+    }, 600);
+  }, []);
+
+  const elegirDireccionTrabajo = useCallback((item) => {
+    setDireccionTrabajo(item.display_name);
+    setLatTrabajo(parseFloat(item.lat));
+    setLngTrabajo(parseFloat(item.lon));
+    setDireccionValidada(true);
+    setSugerenciasDireccion([]);
+    setMostrarSugerenciasDireccion(false);
+  }, []);
+
+  // Al cambiar entre "Mi dirección" y "Otra dirección", limpiamos lo que
+  // se hubiera tipeado antes para no arrastrar una dirección a medio
+  // validar de un toggle anterior.
+  const onCambiarUsarOtraDireccion = useCallback((usarOtra) => {
+    setUsarOtraDireccion(usarOtra);
+    if (!usarOtra) {
+      setDireccionTrabajo("");
+      setLatTrabajo(null);
+      setLngTrabajo(null);
+      setDireccionValidada(false);
+      setSugerenciasDireccion([]);
+      setMostrarSugerenciasDireccion(false);
+    }
+    if (errorEnvio) setErrorEnvio(null);
+  }, [errorEnvio]);
+
+  // ── Fotos adjuntas ───────────────────────────────────────────────────
+  const agregarImagenesDeGaleria = useCallback(async () => {
+    setErrorImagenes(null);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      setErrorImagenes("Necesitamos permiso para acceder a tus fotos.");
+      return;
+    }
+    const resultado = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_IMAGENES,
+    });
+    if (!resultado.canceled && resultado.assets?.length) {
+      setImagenes((prev) => [...prev, ...resultado.assets].slice(0, MAX_IMAGENES));
+    }
+  }, []);
+
+  const tomarFotoTrabajo = useCallback(async () => {
+    setErrorImagenes(null);
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      setErrorImagenes("Necesitamos permiso para usar la cámara.");
+      return;
+    }
+    const resultado = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+    if (!resultado.canceled && resultado.assets?.length) {
+      setImagenes((prev) => [...prev, resultado.assets[0]].slice(0, MAX_IMAGENES));
+    }
+  }, []);
+
+  const quitarImagen = useCallback((idx) => {
+    setImagenes((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
+
+  // Sube las fotos DESPUÉS de crear la solicitud, ya con el idTrabajo real.
+  // Sigue el mismo patrón de FormData que subirYEnviarArchivo en
+  // ChatCliente.js. Ojo: acá asumo un endpoint POST /solicitud/imagen que
+  // recibe {file, idTrabajo, orden} y hace el INSERT en "SolicitudImagen"
+  // (idTrabajo, url, orden) — ajustalo si tu ruta real se llama distinto.
+  const subirImagenes = useCallback(async (idTrabajo) => {
+    if (imagenes.length === 0) return;
+    setSubiendoImagenes(true);
+    try {
+      for (let i = 0; i < imagenes.length; i++) {
+        const img = imagenes[i];
+        const formData = new FormData();
+
+        if (Platform.OS === "web") {
+          const respuestaBlob = await fetch(img.uri);
+          const blob = await respuestaBlob.blob();
+          formData.append("file", blob, img.fileName || `foto_${i}.jpg`);
+        } else {
+          formData.append("file", {
+            uri: img.uri,
+            name: img.fileName || `foto_${i}.jpg`,
+            type: img.mimeType || "image/jpeg",
+          });
+        }
+        formData.append("idTrabajo", idTrabajo);
+        formData.append("orden", String(i));
+        // 👇 El backend usa esto para chequear que la solicitud le
+        // pertenece a este cliente antes de guardar la foto.
+        if (usuario?.idCliente) formData.append("idCliente", usuario.idCliente);
+
+        const resp = await fetch(`${API_BASE_URL}/solicitud/imagen`, {
+          method: "POST",
+          body: formData,
+        });
+        if (!resp.ok) {
+          console.error(`No se pudo subir la imagen ${i + 1}`);
+        }
+      }
+    } catch (err) {
+      console.error("Error subiendo imágenes de la solicitud:", err);
+      // No bloqueamos el flujo: la solicitud ya se creó, las fotos son
+      // un plus. Se lo hacemos saber igual por consola / se podría
+      // mostrar un aviso no bloqueante si hace falta.
+    } finally {
+      setSubiendoImagenes(false);
+    }
+  }, [imagenes]);
 
   // Arma el texto base (descripción + plazo + emergencia, si corresponde)
   // que se manda a la IA en el PRIMER análisis. La categoría de urgencia
@@ -427,8 +629,33 @@ export default function CrearSolicitud({ route, navigation }) {
 
   const enviarSolicitud = useCallback(async () => {
     if (!analisis || !servicioId || necesitaAclaracion) return;
+
+    // Si el cliente eligió "Otra dirección" pero todavía no tocó ninguna
+    // sugerencia de la lista, no tenemos lat/lng válidos: no lo dejamos
+    // avanzar (mismo criterio que en Registrarse.js).
+    if (usarOtraDireccion && !direccionValidada) {
+      setErrorEnvio("Elegí una dirección de la lista de sugerencias, o volvé a usar tu dirección predeterminada.");
+      return;
+    }
+
     setEnviando(true);
     setErrorEnvio(null);
+
+    // 👇 Dirección efectiva de la solicitud: la elegida a mano para este
+    // pedido, o si no la predeterminada del perfil (usuario.direccion /
+    // usuario.lat / usuario.lng, cargados al registrarse). El backend
+    // guarda esto en Cliente-Trabajador (direccion/lat/lng) y con eso
+    // calcula la distancia contra cada trabajador, igual que ya hace en
+    // buscarOfertasCercanas.
+    const direccionEfectiva = usarOtraDireccion && direccionValidada
+      ? direccionTrabajo
+      : (usuario?.direccion ?? null);
+    const latEfectiva = usarOtraDireccion && direccionValidada
+      ? latTrabajo
+      : (usuario?.lat ?? null);
+    const lngEfectiva = usarOtraDireccion && direccionValidada
+      ? lngTrabajo
+      : (usuario?.lng ?? null);
 
     try {
       const resp = await fetch(`${API_BASE_URL}/solicitud/confirmar`, {
@@ -458,11 +685,25 @@ export default function CrearSolicitud({ route, navigation }) {
           horarioRequerido: tienePlazo && fechaLimite
             ? fechaLimite.toTimeString().slice(0, 5)   // HH:mm
             : null,
+          // 👇 Dirección/lat/lng específicos de esta solicitud (Cliente-
+          // Trabajador.direccion / lat / lng). Si el cliente no tocó nada,
+          // viajan los mismos datos que ya tiene guardados en su perfil.
+          direccion: direccionEfectiva,
+          lat: latEfectiva,
+          lng: lngEfectiva,
         }),
       });
 
       const json = await resp.json();
       if (!resp.ok || !json.ok) throw new Error(json.message || "No se pudo crear la solicitud");
+
+      // 👇 Necesitamos el id del trabajo recién creado para poder asociarle
+      // las fotos (SolicitudImagen.idTrabajo). Ajustá esto si tu backend
+      // devuelve el id en otro campo.
+      const idTrabajoCreado = json?.data?.id ?? json?.id ?? null;
+      if (idTrabajoCreado && imagenes.length > 0) {
+        await subirImagenes(idTrabajoCreado);
+      }
 
       navigation?.goBack?.();
     } catch (err) {
@@ -470,7 +711,12 @@ export default function CrearSolicitud({ route, navigation }) {
     } finally {
       setEnviando(false);
     }
-  }, [analisis, servicioId, necesitaAclaracion, descripcionFinal, descripcionOriginal, contextoActual, precioFinal, fijo, emergencia, tienePlazo, fechaLimite, usuario, navigation]);
+  }, [
+    analisis, servicioId, necesitaAclaracion, descripcionFinal, descripcionOriginal,
+    contextoActual, precioFinal, fijo, emergencia, tienePlazo, fechaLimite, usuario,
+    navigation, usarOtraDireccion, direccionValidada, direccionTrabajo, latTrabajo,
+    lngTrabajo, imagenes, subirImagenes,
+  ]);
 
   const servicioElegido = analisis?.servicios?.find((s) => s.id === servicioId);
 
@@ -520,6 +766,42 @@ export default function CrearSolicitud({ route, navigation }) {
               }}
               editable={!analizando}
             />
+
+            {/* 👇 Fotos: se pueden adjuntar antes o después de analizar, no
+                afectan el análisis de la IA (que trabaja solo con texto). */}
+            <Text style={styles.label}>Fotos (opcional)</Text>
+            <Text style={styles.helperText}>
+              Ayudan a que el trabajador entienda mejor el problema antes de ofertar.
+            </Text>
+            <View style={styles.imagenesRow}>
+              {imagenes.map((img, idx) => (
+                <ImagenAdjuntaThumb
+                  key={img.assetId ?? img.uri ?? idx}
+                  uri={img.uri}
+                  onQuitar={() => quitarImagen(idx)}
+                  deshabilitado={subiendoImagenes}
+                />
+              ))}
+              {imagenes.length < MAX_IMAGENES && (
+                <View style={styles.imagenesBotonesWrap}>
+                  <Pressable
+                    style={styles.imagenAgregarBtn}
+                    onPress={agregarImagenesDeGaleria}
+                    disabled={subiendoImagenes}
+                  >
+                    <Ionicons name="images" size={18} color={COLORS.primary} />
+                  </Pressable>
+                  <Pressable
+                    style={styles.imagenAgregarBtn}
+                    onPress={tomarFotoTrabajo}
+                    disabled={subiendoImagenes}
+                  >
+                    <Ionicons name="camera" size={18} color={COLORS.primary} />
+                  </Pressable>
+                </View>
+              )}
+            </View>
+            {errorImagenes && <Text style={styles.errorText}>{errorImagenes}</Text>}
 
             {/* 👇 Emergencia: se elige ACÁ, antes de mandarle nada a la IA */}
             <Text style={styles.label}>¿Es una emergencia?</Text>
@@ -719,6 +1001,76 @@ export default function CrearSolicitud({ route, navigation }) {
                 </>
               )}
 
+              {/* ── Dirección del trabajo ─────────────────────────────────
+                  Por defecto se usa la dirección del perfil del cliente.
+                  Se puede cambiar SOLO para esta solicitud, con el mismo
+                  autocomplete de Registrarse.js (Nominatim), que devuelve
+                  lat/lng reales — necesarios para que el backend calcule
+                  la distancia contra cada trabajador. */}
+              <Text style={styles.label}>Dirección del trabajo</Text>
+              <Text style={styles.helperText}>
+                Se usa para calcular la distancia con los trabajadores disponibles.
+              </Text>
+              <SegmentedToggle
+                options={["Mi dirección", "Otra dirección"]}
+                selectedIndex={usarOtraDireccion ? 1 : 0}
+                onChange={(i) => onCambiarUsarOtraDireccion(i === 1)}
+              />
+
+              {!usarOtraDireccion ? (
+                <View style={styles.direccionActualBox}>
+                  <Ionicons name="location" size={16} color={COLORS.primary} style={{ marginRight: 8 }} />
+                  <Text style={styles.direccionActualTexto} numberOfLines={2}>
+                    {usuario?.direccion || "No tenés una dirección cargada en tu perfil"}
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ marginTop: 10 }}>
+                  <View style={[styles.direccionInputBox, direccionValidada && styles.direccionInputBoxOk]}>
+                    <Ionicons
+                      name="location-outline"
+                      size={16}
+                      color={direccionValidada ? COLORS.success : COLORS.inkSoft}
+                      style={{ marginRight: 8 }}
+                    />
+                    <TextInput
+                      style={styles.direccionInput}
+                      placeholder="Av. Siempre Viva 123"
+                      placeholderTextColor={COLORS.inkFaint}
+                      value={direccionTrabajo}
+                      onChangeText={buscarDireccionTrabajo}
+                      autoCapitalize="none"
+                    />
+                    {buscandoDireccion && <ActivityIndicator size="small" color={COLORS.primary} />}
+                    {direccionValidada && !buscandoDireccion && (
+                      <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
+                    )}
+                  </View>
+
+                  {mostrarSugerenciasDireccion && sugerenciasDireccion.length > 0 && (
+                    <View style={styles.sugerenciasContainer}>
+                      {sugerenciasDireccion.map((item, idx) => (
+                        <Pressable
+                          key={item.place_id}
+                          style={[
+                            styles.sugerenciaItem,
+                            idx === sugerenciasDireccion.length - 1 && { borderBottomWidth: 0 },
+                          ]}
+                          onPress={() => elegirDireccionTrabajo(item)}
+                        >
+                          <Ionicons name="location" size={14} color={COLORS.primary} style={{ marginRight: 8, marginTop: 2 }} />
+                          <Text style={styles.sugerenciaTexto} numberOfLines={2}>{item.display_name}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+
+                  {!direccionValidada && direccionTrabajo.length > 0 && !buscandoDireccion && (
+                    <Text style={styles.errorText}>Elegí una dirección de la lista de sugerencias.</Text>
+                  )}
+                </View>
+              )}
+
               <View style={styles.divider} />
 
               <Text style={styles.label}>Modalidad</Text>
@@ -896,6 +1248,54 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md, padding: 14, fontSize: 14, color: COLORS.ink,
     minHeight: 96, textAlignVertical: "top",
   },
+
+  /* Fotos adjuntas */
+  imagenesRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, alignItems: "center" },
+  imagenThumbWrap: { position: "relative" },
+  imagenThumb: {
+    width: 64, height: 64, borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.surfaceAlt,
+  },
+  imagenThumbQuitar: {
+    position: "absolute", top: -6, right: -6,
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: COLORS.danger,
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 2, borderColor: COLORS.surface,
+  },
+  imagenesBotonesWrap: { flexDirection: "row", gap: 10 },
+  imagenAgregarBtn: {
+    width: 64, height: 64, borderRadius: RADIUS.sm,
+    borderWidth: 1.5, borderColor: COLORS.primary, borderStyle: "dashed",
+    backgroundColor: COLORS.primarySoft,
+    alignItems: "center", justifyContent: "center",
+  },
+
+  /* Dirección del trabajo */
+  direccionActualBox: {
+    marginTop: 10, flexDirection: "row", alignItems: "center",
+    backgroundColor: COLORS.surfaceAlt, borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: RADIUS.md, padding: 14,
+  },
+  direccionActualTexto: { flex: 1, fontSize: 13.5, color: COLORS.ink, fontWeight: "600", lineHeight: 19 },
+  direccionInputBox: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: COLORS.surfaceAlt, borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12,
+  },
+  direccionInputBoxOk: { borderColor: "rgba(30,158,107,0.45)" },
+  direccionInput: { flex: 1, fontSize: 14, color: COLORS.ink, paddingVertical: 0 },
+  sugerenciasContainer: {
+    backgroundColor: COLORS.surface, borderRadius: RADIUS.md, marginTop: 8,
+    borderWidth: 1, borderColor: COLORS.border,
+    ...shadow(COLORS.ink, 0.08, 10, 4),
+    overflow: "hidden",
+  },
+  sugerenciaItem: {
+    flexDirection: "row", paddingHorizontal: 14, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  sugerenciaTexto: { flex: 1, color: COLORS.ink, fontSize: 12.5, lineHeight: 17 },
 
   /* Selector de fecha/hora del plazo */
   plazoRow: { flexDirection: "row", gap: 10, marginTop: 10 },

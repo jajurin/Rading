@@ -241,31 +241,36 @@ export default function DetalleOfertaTrabajador() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
 
-  const ofertaId = route.params?.ofertaId;
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [oferta, setOferta] = useState(null);
 
-  const cargarDetalle = useCallback(async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      if (!ofertaId) throw new Error('No se especificó la solicitud a mostrar.');
+  const ofertaId = route.params?.ofertaId;
+  const trabajadorId = route.params?.trabajadorId;
 
-      const resp = await fetch(`${API_URL}/trabajador/detalleOferta/${ofertaId}`);
-      if (!resp.ok) {
-        const body = await resp.json().catch(() => ({}));
-        throw new Error(body?.message || 'No pudimos cargar el detalle de la solicitud.');
-      }
-      const data = await resp.json();
-      setOferta(data);
-    } catch (e) {
-      setError(e?.message || 'No pudimos cargar el detalle de la solicitud.');
-    } finally {
-      setLoading(false);
+  const cargarDetalle = useCallback(async () => {
+  setError(null);
+  setLoading(true);
+  try {
+    if (!ofertaId) throw new Error('No se especificó la solicitud a mostrar.');
+
+    const url = trabajadorId
+      ? `${API_URL}/trabajador/detalleOferta/${ofertaId}?trabajadorId=${trabajadorId}`
+      : `${API_URL}/trabajador/detalleOferta/${ofertaId}`;
+
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(body?.message || 'No pudimos cargar el detalle de la solicitud.');
     }
-  }, [ofertaId]);
+    const data = await resp.json();
+    setOferta(data);
+  } catch (e) {
+    setError(e?.message || 'No pudimos cargar el detalle de la solicitud.');
+  } finally {
+    setLoading(false);
+  }
+}, [ofertaId, trabajadorId]);
 
   useEffect(() => {
     cargarDetalle();

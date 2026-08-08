@@ -11,8 +11,8 @@ export default class TrabajadorServices {
     mostrarTodosLosTrabajadores = async () => {
         return await this.#repo.mostrarTodosLosTrabajadores()
     }
-obtenerDetalleOferta = async (idTrabajo) => {
-    return await this.#repo.obtenerDetalleOferta(idTrabajo)
+obtenerDetalleOferta = async (idTrabajo, idTrabajador) => {
+    return await this.#repo.obtenerDetalleOferta(idTrabajo, idTrabajador ?? null)
 }
     registrarTrabajador = async (body) => {
         const trabajador = new Trabajador(

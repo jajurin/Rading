@@ -38,6 +38,14 @@ export default class SolicitudServices {
             emergencia: body.emergencia ?? false,
             descripcion: body.descripcion,
             descripcionOriginal: body.descripcionOriginal,
+            // 👇 NUEVO: dirección/lat/lng de esta solicitud puntual. Si el
+            // cliente dejó su dirección predeterminada, el front manda los
+            // mismos valores que ya tiene guardados en su perfil (Usuario);
+            // si eligió "otra dirección", vienen los de esa dirección
+            // (validados contra Nominatim en CrearSolicitud.js).
+            direccion: body.direccion ?? null,
+            lat: body.lat ?? null,
+            lng: body.lng ?? null,
         }
 
         if (!solicitud.idCliente) throw new Error("idCliente es requerido")
@@ -48,5 +56,21 @@ export default class SolicitudServices {
         }
 
         return await this.#repo.crearSolicitud(solicitud)
+    }
+
+    // 👇 NUEVO: guarda una foto ya subida a disco (o al storage que uses)
+    // asociada a una solicitud existente. "archivo" viene armado por el
+    // middleware de multer en la ruta (ver solicitud-routes.js): { url,
+    // idTrabajo, orden }.
+    subirImagen = async ({ idTrabajo, url, orden, idCliente }) => {
+        if (!idTrabajo) throw new Error("idTrabajo es requerido")
+        if (!url) throw new Error("No se recibió el archivo")
+
+        // Chequeo de pertenencia: evita que se puedan colgar fotos en el
+        // trabajo de otro cliente solo adivinando el id.
+        const trabajo = await this.#repo.obtenerTrabajoDeCliente(idTrabajo, idCliente)
+        if (!trabajo) throw new Error("La solicitud indicada no existe o no te pertenece")
+
+        return await this.#repo.crearImagenSolicitud({ idTrabajo, url, orden })
     }
 }

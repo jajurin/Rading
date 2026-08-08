@@ -96,8 +96,14 @@ router.get("/detalleOferta/:id", async (req, res) => {
     if (!idValido(req.params.id)) {
         return res.status(400).json({ message: "id de solicitud inválido" })
     }
+
+    const { trabajadorId } = req.query
+    if (trabajadorId !== undefined && !idValido(trabajadorId)) {
+        return res.status(400).json({ message: "trabajadorId inválido" })
+    }
+
     try {
-        const detalle = await svc.obtenerDetalleOferta(req.params.id)
+        const detalle = await svc.obtenerDetalleOferta(req.params.id, trabajadorId ?? null)
         if (!detalle) {
             return res.status(404).json({ message: "Solicitud no encontrada" })
         }

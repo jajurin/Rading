@@ -287,8 +287,8 @@ export default function OfertasCercanasTrabajador() {
   };
 
   const handleVerDetalles = (item) => {
-    navigation.navigate('DetalleOfertaTrabajador', { ofertaId: item.id });
-  };
+  navigation.navigate('DetalleOfertaTrabajador', { ofertaId: item.id, trabajadorId });
+};
 
   const subtitulo = useMemo(() => {
     if (loading) return 'Buscando cerca tuyo…';
