@@ -297,13 +297,13 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
             />
           ) : (
             <ConfirmarTrabajoTr
-              idTrabajo={confirmacion.trabajo.id}
-              service={confirmacion.trabajo.servicio_nombre}
-              clientName={`${confirmacion.trabajo.nombre} ${confirmacion.trabajo.apellido}`}
-              duration={confirmacion.trabajo.duracion}
-              onConfirm={handleConfirmacionOk}
-              onClose={cerrarConfirmacion}
-            />
+  idTrabajo={confirmacion.trabajo.id}
+  service={confirmacion.trabajo.servicio_nombre}
+  clientName={`${confirmacion.trabajo.nombre} ${confirmacion.trabajo.apellido}`}
+  durationMinutes={confirmacion.trabajo.duracionMinutos}
+  onConfirm={handleConfirmacionOk}
+  onClose={cerrarConfirmacion}
+/>
           )}
         </Modal>
       )}

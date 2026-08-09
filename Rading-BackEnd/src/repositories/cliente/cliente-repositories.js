@@ -211,49 +211,54 @@ import config from '../../configs/dbconfig.js'
             }
         }
 
-        mostrarTrabajosActivos = async (idCliente) => {
-            const client = new Client(config)
-            let result
+       mostrarTrabajosActivos = async (idCliente) => {
+    const client = new Client(config)
+    let result
 
-            try {
-                await client.connect()
+    try {
+        await client.connect()
 
-                const sql = `
-    SELECT
-        ct.id,
-        t.id AS "idTrabajador",
-        u.nombre,
-        u.apellido,
-        t.foto,
-        t.estrellas,
-        ct.estado,
-        ct.fecha_iniciado,
-        ct.distancia,
-        ct.fijo,
-        ct.precio,
-        ct.servicio_id,
-        ct.emergencia,
-        ct.horario_requerido,
-        ct.horario_finalizado,
-        ct.trabajo_iniciado_en,
-        s.nombre AS servicio_nombre
-    FROM "Cliente-Trabajador" ct
-    INNER JOIN "Trabajador" t ON ct."IdTrabajador" = t.id
-    INNER JOIN "Usuario" u ON t."IdPersona" = u.id
-    LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
-    WHERE ct."IdCliente" = $1
-    AND ct.estado = 'EN PROCESO'
-`
-                result = await client.query(sql, [idCliente])
-            } catch (err) {
-                console.error('Error en mostrarTrabajosActivos:', err)
-                throw err
-            } finally {
-                await client.end()
-            }
+        const sql = `
+            SELECT
+                ct.id,
+                t.id AS "idTrabajador",
+                u.nombre,
+                u.apellido,
+                t.foto,
+                t.estrellas,
+                ct.estado,
+                ct.fecha_iniciado,
+                ct.distancia,
+                ct.fijo,
+                ct.precio,
+                ct.servicio_id,
+                ct.emergencia,
+                ct.horario_requerido,
+                ct.horario_finalizado,
+                ct.trabajo_iniciado_en,
+                CASE
+                    WHEN ct.trabajo_iniciado_en IS NOT NULL
+                    THEN EXTRACT(EPOCH FROM (now() - ct.trabajo_iniciado_en)) / 60
+                    ELSE NULL
+                END AS "duracionMinutos",
+                s.nombre AS servicio_nombre
+            FROM "Cliente-Trabajador" ct
+            INNER JOIN "Trabajador" t ON ct."IdTrabajador" = t.id
+            INNER JOIN "Usuario" u ON t."IdPersona" = u.id
+            LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+            WHERE ct."IdCliente" = $1
+            AND ct.estado = 'EN PROCESO'
+        `
+        result = await client.query(sql, [idCliente])
+    } catch (err) {
+        console.error('Error en mostrarTrabajosActivos:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
 
-            return result?.rows ?? []
-        }
+    return result?.rows ?? []
+}
 
        registrarCliente = async (cliente) => {
     const client = new Client(config)

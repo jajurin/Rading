@@ -237,28 +237,33 @@ avisarSubastasVencidas = async () => {
     }
     return resultados
 }
- mostrarTrabajosActivos = async (idTrabajador) => {
+mostrarTrabajosActivos = async (idTrabajador) => {
     const client = new Client(config)
     try {
         await client.connect()
         const sql = `
-    SELECT
-        ct.id,
-        u.nombre,
-        u.apellido,
-        c.estrellas,
-        ct.estado,
-        ct.fecha_iniciado,
-        ct.distancia,
-        ct.fijo,
-        ct.precio,
-        ct.servicio_id,
-        ct.emergencia,
-        ct.horario_requerido,
-        ct.horario_finalizado,
-        ct.trabajo_iniciado_en,
-        s.nombre AS servicio_nombre
-    FROM "Cliente-Trabajador" ct
+            SELECT
+                ct.id,
+                u.nombre,
+                u.apellido,
+                c.estrellas,
+                ct.estado,
+                ct.fecha_iniciado,
+                ct.distancia,
+                ct.fijo,
+                ct.precio,
+                ct.servicio_id,
+                ct.emergencia,
+                ct.horario_requerido,
+                ct.horario_finalizado,
+                ct.trabajo_iniciado_en,
+                CASE
+                    WHEN ct.trabajo_iniciado_en IS NOT NULL
+                    THEN EXTRACT(EPOCH FROM (now() - ct.trabajo_iniciado_en)) / 60
+                    ELSE NULL
+                END AS "duracionMinutos",
+                s.nombre AS servicio_nombre
+            FROM "Cliente-Trabajador" ct
             INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
             INNER JOIN "Usuario" u ON c."IdPersona" = u.id
             LEFT JOIN "Servicio" s ON s.id = ct.servicio_id

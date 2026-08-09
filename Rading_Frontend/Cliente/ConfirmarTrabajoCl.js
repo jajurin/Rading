@@ -10,17 +10,29 @@ import {
 import Svg, { Path, Rect } from "react-native-svg";
 import API_URL from "../configS";
 
+// Formatea minutos (número) a "Xh Ymin" / "Y min". Los minutos ya vienen
+// calculados por el backend (now() del servidor - trabajo_iniciado_en),
+// así que acá no se toca ninguna fecha ni reloj del dispositivo.
+const formatearDuracion = (minutos) => {
+  if (minutos === null || minutos === undefined || Number.isNaN(minutos)) return "-";
+  const totalMin = Math.max(0, Math.round(minutos));
+  const horas = Math.floor(totalMin / 60);
+  const mins = totalMin % 60;
+  return horas > 0 ? `${horas}h ${mins}min` : `${mins} min`;
+};
+
 export default function ConfirmarTrabajoCl({
   idTrabajo,
   service = "Reparación de plomería",
   workerName = "Juan Pérez",
-  duration = "45 min",
+  durationMinutes, // trabajo.duracionMinutos, calculado en el backend
   onConfirm = () => {},
   onClose = () => {},
 }) {
   const [status, setStatus] = useState("idle"); // idle | loading | waiting | success | error | closing
   const [errorMsg, setErrorMsg] = useState(null);
   const [visible, setVisible] = useState(true);
+  const [duration, setDuration] = useState(() => formatearDuracion(durationMinutes));
   const pollRef = useRef(null);
 
   const cardAnim = useRef(new Animated.Value(1)).current; // opacity/scale for close
@@ -35,6 +47,22 @@ export default function ConfirmarTrabajoCl({
   };
 
   useEffect(() => stopPolling, []);
+
+  // Cuando llega un nuevo valor desde el backend, lo tomamos como base y
+  // después sumamos 1 minuto localmente cada 60s (sin volver a comparar
+  // fechas del dispositivo), así sigue avanzando en pantalla mientras el
+  // modal está abierto esperando al otro lado.
+  useEffect(() => {
+    setDuration(formatearDuracion(durationMinutes));
+    if (durationMinutes === null || durationMinutes === undefined) return;
+
+    let acumulado = durationMinutes;
+    const interval = setInterval(() => {
+      acumulado += 1;
+      setDuration(formatearDuracion(acumulado));
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [durationMinutes]);
 
   // spinner rotation loop, runs while loading or waiting
   useEffect(() => {

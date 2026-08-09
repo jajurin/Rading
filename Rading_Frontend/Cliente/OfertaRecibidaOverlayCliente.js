@@ -405,14 +405,14 @@ export default function OfertaRecibidaOverlayCliente({
               onClose={cerrarConfirmacion}
             />
           ) : (
-            <ConfirmarTrabajoCl
-              idTrabajo={confirmacion.trabajo.id}
-              service={confirmacion.trabajo.servicio_nombre}
-              workerName={`${confirmacion.trabajo.nombre} ${confirmacion.trabajo.apellido}`}
-              duration={confirmacion.trabajo.duracion}
-              onConfirm={handleConfirmacionOk}
-              onClose={cerrarConfirmacion}
-            />
+          <ConfirmarTrabajoCl
+  idTrabajo={confirmacion.trabajo.id}
+  service={confirmacion.trabajo.servicio_nombre}
+  workerName={`${confirmacion.trabajo.nombre} ${confirmacion.trabajo.apellido}`}
+  durationMinutes={confirmacion.trabajo.duracionMinutos}
+  onConfirm={handleConfirmacionOk}
+  onClose={cerrarConfirmacion}
+/>
           )}
         </Modal>
       )}

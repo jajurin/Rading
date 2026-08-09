@@ -10,14 +10,22 @@ import {
 import Svg, { Path, Circle } from "react-native-svg";
 import API_URL from "../configS";
 
+const formatearHoraLocal = (fecha = new Date()) => {
+  const horas = String(fecha.getHours()).padStart(2, "0");
+  const minutos = String(fecha.getMinutes()).padStart(2, "0");
+  return `${horas}:${minutos} hs`;
+};
+
 export default function ConfirmarLlegadaCl({
   idTrabajo,
   service = "Reparación de plomería",
   workerName = "Juan Pérez",
-  eta = "10:45 hs",
+  eta,
   onConfirm = () => {},
   onClose = () => {},
 }) {
+  // eta puede llegar undefined, null o "" (horario_requerido vacío en la BD)
+  const etaMostrada = eta || formatearHoraLocal();
   const [status, setStatus] = useState("idle");
   const [errorMsg, setErrorMsg] = useState(null);
   const [visible, setVisible] = useState(true);
@@ -215,9 +223,9 @@ export default function ConfirmarLlegadaCl({
                 <Text style={styles.rowValue}>{workerName}</Text>
               </View>
               <View style={[styles.row, styles.rowLast]}>
-                <Text style={styles.rowLabel}>Hora estimada</Text>
-                <Text style={styles.rowValue}>{eta}</Text>
-              </View>
+  <Text style={styles.rowLabel}>Hora estimada</Text>
+  <Text style={styles.rowValue}>{etaMostrada}</Text>
+</View>
             </View>
 
             {status === "error" && (
