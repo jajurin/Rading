@@ -176,7 +176,16 @@ router.get('/ofertas/:idTrabajo', async (req, res) => {
         res.status(500).json({ message: err.message })
     }
 })
-
+// GET /cliente/misSolicitudes/:id
+router.get("/misSolicitudes/:id", async (req, res) => {
+    try {
+        const solicitudes = await svc.mostrarMisSolicitudes(req.params.id)
+        res.status(200).json(solicitudes)
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: "Error al obtener mis solicitudes", error })
+    }
+})
 router.post('/ofertas/:idOferta/aceptar', async (req, res) => {
     try {
         const resultado = await svc.aceptarOferta(req.params.idOferta)

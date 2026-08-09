@@ -125,8 +125,7 @@ const RADIO_BUSQUEDA_KM = 5;
 // completá el campo screen acá y ya queda andando.
 const NAV_ITEMS = [
   { key: 'inicio',   label: 'Inicio',  Icon: Icons.Home,    screen: 'HomeTrabajador' },
-  { key: 'busqueda', label: 'Buscar',  Icon: Icons.Search,  screen: 'BuscadorTrabajador' },
-  { key: 'fab',      label: null,      Icon: Icons.Radar,   screen: null },
+{ key: 'busqueda', label: 'Ofertas', Icon: Icons.Search, screen: 'MisOfertasTrabajador' },  { key: 'fab',      label: null,      Icon: Icons.Radar,   screen: null },
   { key: 'chats',    label: 'Chats',   Icon: Icons.Chat,    screen: 'PreviaChatTrabajador' },
   { key: 'perfil',   label: 'Perfil',  Icon: Icons.Profile, screen: null }, // TODO: crear PerfilTrabajador
 ];

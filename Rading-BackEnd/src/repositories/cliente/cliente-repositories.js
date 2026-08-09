@@ -259,7 +259,56 @@ import config from '../../configs/dbconfig.js'
 
     return result?.rows ?? []
 }
-
+/**
+ * TODAS las solicitudes del cliente, sin filtrar por estado (a diferencia
+ * de mostrarTrabajosActivos que solo trae EN PROCESO). Incluye cuántas
+ * ofertas pendientes tiene cada una y, si ya se asignó, los datos del
+ * trabajador asignado.
+ */
+mostrarMisSolicitudes = async (idCliente) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        const sql = `
+            SELECT
+                ct.id,
+                ct.descripcion,
+                ct.horario_requerido,
+                ct.horario_finalizado,
+                ct.fijo,
+                ct.emergencia,
+                ct.precio,
+                ct."precioEstimadoIA",
+                ct.estado,
+                ct.fecha_iniciado,
+                ct.fecha_acabado,
+                s.nombre AS servicio_nombre,
+                cs.nombre AS categoria_nombre,
+                t.id AS "idTrabajadorAsignado",
+                ut.nombre AS "trabajadorNombre",
+                ut.apellido AS "trabajadorApellido",
+                t.foto AS "trabajadorFoto",
+                (
+                    SELECT COUNT(*) FROM "Oferta" o
+                    WHERE o."idTrabajo" = ct.id AND o."ESTADO_OFERTA" = 'PENDIENTE'
+                ) AS "cantidadOfertas"
+            FROM "Cliente-Trabajador" ct
+            LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+            LEFT JOIN "CategoriaServicio" cs ON cs.id = s.categoria_id
+            LEFT JOIN "Trabajador" t ON t.id = ct."IdTrabajador"
+            LEFT JOIN "Usuario" ut ON ut.id = t."IdPersona"
+            WHERE ct."IdCliente" = $1
+            ORDER BY ct.id DESC
+        `
+        const result = await client.query(sql, [idCliente])
+        return result?.rows ?? []
+    } catch (err) {
+        console.error('Error en mostrarMisSolicitudes:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
        registrarCliente = async (cliente) => {
     const client = new Client(config)
 

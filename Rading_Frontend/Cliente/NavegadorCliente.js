@@ -109,8 +109,7 @@ const THEME = {
 // y el indicador se transforma en un anillo circular a su alrededor.
 const NAV_ITEMS = [
   { key: 'inicio',   label: 'Inicio',  Icon: Icons.Home,    screen: 'HomeCliente' },
-  { key: 'busqueda', label: 'Buscar',  Icon: Icons.Search,  screen: 'BuscadorCliente' },
-  { key: 'fab',      label: null,      Icon: Icons.Plus,    screen: 'CrearSolicitud' },
+{ key: 'busqueda', label: 'Solicitudes', Icon: Icons.Search, screen: 'MisSolicitudesCliente' },  { key: 'fab',      label: null,      Icon: Icons.Plus,    screen: 'CrearSolicitud' },
   { key: 'chats',    label: 'Chats',   Icon: Icons.Chat,    screen: 'ChatsCliente' },
   { key: 'perfil',   label: 'Perfil',  Icon: Icons.Profile, screen: 'PerfilScreen' },
 ];

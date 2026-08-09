@@ -279,6 +279,86 @@ mostrarTrabajosActivos = async (idTrabajador) => {
         await client.end()
     }
 }
+mostrarMisOfertas = async (idTrabajador) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        const sql = `
+            SELECT
+                o.id AS "idOferta",
+                o."idTrabajo",
+                o.precio,
+                o."costoExtraMin",
+                o."costoExtraMax",
+                o.mensaje,
+                o."ESTADO_OFERTA" AS estado,
+                o.fecha_creado,
+                ct.descripcion,
+                ct.horario_requerido,
+                ct.fijo,
+                ct.emergencia,
+                ct.estado AS "estadoTrabajo",
+                ct."IdTrabajador" AS "idTrabajadorAsignado",
+                u.nombre,
+                u.apellido,
+                s.nombre AS servicio_nombre,
+                cs.nombre AS categoria_nombre
+            FROM "Oferta" o
+            INNER JOIN "Cliente-Trabajador" ct ON ct.id = o."idTrabajo"
+            INNER JOIN "Cliente" c ON c.id = ct."IdCliente"
+            INNER JOIN "Usuario" u ON u.id = c."IdPersona"
+            LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+            LEFT JOIN "CategoriaServicio" cs ON cs.id = s.categoria_id
+            WHERE o."idTrabajador" = $1
+            ORDER BY o.fecha_creado DESC
+        `
+        const result = await client.query(sql, [idTrabajador])
+        return result?.rows ?? []
+    } catch (err) {
+        console.error('Error en mostrarMisOfertas:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
+/**
+ * El trabajador edita una oferta que ya envió, mientras siga PENDIENTE.
+ * No se puede editar si ya fue ACEPTADA o RECHAZADA, ni si es de otro
+ * trabajador.
+ */
+editarOferta = async (idOferta, idTrabajador, { precio, costoExtraMin = null, costoExtraMax = null, mensaje = null }) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+
+        const ofertaResult = await client.query(
+            `SELECT id, "idTrabajador", "ESTADO_OFERTA" FROM "Oferta" WHERE id = $1`,
+            [idOferta]
+        )
+        const oferta = ofertaResult.rows[0]
+        if (!oferta) throw new Error('La oferta no existe')
+        if (Number(oferta.idTrabajador) !== Number(idTrabajador)) {
+            throw new Error('Esta oferta no te pertenece')
+        }
+        if (oferta.ESTADO_OFERTA !== 'PENDIENTE') {
+            throw new Error('Solo podés editar ofertas pendientes')
+        }
+
+        const actualizada = await client.query(
+            `UPDATE "Oferta"
+             SET precio = $1, "costoExtraMin" = $2, "costoExtraMax" = $3, mensaje = $4
+             WHERE id = $5
+             RETURNING *`,
+            [precio, costoExtraMin, costoExtraMax, mensaje, idOferta]
+        )
+        return actualizada.rows[0]
+    } catch (err) {
+        console.error('Error en editarOferta:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
     /**
      * Muestra los trabajos realizados (TERMINADO o CANCELADO) de un trabajador.
      */

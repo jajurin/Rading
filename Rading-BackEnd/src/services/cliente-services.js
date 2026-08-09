@@ -61,7 +61,9 @@ export default class ClienteServices {
 
     return resultado
 }
-
+mostrarMisSolicitudes = async (idCliente) => {
+    return await this.#repo.mostrarMisSolicitudes(idCliente)
+}
     contarOfertasPendientes = async (idCliente) => {
         return await this.#repo.contarOfertasPendientes(idCliente)
     }

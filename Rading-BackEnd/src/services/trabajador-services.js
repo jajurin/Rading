@@ -85,7 +85,15 @@ export default class TrabajadorServices {
 
         return resultado
     }
-
+    editarOferta = async (idOferta, idTrabajador, datos) => {
+    if (!idOferta || !idTrabajador || datos?.precio == null) {
+        throw new Error('Faltan idOferta, idTrabajador o precio')
+    }
+    return await this.#repo.editarOferta(idOferta, idTrabajador, datos)
+}
+mostrarMisOfertas = async (idTrabajador) => {
+    return await this.#repo.mostrarMisOfertas(idTrabajador)
+}
     mostrarTodosLosTrabajadores = async () => {
         return await this.#repo.mostrarTodosLosTrabajadores()
     }

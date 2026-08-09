@@ -169,6 +169,33 @@ router.post("/enviarOferta", async (req, res) => {
         res.status(status).json({ message: error.message || "Error al enviar la oferta" })
     }
 })
+// GET /trabajador/misOfertas/:id
+router.get("/misOfertas/:id", async (req, res) => {
+    if (!idValido(req.params.id)) {
+        return res.status(400).json({ message: "id de trabajador inválido" })
+    }
+    try {
+        const ofertas = await svc.mostrarMisOfertas(req.params.id)
+        res.status(200).json(ofertas)
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: "Error al obtener mis ofertas", error })
+    }
+})
+// PUT /trabajador/ofertas/:idOferta  { idTrabajador, precio, costoExtraMin, costoExtraMax, mensaje }
+router.put('/ofertas/:idOferta', async (req, res) => {
+    try {
+        const { idTrabajador, precio, costoExtraMin, costoExtraMax, mensaje } = req.body
+        const resultado = await svc.editarOferta(req.params.idOferta, idTrabajador, {
+            precio, costoExtraMin, costoExtraMax, mensaje,
+        })
+        res.status(200).json(resultado)
+    } catch (err) {
+        console.error(err)
+        const status = /no pertenece|pendientes|Faltan/.test(err.message) ? 400 : 500
+        res.status(status).json({ message: err.message })
+    }
+})
 // GET /trabajador/ofertasCercanas/:id?radioKm=5
 router.get("/ofertasCercanas/:id", async (req, res) => {
     if (!idValido(req.params.id)) {
