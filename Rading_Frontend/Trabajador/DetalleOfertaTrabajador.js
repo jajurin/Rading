@@ -42,10 +42,23 @@ const COLORS = {
   emergencyBg: 'rgba(226,55,68,0.08)',
   gold: '#E8A33D',
   success: '#1E9E6B',
-  successBg: 'rgba(30,158,107,0.08)',
   shadow: '#0d47a8',
   imagePlaceholder: '#DCE4F0',
+  // Fijo = postulación a precio ya definido por el cliente
+  fijo: '#6D28D9',
+  fijoBg: 'rgba(109,40,217,0.09)',
+  fijoBorder: 'rgba(109,40,217,0.28)',
+  // Subasta = se compite por precio
+  subasta: '#B4740E',
+  subastaBg: 'rgba(217,142,10,0.12)',
+  subastaBorder: 'rgba(217,142,10,0.32)',
 };
+
+function modalidadInfo(fijo) {
+  return fijo
+    ? { label: 'Precio fijo', shortLabel: 'PRECIO FIJO', desc: 'El cliente ya definió el precio. Te postulás y decide con quién trabajar.', color: COLORS.fijo, bg: COLORS.fijoBg, border: COLORS.fijoBorder }
+    : { label: 'Subasta', shortLabel: 'SUBASTA', desc: 'Varios trabajadores ofertan precio. Gana quien el cliente elija.', color: COLORS.subasta, bg: COLORS.subastaBg, border: COLORS.subastaBorder };
+}
 
 // -------------------------------------------------------------------------
 // Iconos lineales (mismo estilo que la pantalla de listado)
@@ -134,6 +147,23 @@ const Icons = {
       <Path d="M6 6L18 18M18 6L6 18" stroke={color} strokeWidth="2" strokeLinecap="round" />
     </Svg>
   ),
+  Etiqueta: ({ color = COLORS.fijo, size = 14 }) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M11.5 3H19a2 2 0 012 2v7.5a2 2 0 01-.586 1.414l-8 8a2 2 0 01-2.828 0l-7-7a2 2 0 010-2.828l8-8A2 2 0 0111.5 3z"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <Circle cx="15.5" cy="8.5" r="1.6" stroke={color} strokeWidth="1.6" />
+    </Svg>
+  ),
+  Subasta: ({ color = COLORS.subasta, size = 14 }) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 3L20.5 8V16L12 21L3.5 16V8L12 3Z" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />
+      <Path d="M12 8L15.2 9.9V13.6L12 15.5L8.8 13.6V9.9L12 8Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+    </Svg>
+  ),
 };
 
 // -------------------------------------------------------------------------
@@ -168,6 +198,23 @@ function iniciales(nombre = '', apellido = '') {
   const a = nombre?.charAt(0) || '';
   const b = apellido?.charAt(0) || '';
   return (a + b).toUpperCase() || '?';
+}
+
+// -------------------------------------------------------------------------
+// Badge de modalidad (Fijo / Subasta) — con descripción opcional
+// -------------------------------------------------------------------------
+function ModalidadBadge({ fijo, withDescription = false }) {
+  const info = modalidadInfo(fijo);
+  const Icon = fijo ? Icons.Etiqueta : Icons.Subasta;
+  return (
+    <View style={{ alignSelf: 'flex-start' }}>
+      <View style={[styles.modBadge, { backgroundColor: info.bg, borderColor: info.border }]}>
+        <Icon color={info.color} size={13} />
+        <Text style={[styles.modBadgeText, { color: info.color }]}>{info.shortLabel}</Text>
+      </View>
+      {withDescription && <Text style={styles.modBadgeDesc}>{info.desc}</Text>}
+    </View>
+  );
 }
 
 // -------------------------------------------------------------------------
@@ -419,6 +466,7 @@ export default function DetalleOfertaTrabajador() {
   const fechaLabel = formatFecha(oferta.fecha_iniciado);
   const nombreCliente = `${oferta.nombre ?? ''} ${oferta.apellido ?? ''}`.trim() || 'Cliente';
   const categoriaLabel = oferta.categoria_nombre || oferta.servicio_nombre || 'Servicio';
+  const modInfo = modalidadInfo(oferta.fijo);
 
   return (
     <View style={styles.screen}>
@@ -444,12 +492,21 @@ export default function DetalleOfertaTrabajador() {
         </View>
 
         <View style={styles.body}>
-          {/* Chip de categoría + título */}
-          <View style={styles.chip}>
-            <Text style={styles.chipText}>{categoriaLabel}</Text>
+          {/* Chips: categoría + modalidad */}
+          <View style={styles.chipsRow}>
+            <View style={styles.chip}>
+              <Text style={styles.chipText}>{categoriaLabel}</Text>
+            </View>
+            <ModalidadBadge fijo={oferta.fijo} />
           </View>
+
           <Text style={styles.titulo}>{oferta.servicio_nombre || 'Solicitud de servicio'}</Text>
           {fechaLabel && <Text style={styles.fechaTexto}>Publicado el {fechaLabel}</Text>}
+
+          {/* Explicación breve de la modalidad, para que quede clarísimo */}
+          <View style={[styles.modExplainCard, { backgroundColor: modInfo.bg, borderColor: modInfo.border }]}>
+            <Text style={[styles.modExplainTexto, { color: modInfo.color }]}>{modInfo.desc}</Text>
+          </View>
 
           {/* Card del cliente */}
           <View style={styles.clienteCard}>
@@ -471,7 +528,7 @@ export default function DetalleOfertaTrabajador() {
           <SectionTitle>Detalles del pedido</SectionTitle>
           <View style={styles.infoGrid}>
             <InfoTile icon={<Icons.Clock />} label="Horario" value={formatHora(oferta.horario_requerido)} />
-            <InfoTile icon={<Icons.Cash />} label={precio.label} value={precio.valor} />
+            <InfoTile icon={<Icons.Cash color={modInfo.color} />} label={precio.label} value={precio.valor} />
             <InfoTile icon={<Icons.Pin />} label="Distancia" value={distanciaLabel || 'A confirmar'} />
           </View>
 
@@ -509,13 +566,17 @@ export default function DetalleOfertaTrabajador() {
         </View>
       </ScrollView>
 
-      {/* CTA fijo abajo */}
+      {/* CTA fijo abajo — el color del botón acompaña la modalidad */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 14 }]}>
         <View style={{ flex: 1 }}>
           <Text style={styles.footerLabel}>{precio.label}</Text>
           <Text style={styles.footerPrecio}>{precio.valor}</Text>
         </View>
-        <TouchableOpacity style={styles.enviarBtn} onPress={handleEnviarOferta} activeOpacity={0.9}>
+        <TouchableOpacity
+          style={[styles.enviarBtn, { backgroundColor: modInfo.color }]}
+          onPress={handleEnviarOferta}
+          activeOpacity={0.9}
+        >
           <Icons.Check />
           <Text style={styles.enviarBtnText}>{oferta.fijo ? 'Postularme' : 'Ofertar'}</Text>
         </TouchableOpacity>
@@ -535,8 +596,15 @@ export default function DetalleOfertaTrabajador() {
             onPress={() => !enviandoOferta && setMostrarModalOferta(false)}
           />
           <View style={styles.modalCardSubasta}>
+            <View style={[styles.modalAccentBar, { backgroundColor: COLORS.subasta }]} />
             <View style={styles.modalHeaderSubasta}>
-              <Text style={styles.modalTituloSubasta}>Ofertar por este trabajo</Text>
+              <View style={{ flex: 1 }}>
+                <View style={[styles.modBadge, { backgroundColor: COLORS.subastaBg, borderColor: COLORS.subastaBorder, marginBottom: 8 }]}>
+                  <Icons.Subasta color={COLORS.subasta} size={12} />
+                  <Text style={[styles.modBadgeText, { color: COLORS.subasta }]}>SUBASTA</Text>
+                </View>
+                <Text style={styles.modalTituloSubasta}>Ofertar por este trabajo</Text>
+              </View>
               <TouchableOpacity
                 onPress={() => !enviandoOferta && setMostrarModalOferta(false)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -546,7 +614,7 @@ export default function DetalleOfertaTrabajador() {
             </View>
 
             <Text style={styles.modalSubtituloSubasta}>
-              Es una subasta: gana quien ofrezca el precio más bajo antes de que cierre.
+              Gana quien ofrezca el precio más bajo antes de que cierre la subasta.
             </Text>
 
             <Text style={styles.propLabel}>Tu precio</Text>
@@ -684,6 +752,7 @@ const styles = StyleSheet.create({
 
   body: { paddingHorizontal: 20, paddingTop: 18 },
 
+  chipsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   chip: {
     alignSelf: 'flex-start',
     backgroundColor: COLORS.chipBg,
@@ -692,7 +761,30 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   chipText: { fontSize: 11.5, fontWeight: '700', color: COLORS.chipText },
-  titulo: { fontSize: 21, fontWeight: '800', color: COLORS.text, marginTop: 8 },
+
+  // ---- Badge de modalidad (Fijo / Subasta) ----
+  modBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  modBadgeText: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.4 },
+  modBadgeDesc: { fontSize: 11, color: COLORS.textMuted, marginTop: 4, maxWidth: 220 },
+
+  modExplainCard: {
+    marginTop: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  modExplainTexto: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
+
+  titulo: { fontSize: 21, fontWeight: '800', color: COLORS.text, marginTop: 12 },
   fechaTexto: { fontSize: 12.5, color: COLORS.textFaint, marginTop: 3, fontWeight: '500' },
 
   clienteCard: {
@@ -804,7 +896,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: COLORS.success,
     paddingHorizontal: 20,
     paddingVertical: 13,
     borderRadius: 14,
@@ -832,12 +923,20 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 22,
-    paddingTop: 20,
+    paddingTop: 24,
     paddingBottom: 34,
+    overflow: 'hidden',
+  },
+  modalAccentBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 5,
   },
   modalHeaderSubasta: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
   },
   modalTituloSubasta: {
@@ -848,7 +947,7 @@ const styles = StyleSheet.create({
   modalSubtituloSubasta: {
     fontSize: 13,
     color: COLORS.textMuted,
-    marginTop: 8,
+    marginTop: 10,
     marginBottom: 18,
     lineHeight: 18,
   },
@@ -920,7 +1019,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: COLORS.success,
+    backgroundColor: COLORS.subasta,
     paddingVertical: 14,
     borderRadius: 14,
     marginTop: 22,

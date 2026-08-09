@@ -26,10 +26,12 @@ const COLORS = {
   bg: '#F3F6FB',
   card: '#FFFFFF',
   border: '#E7ECF5',
+  borderStrong: '#D6DEEC',
   text: '#0F1B2D',
   textMuted: '#66748C',
   textFaint: '#94A1B5',
   blue: '#0d47a8',
+  blueDeep: '#0A3A87',
   blueLight: '#1565D8',
   chipBg: 'rgba(21,101,216,0.08)',
   chipText: '#1565D8',
@@ -37,11 +39,15 @@ const COLORS = {
   greenBg: 'rgba(23,162,88,0.1)',
   red: '#E23744',
   redBg: 'rgba(226,55,68,0.1)',
-  purple: '#7C3AED',
-  purpleBg: 'rgba(124,58,237,0.1)',
-  amber: '#B45309',
-  amberBg: 'rgba(217,119,6,0.14)',
-  shadow: '#0d47a8',
+  // Fijo = postulación a precio ya definido por el cliente
+  fijo: '#6D28D9',
+  fijoBg: 'rgba(109,40,217,0.09)',
+  fijoBorder: 'rgba(109,40,217,0.28)',
+  // Subasta = se compite por precio
+  subasta: '#B4740E',
+  subastaBg: 'rgba(217,142,10,0.12)',
+  subastaBorder: 'rgba(217,142,10,0.32)',
+  shadow: '#0d1c3d',
 };
 
 const FILTROS = [
@@ -111,6 +117,25 @@ const Icons = {
       <Line x1="18" y1="6" x2="6" y2="18" stroke={color} strokeWidth="2" strokeLinecap="round" />
     </Svg>
   ),
+  // Etiqueta = precio fijo, ya cerrado por el cliente
+  Etiqueta: ({ color = COLORS.fijo, size = 13 }) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M11.5 3H19a2 2 0 012 2v7.5a2 2 0 01-.586 1.414l-8 8a2 2 0 01-2.828 0l-7-7a2 2 0 010-2.828l8-8A2 2 0 0111.5 3z"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <Circle cx="15.5" cy="8.5" r="1.6" stroke={color} strokeWidth="1.6" />
+    </Svg>
+  ),
+  // Rombo con martillo estilizado = subasta, se compite por precio
+  Subasta: ({ color = COLORS.subasta, size = 13 }) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 3L20.5 8V16L12 21L3.5 16V8L12 3Z" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />
+      <Path d="M12 8L15.2 9.9V13.6L12 15.5L8.8 13.6V9.9L12 8Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+    </Svg>
+  ),
 };
 
 // -------------------------------------------------------------------------
@@ -153,12 +178,26 @@ function estadoOfertaInfo(estado) {
 
 // Fijo = el cliente ya puso el precio y vos te postulás a ese monto.
 // Subasta = compiten varios trabajadores ofertando precio, gana el que
-// el cliente elija (generalmente el más bajo). Colores bien distintos
-// para que se lea de un vistazo.
+// el cliente elija (generalmente el más bajo). Paleta bien distinta
+// (violeta vs. dorado) para que se lea de un vistazo, incluso sin leer texto.
 function modalidadInfo(fijo) {
   return fijo
-    ? { label: 'Fijo', color: COLORS.purple, bg: COLORS.purpleBg }
-    : { label: 'Subasta', color: COLORS.amber, bg: COLORS.amberBg };
+    ? { label: 'Precio fijo', shortLabel: 'FIJO', color: COLORS.fijo, bg: COLORS.fijoBg, border: COLORS.fijoBorder, Icon: Icons.Etiqueta }
+    : { label: 'Subasta', shortLabel: 'SUBASTA', color: COLORS.subasta, bg: COLORS.subastaBg, border: COLORS.subastaBorder, Icon: Icons.Subasta };
+}
+
+// -------------------------------------------------------------------------
+// Badge de modalidad (Fijo / Subasta) — reutilizable
+// -------------------------------------------------------------------------
+function ModalidadBadge({ fijo, compact = false }) {
+  const info = modalidadInfo(fijo);
+  const { Icon } = info;
+  return (
+    <View style={[styles.modBadge, { backgroundColor: info.bg, borderColor: info.border }]}>
+      <Icon color={info.color} size={compact ? 11 : 12.5} />
+      <Text style={[styles.modBadgeText, { color: info.color }]}>{info.shortLabel}</Text>
+    </View>
+  );
 }
 
 // -------------------------------------------------------------------------
@@ -258,6 +297,8 @@ function EditarOfertaModal({ visible, oferta, trabajadorId, onClose, onGuardado 
 
   if (!oferta) return null;
 
+  const info = modalidadInfo(oferta.fijo);
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView
@@ -265,8 +306,12 @@ function EditarOfertaModal({ visible, oferta, trabajadorId, onClose, onGuardado 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.modalCard}>
+          <View style={[styles.modalAccentBar, { backgroundColor: info.color }]} />
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Editar oferta</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.modalTitle}>Editar oferta</Text>
+              <ModalidadBadge fijo={oferta.fijo} />
+            </View>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Icons.Close />
             </TouchableOpacity>
@@ -299,7 +344,7 @@ function EditarOfertaModal({ visible, oferta, trabajadorId, onClose, onGuardado 
           {!!error && <Text style={styles.modalError}>{error}</Text>}
 
           <TouchableOpacity
-            style={[styles.modalGuardarBtn, guardando && { opacity: 0.7 }]}
+            style={[styles.modalGuardarBtn, { backgroundColor: info.color }, guardando && { opacity: 0.7 }]}
             activeOpacity={0.85}
             onPress={handleGuardar}
             disabled={guardando}
@@ -327,7 +372,13 @@ function OfertaEnviadaCard({ item, onVerDetalles, onEditar }) {
   const esEditable = item.estado === 'PENDIENTE';
 
   return (
-    <View style={[styles.card, item.emergencia && styles.cardEmergency]}>
+    <View
+      style={[
+        styles.card,
+        { borderLeftColor: modInfo.color },
+        item.emergencia && styles.cardEmergency,
+      ]}
+    >
       {item.emergencia && (
         <View style={styles.emergencyStrip}>
           <Icons.Alert color="#FFFFFF" size={13} />
@@ -345,10 +396,13 @@ function OfertaEnviadaCard({ item, onVerDetalles, onEditar }) {
             <Text style={styles.clienteNombre} numberOfLines={1}>
               {nombreCliente || 'Cliente'}
             </Text>
-            <View style={styles.chip}>
-              <Text style={styles.chipText} numberOfLines={1}>
-                {categoriaLabel}
-              </Text>
+            <View style={styles.chipsRow}>
+              <View style={styles.chip}>
+                <Text style={styles.chipText} numberOfLines={1}>
+                  {categoriaLabel}
+                </Text>
+              </View>
+              <ModalidadBadge fijo={item.fijo} compact />
             </View>
           </View>
 
@@ -369,20 +423,25 @@ function OfertaEnviadaCard({ item, onVerDetalles, onEditar }) {
           </Text>
         )}
 
-        {/* Monto ofertado: bien visible, con botón de editar si sigue pendiente */}
-        <View style={styles.ofertaBox}>
+        {/* Monto ofertado: bien visible, con botón de editar si sigue pendiente.
+            El color de fondo cambia según modalidad para reforzar el contexto. */}
+        <View style={[styles.ofertaBox, { backgroundColor: modInfo.bg, borderColor: modInfo.border }]}>
           <View style={styles.ofertaBoxLeft}>
-            <Icons.Cash />
-            <View style={{ marginLeft: 8 }}>
-              <Text style={styles.ofertaBoxLabel}>{item.fijo ? 'Ofertaste' : 'Tu oferta'}</Text>
+            <View style={[styles.ofertaBoxIconWrap, { backgroundColor: '#FFFFFF' }]}>
+              <Icons.Cash color={modInfo.color} size={16} />
+            </View>
+            <View style={{ marginLeft: 10 }}>
+              <Text style={[styles.ofertaBoxLabel, { color: modInfo.color }]}>
+                {item.fijo ? 'Te postulaste por' : 'Tu oferta en subasta'}
+              </Text>
               <Text style={styles.ofertaBoxMonto}>{formatMonto(item.precio)}</Text>
             </View>
           </View>
 
-          {esEditable && (
+          {esEditable && !item.fijo && (
             <TouchableOpacity style={styles.editarBtn} activeOpacity={0.8} onPress={() => onEditar(item)}>
-              <Icons.Pencil />
-              <Text style={styles.editarBtnText}>Editar</Text>
+              <Icons.Pencil color={modInfo.color} />
+              <Text style={[styles.editarBtnText, { color: modInfo.color }]}>Editar</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -410,7 +469,7 @@ function OfertaEnviadaCard({ item, onVerDetalles, onEditar }) {
         </View>
 
         <TouchableOpacity
-          style={styles.detalleBtn}
+          style={[styles.detalleBtn, { backgroundColor: COLORS.blue }]}
           activeOpacity={0.85}
           onPress={() => onVerDetalles(item)}
         >
@@ -568,11 +627,11 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 10,
+    paddingTop: 16,
+    paddingBottom: 12,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 23,
     fontWeight: '800',
     color: COLORS.text,
     letterSpacing: 0.2,
@@ -580,7 +639,7 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 13,
     color: COLORS.textMuted,
-    marginTop: 2,
+    marginTop: 3,
     fontWeight: '500',
   },
 
@@ -649,12 +708,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
+    borderLeftWidth: 4,
     overflow: 'hidden',
     shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 4,
   },
   cardEmergency: {
     borderColor: 'rgba(226,55,68,0.35)',
@@ -699,19 +759,43 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.text,
   },
+  chipsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 5,
+    flexWrap: 'wrap',
+  },
   chip: {
     alignSelf: 'flex-start',
     backgroundColor: COLORS.chipBg,
     paddingHorizontal: 9,
     paddingVertical: 3,
     borderRadius: 8,
-    marginTop: 4,
   },
   chipText: {
     fontSize: 11.5,
     fontWeight: '700',
     color: COLORS.chipText,
   },
+
+  // ---- Badge de modalidad (Fijo / Subasta) ----
+  modBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  modBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+
   estadoBadge: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -742,18 +826,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 14,
-    backgroundColor: COLORS.chipBg,
     borderRadius: 14,
+    borderWidth: 1,
     paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
   },
   ofertaBoxLeft: {
     flexDirection: 'row',
     alignItems: 'center',
   },
+  ofertaBoxIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   ofertaBoxLabel: {
     fontSize: 10.5,
-    color: COLORS.blueLight,
     fontWeight: '700',
   },
   ofertaBoxMonto: {
@@ -776,7 +866,6 @@ const styles = StyleSheet.create({
   editarBtnText: {
     fontSize: 12,
     fontWeight: '700',
-    color: COLORS.blue,
   },
 
   infoRow: {
@@ -814,7 +903,6 @@ const styles = StyleSheet.create({
 
   detalleBtn: {
     marginTop: 14,
-    backgroundColor: COLORS.blue,
     borderRadius: 14,
     paddingVertical: 12,
     flexDirection: 'row',
@@ -873,17 +961,27 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     borderRadius: 20,
     padding: 20,
+    overflow: 'hidden',
+  },
+  modalAccentBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 5,
   },
   modalHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: 16,
+    marginTop: 6,
   },
   modalTitle: {
     fontSize: 17,
     fontWeight: '800',
     color: COLORS.text,
+    marginBottom: 8,
   },
   modalLabel: {
     fontSize: 12.5,
@@ -935,7 +1033,6 @@ const styles = StyleSheet.create({
   },
   modalGuardarBtn: {
     marginTop: 18,
-    backgroundColor: COLORS.blue,
     borderRadius: 14,
     paddingVertical: 13,
     alignItems: 'center',

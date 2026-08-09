@@ -36,6 +36,14 @@ const COLORS = {
   red: '#E23744',
   redBg: 'rgba(226,55,68,0.1)',
   shadow: '#0d47a8',
+  // Fijo = vos ya definiste el precio del trabajo
+  fijo: '#6D28D9',
+  fijoBg: 'rgba(109,40,217,0.09)',
+  fijoBorder: 'rgba(109,40,217,0.28)',
+  // Subasta = los trabajadores compiten ofertando precio
+  subasta: '#B4740E',
+  subastaBg: 'rgba(217,142,10,0.12)',
+  subastaBorder: 'rgba(217,142,10,0.32)',
 };
 
 const FILTROS = [
@@ -45,6 +53,12 @@ const FILTROS = [
   { key: 'TERMINADO', label: 'Terminadas' },
   { key: 'CANCELADO', label: 'Canceladas' },
 ];
+
+function modalidadInfo(fijo) {
+  return fijo
+    ? { shortLabel: 'FIJO', color: COLORS.fijo, bg: COLORS.fijoBg, border: COLORS.fijoBorder }
+    : { shortLabel: 'SUBASTA', color: COLORS.subasta, bg: COLORS.subastaBg, border: COLORS.subastaBorder };
+}
 
 // -------------------------------------------------------------------------
 // Iconos
@@ -97,6 +111,23 @@ const Icons = {
       <Path d="M3 13H8.5L10 16H14L15.5 13H21" stroke={color} strokeWidth="1.6" strokeLinejoin="round" />
     </Svg>
   ),
+  Etiqueta: ({ color = COLORS.fijo, size = 12 }) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M11.5 3H19a2 2 0 012 2v7.5a2 2 0 01-.586 1.414l-8 8a2 2 0 01-2.828 0l-7-7a2 2 0 010-2.828l8-8A2 2 0 0111.5 3z"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <Circle cx="15.5" cy="8.5" r="1.6" stroke={color} strokeWidth="1.6" />
+    </Svg>
+  ),
+  Subasta: ({ color = COLORS.subasta, size = 12 }) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 3L20.5 8V16L12 21L3.5 16V8L12 3Z" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />
+      <Path d="M12 8L15.2 9.9V13.6L12 15.5L8.8 13.6V9.9L12 8Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+    </Svg>
+  ),
 };
 
 // -------------------------------------------------------------------------
@@ -132,6 +163,20 @@ function estadoTrabajoInfo(estado) {
     default:
       return { label: 'Pendiente', color: COLORS.blueLight, bg: COLORS.chipBg };
   }
+}
+
+// -------------------------------------------------------------------------
+// Badge de modalidad (Fijo / Subasta)
+// -------------------------------------------------------------------------
+function ModalidadBadge({ fijo }) {
+  const info = modalidadInfo(fijo);
+  const Icon = fijo ? Icons.Etiqueta : Icons.Subasta;
+  return (
+    <View style={[styles.modBadge, { backgroundColor: info.bg, borderColor: info.border }]}>
+      <Icon color={info.color} size={11} />
+      <Text style={[styles.modBadgeText, { color: info.color }]}>{info.shortLabel}</Text>
+    </View>
+  );
 }
 
 // -------------------------------------------------------------------------
@@ -187,13 +232,14 @@ function SolicitudCard({ item, onVerDetalles }) {
   const precio = formatMonto(item);
   const categoriaLabel = item.categoria_nombre || item.servicio_nombre || 'Servicio';
   const estadoInfo = estadoTrabajoInfo(item.estado);
+  const modInfo = modalidadInfo(item.fijo);
   const trabajadorAsignado = item.idTrabajadorAsignado
     ? `${item.trabajadorNombre || ''} ${item.trabajadorApellido || ''}`.trim()
     : null;
   const mostrarOfertas = item.estado === 'PENDIENTE' && Number(item.cantidadOfertas) > 0;
 
   return (
-    <View style={[styles.card, item.emergencia && styles.cardEmergency]}>
+    <View style={[styles.card, { borderLeftColor: modInfo.color }, item.emergencia && styles.cardEmergency]}>
       {item.emergencia && (
         <View style={styles.emergencyStrip}>
           <Icons.Alert color="#FFFFFF" size={13} />
@@ -207,6 +253,9 @@ function SolicitudCard({ item, onVerDetalles }) {
             <Text style={styles.categoriaTitulo} numberOfLines={1}>
               {categoriaLabel}
             </Text>
+            <View style={styles.chipsRow}>
+              <ModalidadBadge fijo={item.fijo} />
+            </View>
             {trabajadorAsignado ? (
               <View style={styles.trabajadorRow}>
                 <View style={styles.avatarChico}>
@@ -246,7 +295,7 @@ function SolicitudCard({ item, onVerDetalles }) {
           <View style={styles.infoDivider} />
 
           <View style={styles.infoItem}>
-            <Icons.Cash />
+            <Icons.Cash color={modInfo.color} />
             <View>
               <Text style={styles.infoLabel}>{precio.label}</Text>
               <Text style={styles.infoValor}>{precio.valor}</Text>
@@ -255,9 +304,9 @@ function SolicitudCard({ item, onVerDetalles }) {
         </View>
 
         {mostrarOfertas && (
-          <View style={styles.ofertasBanner}>
-            <Icons.Users />
-            <Text style={styles.ofertasBannerText}>
+          <View style={[styles.ofertasBanner, { backgroundColor: modInfo.bg }]}>
+            <Icons.Users color={modInfo.color} />
+            <Text style={[styles.ofertasBannerText, { color: modInfo.color }]}>
               {item.cantidadOfertas} oferta{Number(item.cantidadOfertas) === 1 ? '' : 's'} esperando tu respuesta
             </Text>
           </View>
@@ -411,11 +460,11 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 10,
+    paddingTop: 16,
+    paddingBottom: 12,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 23,
     fontWeight: '800',
     color: COLORS.text,
     letterSpacing: 0.2,
@@ -423,7 +472,7 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 13,
     color: COLORS.textMuted,
-    marginTop: 2,
+    marginTop: 3,
     fontWeight: '500',
   },
 
@@ -492,12 +541,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
+    borderLeftWidth: 4,
     overflow: 'hidden',
     shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 4,
   },
   cardEmergency: {
     borderColor: 'rgba(226,55,68,0.35)',
@@ -529,10 +579,32 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.text,
   },
+  chipsRow: {
+    flexDirection: 'row',
+    marginTop: 6,
+  },
+
+  // ---- Badge de modalidad (Fijo / Subasta) ----
+  modBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  modBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+
   trabajadorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
+    marginTop: 8,
     gap: 6,
   },
   avatarChico: {
@@ -557,7 +629,7 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '500',
     color: COLORS.textFaint,
-    marginTop: 6,
+    marginTop: 8,
   },
 
   estadoBadge: {
@@ -615,7 +687,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginTop: 12,
-    backgroundColor: COLORS.chipBg,
     borderRadius: 12,
     paddingVertical: 8,
     paddingHorizontal: 10,
@@ -623,7 +694,6 @@ const styles = StyleSheet.create({
   ofertasBannerText: {
     fontSize: 12,
     fontWeight: '700',
-    color: COLORS.blueLight,
   },
 
   detalleBtn: {

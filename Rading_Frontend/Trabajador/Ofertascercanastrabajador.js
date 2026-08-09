@@ -33,8 +33,25 @@ const COLORS = {
   chipBg: 'rgba(21,101,216,0.08)',
   chipText: '#1565D8',
   emergencyStrip: '#E23744',
-  shadow: '#0d47a8',
+  shadow: '#0d1c3d',
+  // Fijo = el cliente ya definió el precio, vos te postulás a ese monto
+  fijo: '#6D28D9',
+  fijoBg: 'rgba(109,40,217,0.09)',
+  fijoBorder: 'rgba(109,40,217,0.28)',
+  // Subasta = varios trabajadores compiten ofertando precio
+  subasta: '#B4740E',
+  subastaBg: 'rgba(217,142,10,0.12)',
+  subastaBorder: 'rgba(217,142,10,0.32)',
 };
+
+// Fijo = el cliente ya puso el precio y vos te postulás a ese monto.
+// Subasta = compiten varios trabajadores ofertando precio. Misma paleta
+// que el resto de la app (violeta / dorado) para reconocer de un vistazo.
+function modalidadInfo(fijo) {
+  return fijo
+    ? { shortLabel: 'FIJO', color: COLORS.fijo, bg: COLORS.fijoBg, border: COLORS.fijoBorder }
+    : { shortLabel: 'SUBASTA', color: COLORS.subasta, bg: COLORS.subastaBg, border: COLORS.subastaBorder };
+}
 
 // -------------------------------------------------------------------------
 // Iconos (mismo estilo lineal que el resto de la app)
@@ -97,7 +114,38 @@ const Icons = {
       <Path d="M12 12L17.2 6.8" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
     </Svg>
   ),
+  Etiqueta: ({ color = COLORS.fijo, size = 12 }) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M11.5 3H19a2 2 0 012 2v7.5a2 2 0 01-.586 1.414l-8 8a2 2 0 01-2.828 0l-7-7a2 2 0 010-2.828l8-8A2 2 0 0111.5 3z"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <Circle cx="15.5" cy="8.5" r="1.6" stroke={color} strokeWidth="1.6" />
+    </Svg>
+  ),
+  Subasta: ({ color = COLORS.subasta, size = 12 }) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 3L20.5 8V16L12 21L3.5 16V8L12 3Z" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />
+      <Path d="M12 8L15.2 9.9V13.6L12 15.5L8.8 13.6V9.9L12 8Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+    </Svg>
+  ),
 };
+
+// -------------------------------------------------------------------------
+// Badge de modalidad (Fijo / Subasta)
+// -------------------------------------------------------------------------
+function ModalidadBadge({ fijo }) {
+  const info = modalidadInfo(fijo);
+  const Icon = fijo ? Icons.Etiqueta : Icons.Subasta;
+  return (
+    <View style={[styles.modBadge, { backgroundColor: info.bg, borderColor: info.border }]}>
+      <Icon color={info.color} size={11} />
+      <Text style={[styles.modBadgeText, { color: info.color }]}>{info.shortLabel}</Text>
+    </View>
+  );
+}
 
 // -------------------------------------------------------------------------
 // Helpers
@@ -117,9 +165,9 @@ function formatDistancia(valor) {
 }
 
 function formatPrecio(item) {
-  if (item.fijo && item.precio) return { label: 'Fijo', valor: `$${Number(item.precio).toLocaleString('es-AR')}` };
+  if (item.fijo && item.precio) return { label: 'Precio fijo', valor: `$${Number(item.precio).toLocaleString('es-AR')}` };
   if (item.precioEstimadoIA) return { label: 'Estimado', valor: `$${Number(item.precioEstimadoIA).toLocaleString('es-AR')}` };
-  if (item.precio) return { label: 'Precio', valor: `$${Number(item.precio).toLocaleString('es-AR')}` };
+  if (item.precio) return { label: 'Precio base', valor: `$${Number(item.precio).toLocaleString('es-AR')}` };
   return { label: 'Precio', valor: 'A convenir' };
 }
 
@@ -136,9 +184,10 @@ function OfertaCard({ item, onVerDetalles }) {
   const precio = formatPrecio(item);
   const nombreCliente = `${item.clienteNombre} ${item.clienteApellido}`.trim();
   const categoriaLabel = item.categoriaNombre || item.servicioNombre || 'Servicio';
+  const modInfo = modalidadInfo(item.fijo);
 
   return (
-    <View style={[styles.card, item.emergencia && styles.cardEmergency]}>
+    <View style={[styles.card, { borderLeftColor: modInfo.color }, item.emergencia && styles.cardEmergency]}>
       {item.emergencia && (
         <View style={styles.emergencyStrip}>
           <Icons.Alert color="#FFFFFF" size={13} />
@@ -156,10 +205,13 @@ function OfertaCard({ item, onVerDetalles }) {
             <Text style={styles.clienteNombre} numberOfLines={1}>
               {nombreCliente || 'Cliente'}
             </Text>
-            <View style={styles.chip}>
-              <Text style={styles.chipText} numberOfLines={1}>
-                {categoriaLabel}
-              </Text>
+            <View style={styles.chipsRow}>
+              <View style={styles.chip}>
+                <Text style={styles.chipText} numberOfLines={1}>
+                  {categoriaLabel}
+                </Text>
+              </View>
+              <ModalidadBadge fijo={item.fijo} />
             </View>
           </View>
 
@@ -187,7 +239,7 @@ function OfertaCard({ item, onVerDetalles }) {
           <View style={styles.infoDivider} />
 
           <View style={styles.infoItem}>
-            <Icons.Cash />
+            <Icons.Cash color={modInfo.color} />
             <View>
               <Text style={styles.infoLabel}>{precio.label}</Text>
               <Text style={styles.infoValor}>{precio.valor}</Text>
@@ -196,11 +248,11 @@ function OfertaCard({ item, onVerDetalles }) {
         </View>
 
         <TouchableOpacity
-          style={styles.detalleBtn}
+          style={[styles.detalleBtn, { backgroundColor: modInfo.color }]}
           activeOpacity={0.85}
           onPress={() => onVerDetalles(item)}
         >
-          <Text style={styles.detalleBtnText}>Ver detalles</Text>
+          <Text style={styles.detalleBtnText}>{item.fijo ? 'Ver y postularme' : 'Ver y ofertar'}</Text>
           <Icons.Chevron />
         </TouchableOpacity>
       </View>
@@ -228,6 +280,7 @@ export default function OfertasCercanasTrabajador() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [ofertas, setOfertas] = useState([]);
+  const [filtroModalidad, setFiltroModalidad] = useState('TODAS'); // TODAS | FIJO | SUBASTA
 
   const cargarOfertas = useCallback(async () => {
     setError(null);
@@ -300,12 +353,21 @@ export default function OfertasCercanasTrabajador() {
   navigation.navigate('DetalleOfertaTrabajador', { ofertaId: item.id, trabajadorId });
 };
 
+  const ofertasFiltradas = useMemo(() => {
+    if (filtroModalidad === 'FIJO') return ofertas.filter((o) => o.fijo);
+    if (filtroModalidad === 'SUBASTA') return ofertas.filter((o) => !o.fijo);
+    return ofertas;
+  }, [ofertas, filtroModalidad]);
+
+  const conteoFijo = useMemo(() => ofertas.filter((o) => o.fijo).length, [ofertas]);
+  const conteoSubasta = useMemo(() => ofertas.filter((o) => !o.fijo).length, [ofertas]);
+
   const subtitulo = useMemo(() => {
     if (loading) return 'Buscando cerca tuyo…';
     if (error) return 'Ocurrió un problema';
-    const cantidad = ofertas.length;
+    const cantidad = ofertasFiltradas.length;
     return `Dentro de ${radioKm} km · ${cantidad} disponible${cantidad === 1 ? '' : 's'}`;
-  }, [loading, error, ofertas.length, radioKm]);
+  }, [loading, error, ofertasFiltradas.length, radioKm]);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -318,6 +380,58 @@ export default function OfertasCercanasTrabajador() {
           <Icons.Sliders />
         </TouchableOpacity>
       </View>
+
+      {/* Selector rápido de modalidad — misma paleta violeta/dorado del resto de la app */}
+      {!loading && !error && ofertas.length > 0 && (
+        <View style={styles.modalidadRow}>
+          <TouchableOpacity
+            style={[styles.modalidadBtn, filtroModalidad === 'TODAS' && styles.modalidadBtnActivoNeutro]}
+            onPress={() => setFiltroModalidad('TODAS')}
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.modalidadBtnText, filtroModalidad === 'TODAS' && styles.modalidadBtnTextActivo]}>
+              Todas
+            </Text>
+            <View style={[styles.modalidadCount, filtroModalidad === 'TODAS' && styles.modalidadCountActivo]}>
+              <Text style={[styles.modalidadCountText, filtroModalidad === 'TODAS' && styles.modalidadCountTextActivo]}>
+                {ofertas.length}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.modalidadBtn, filtroModalidad === 'SUBASTA' && { backgroundColor: COLORS.subasta }]}
+            onPress={() => setFiltroModalidad('SUBASTA')}
+            activeOpacity={0.85}
+          >
+            <Icons.Subasta color={filtroModalidad === 'SUBASTA' ? '#FFFFFF' : COLORS.subasta} size={13} />
+            <Text style={[styles.modalidadBtnText, filtroModalidad === 'SUBASTA' && styles.modalidadBtnTextActivo, filtroModalidad !== 'SUBASTA' && { color: COLORS.subasta }]}>
+              Subasta
+            </Text>
+            <View style={[styles.modalidadCount, filtroModalidad === 'SUBASTA' && styles.modalidadCountActivo]}>
+              <Text style={[styles.modalidadCountText, filtroModalidad === 'SUBASTA' && styles.modalidadCountTextActivo, filtroModalidad !== 'SUBASTA' && { color: COLORS.subasta }]}>
+                {conteoSubasta}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.modalidadBtn, filtroModalidad === 'FIJO' && { backgroundColor: COLORS.fijo }]}
+            onPress={() => setFiltroModalidad('FIJO')}
+            activeOpacity={0.85}
+          >
+            <Icons.Etiqueta color={filtroModalidad === 'FIJO' ? '#FFFFFF' : COLORS.fijo} size={13} />
+            <Text style={[styles.modalidadBtnText, filtroModalidad === 'FIJO' && styles.modalidadBtnTextActivo, filtroModalidad !== 'FIJO' && { color: COLORS.fijo }]}>
+              Fijo
+            </Text>
+            <View style={[styles.modalidadCount, filtroModalidad === 'FIJO' && styles.modalidadCountActivo]}>
+              <Text style={[styles.modalidadCountText, filtroModalidad === 'FIJO' && styles.modalidadCountTextActivo, filtroModalidad !== 'FIJO' && { color: COLORS.fijo }]}>
+                {conteoFijo}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {loading ? (
         <View style={styles.centerState}>
@@ -343,9 +457,17 @@ export default function OfertasCercanasTrabajador() {
             <Text style={styles.retryBtnText}>Actualizar</Text>
           </TouchableOpacity>
         </View>
+      ) : ofertasFiltradas.length === 0 ? (
+        <View style={styles.centerState}>
+          <Icons.Radar color={COLORS.textFaint} size={44} />
+          <Text style={styles.emptyTitle}>
+            {filtroModalidad === 'FIJO' ? 'Sin trabajos a precio fijo' : 'Sin subastas por ahora'}
+          </Text>
+          <Text style={styles.emptySubtitle}>Probá con el otro filtro o revisá más tarde.</Text>
+        </View>
       ) : (
         <FlatList
-          data={ofertas}
+          data={ofertasFiltradas}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.listContent}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
@@ -371,11 +493,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 16,
+    paddingTop: 16,
+    paddingBottom: 14,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 23,
     fontWeight: '800',
     color: COLORS.text,
     letterSpacing: 0.2,
@@ -383,7 +505,7 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 13,
     color: COLORS.textMuted,
-    marginTop: 2,
+    marginTop: 3,
     fontWeight: '500',
   },
   filterBtn: {
@@ -397,6 +519,58 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
+  // ---- Selector de modalidad (Todas / Subasta / Fijo) ----
+  modalidadRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  modalidadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  modalidadBtnActivoNeutro: {
+    backgroundColor: COLORS.blue,
+    borderColor: COLORS.blue,
+  },
+  modalidadBtnText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+  },
+  modalidadBtnTextActivo: {
+    color: '#FFFFFF',
+  },
+  modalidadCount: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalidadCountActivo: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  modalidadCountText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: COLORS.textMuted,
+  },
+  modalidadCountTextActivo: {
+    color: '#FFFFFF',
+  },
+
   listContent: {
     paddingHorizontal: 16,
     paddingBottom: 120,
@@ -407,12 +581,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
+    borderLeftWidth: 4,
     overflow: 'hidden',
     shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 4,
   },
   cardEmergency: {
     borderColor: 'rgba(226,55,68,0.35)',
@@ -457,19 +632,43 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.text,
   },
+  chipsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 5,
+    flexWrap: 'wrap',
+  },
   chip: {
     alignSelf: 'flex-start',
     backgroundColor: COLORS.chipBg,
     paddingHorizontal: 9,
     paddingVertical: 3,
     borderRadius: 8,
-    marginTop: 4,
   },
   chipText: {
     fontSize: 11.5,
     fontWeight: '700',
     color: COLORS.chipText,
   },
+
+  // ---- Badge de modalidad (Fijo / Subasta) ----
+  modBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  modBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+
   distanciaBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -527,7 +726,6 @@ const styles = StyleSheet.create({
 
   detalleBtn: {
     marginTop: 14,
-    backgroundColor: COLORS.blue,
     borderRadius: 14,
     paddingVertical: 12,
     flexDirection: 'row',

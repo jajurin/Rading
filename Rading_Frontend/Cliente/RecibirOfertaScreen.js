@@ -22,6 +22,14 @@ const COLORS = {
   ink:    '#1a1a2e',
   green:  '#22c55e',
   red:    '#e23744',
+  // Subasta = se compite por precio, gana el que el cliente elija
+  subasta: '#B4740E',
+  subastaBg: 'rgba(217,142,10,0.12)',
+  subastaBorder: 'rgba(217,142,10,0.32)',
+  // Fijo = postulaciones a un precio que vos ya definiste
+  fijo: '#6D28D9',
+  fijoBg: 'rgba(109,40,217,0.10)',
+  fijoBorder: 'rgba(109,40,217,0.28)',
 }
 
 const shadow = (elevation = 6) => ({
@@ -114,13 +122,14 @@ function SolicitudesChips({ solicitudes, seleccionada, onSeleccionar }) {
 
 // ─── Selector de tipo: Subasta / Fijos / Urgentes ─────────────────────────
 // Separa las ofertas por naturaleza: en subasta se compite por precio (con
-// reloj), en fijo el trabajador se postula al precio ya fijado por el
-// cliente, y "Urgentes" es un corte transversal (emergencia = true) que
-// puede traer ofertas de ambos tipos.
+// reloj, dorado), en fijo el trabajador se postula al precio ya fijado por
+// el cliente (violeta), y "Urgentes" es un corte transversal (emergencia =
+// true, rojo) que puede traer ofertas de ambos tipos. Tres colores bien
+// distintos para leer el estado de un vistazo.
 const TIPOS = [
-  { key: 'subasta',  label: 'Subasta',   icon: 'hammer-outline' },
-  { key: 'fijo',      label: 'Fijos',     icon: 'pricetag-outline' },
-  { key: 'urgente',   label: 'Urgentes',  icon: 'alert-circle-outline' },
+  { key: 'subasta',  label: 'Subasta',   icon: 'hammer-outline',        color: COLORS.subasta },
+  { key: 'fijo',      label: 'Fijos',     icon: 'pricetag-outline',      color: COLORS.fijo },
+  { key: 'urgente',   label: 'Urgentes',  icon: 'alert-circle-outline',  color: COLORS.red },
 ]
 
 function TipoSelector({ tipo, onSeleccionar, conteos }) {
@@ -129,13 +138,13 @@ function TipoSelector({ tipo, onSeleccionar, conteos }) {
       {TIPOS.map(t => {
         const activo = tipo === t.key
         const conteo = conteos[t.key] ?? 0
-        const esUrgente = t.key === 'urgente'
         return (
           <TouchableOpacity
             key={t.key}
             style={[
               styles.tipoBtn,
-              activo && (esUrgente ? styles.tipoBtnActivoUrgente : styles.tipoBtnActivo),
+              activo && { backgroundColor: t.color },
+              !activo && { borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' },
             ]}
             onPress={() => onSeleccionar(t.key)}
             activeOpacity={0.85}
@@ -143,18 +152,18 @@ function TipoSelector({ tipo, onSeleccionar, conteos }) {
             <Ionicons
               name={t.icon}
               size={15}
-              color={activo ? COLORS.white : (esUrgente ? COLORS.red : COLORS.gray)}
+              color={activo ? COLORS.white : t.color}
             />
             <Text style={[
               styles.tipoBtnText,
               activo && styles.tipoBtnTextActivo,
-              !activo && esUrgente && { color: COLORS.red },
+              !activo && { color: t.color },
             ]}>
               {t.label}
             </Text>
             {conteo > 0 && (
               <View style={[styles.tipoBadge, activo && styles.tipoBadgeActivo]}>
-                <Text style={[styles.tipoBadgeText, activo && styles.tipoBadgeTextActivo]}>
+                <Text style={[styles.tipoBadgeText, activo && styles.tipoBadgeTextActivo, !activo && { color: t.color }]}>
                   {conteo}
                 </Text>
               </View>
@@ -446,6 +455,8 @@ export default function RecibirOfertasScreen({ route, navigation }) {
     return 'Todavía no recibiste ofertas en subastas'
   }, [tipo])
 
+  const colorSeccion = tipo === 'urgente' ? COLORS.red : tipo === 'fijo' ? COLORS.fijo : COLORS.subasta
+
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
@@ -501,10 +512,10 @@ export default function RecibirOfertasScreen({ route, navigation }) {
         <ScrollView style={styles.body} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
 
           <View style={styles.seccionRow}>
-            <Text style={styles.seccionLabel}>
+            <Text style={[styles.seccionLabel, { color: colorSeccion }]}>
               {tipo === 'urgente' ? 'Ofertas urgentes' : tipo === 'fijo' ? 'Postulaciones a precio fijo' : 'Ofertas en subasta'}
             </Text>
-            <View style={styles.contadorPill}>
+            <View style={[styles.contadorPill, { backgroundColor: colorSeccion }]}>
               <Text style={styles.contadorText}>{ofertasFiltradas.length}</Text>
             </View>
           </View>
@@ -615,8 +626,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: COLORS.bg,
   },
-  tipoBtnActivo: { backgroundColor: COLORS.blue },
-  tipoBtnActivoUrgente: { backgroundColor: COLORS.red },
   tipoBtnText: { fontSize: 12.5, fontWeight: '700', color: COLORS.gray },
   tipoBtnTextActivo: { color: COLORS.white },
   tipoBadge: {
@@ -653,8 +662,8 @@ const styles = StyleSheet.create({
   body: { flex: 1, paddingHorizontal: 16, paddingTop: 18 },
 
   seccionRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
-  seccionLabel: { fontSize: 12.5, fontWeight: '700', color: COLORS.blue, textTransform: 'uppercase', letterSpacing: 0.6 },
-  contadorPill: { backgroundColor: COLORS.blue, borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  seccionLabel: { fontSize: 12.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  contadorPill: { borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
   contadorText: { fontSize: 11, fontWeight: '700', color: COLORS.white },
 
   avisoCard:  { flexDirection: 'row', gap: 10, alignItems: 'flex-start', backgroundColor: '#e9ecf0', borderRadius: 14, padding: 14, marginTop: 4 },
