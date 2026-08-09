@@ -391,6 +391,8 @@ export default function RecibirOfertasScreen({ route, navigation }) {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
+        // 👇 si perdimos la carrera contra el cierre automático, el
+        // mensaje del backend ya lo explica claro
         throw new Error(errData.message ?? `Error ${res.status} al aceptar la oferta`)
       }
 
@@ -398,6 +400,9 @@ export default function RecibirOfertasScreen({ route, navigation }) {
     } catch (err) {
       console.error('Error al aceptar oferta:', err)
       Alert.alert('Error', err.message ?? 'No se pudo aceptar la oferta. Intentá de nuevo.')
+      // 👇 nuevo: refresca por si la solicitud ya no está disponible
+      // (se cerró mientras el cliente decidía)
+      fetchSolicitudes()
     } finally {
       setAceptando(false)
     }

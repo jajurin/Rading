@@ -27,6 +27,10 @@ import DetalleOfertaTrabajador from './Trabajador/DetalleOfertaTrabajador';
 import OfertaRecibidaOverlayCliente from './Cliente/OfertaRecibidaOverlayCliente';
 import ChatTrabajador from './Trabajador/Chattrabajador';
 import PreviaChatTrabajador from './Trabajador/PreviaChatTrabajador';
+import ConfirmarLlegadaCl from './Cliente/ConfirmarLlegadaCl'; 
+ import ConfirmarLlegadaTr from './Trabajador/ConfirmarLlegadaTr';  // ✅ corregido
+import ConfirmarTrabajoCl from './Cliente/ConfirmarTrabajoCl';
+import ConfirmarTrabajoTr from './Trabajador/ConfirmarTrabajoTr';
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -38,7 +42,10 @@ export default function App() {
           <Stack.Screen name="MasOfertas" component={MasOfertasScreen} />
           <Stack.Screen name="HomeTrabajador" component={HomeTrabajador} />
           <Stack.Screen name="HomeCliente" component={HomeCliente} />
-
+              <Stack.Screen name="ConfirmarLlegadaCl" component={ConfirmarLlegadaCl} />
+              <Stack.Screen name="ConfirmarLlegadaTr" component={ConfirmarLlegadaTr} />
+              <Stack.Screen name="ConfirmarTrabajoCl" component={ConfirmarTrabajoCl} />
+              <Stack.Screen name="ConfirmarTrabajoTr" component={ConfirmarTrabajoTr} />
           <Stack.Screen name="ChatsCliente" component={ChatsCliente} />
           <Stack.Screen name="ChatCliente" component={ChatCliente} />
           <Stack.Screen name="ChatTrabajador" component={ChatTrabajador} />

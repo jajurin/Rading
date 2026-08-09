@@ -2,7 +2,7 @@ import config from '../../configs/dbconfig.js'
 import usuarioRepository from '../general/usuario-repositories.js'
 import pkg from 'pg'
 const { Client } = pkg
- const DURACION_SUBASTA_HORAS = 2
+const DURACION_SUBASTA_HORAS = 2
 export default class trabajadorRepository {
  #usuarioRepo = new usuarioRepository()
     /**
@@ -128,11 +128,18 @@ enviarOferta = async (idTrabajo, idTrabajador, { precio, costoExtraMin = null, c
     }
 }
 
-// Cierra toda subasta vencida sin trabajador asignado: elige la oferta
-// de menor precio (empate → la más vieja), asigna el trabajo, y marca
-// el resto de las ofertas como RECHAZADA. Devuelve qué se cerró, para
-// que el service pueda avisarle al cliente por chat.
-cerrarSubastasVencidas = async () => {
+// Detecta subastas cuyo plazo venció y todavía nadie asignó. NO asigna
+// automáticamente al ganador — solo identifica cuál sería (menor precio,
+// empate → más vieja) y lo devuelve para avisar por chat. La decisión
+// final de asignar SIGUE siendo del cliente, vía aceptarOferta (en
+// cliente-repositories.js). Las ofertas quedan todas PENDIENTE, nada se
+// marca ACEPTADA/RECHAZADA acá.
+//
+// Requiere la columna:
+//   ALTER TABLE "Cliente-Trabajador"
+//   ADD COLUMN aviso_cierre_enviado boolean NOT NULL DEFAULT false;
+// para no reenviar el mismo aviso en cada corrida del cron.
+avisarSubastasVencidas = async () => {
     const client = new Client(config)
     const resultados = []
     try {
@@ -145,26 +152,50 @@ cerrarSubastasVencidas = async () => {
                AND ct.estado = 'PENDIENTE'
                AND ct."IdTrabajador" IS NULL
                AND ct.subasta_termina IS NOT NULL
-               AND ct.subasta_termina <= now()`
+               AND ct.subasta_termina <= now()
+               AND ct.aviso_cierre_enviado = false`
         )
 
         for (const ct of vencidas.rows) {
             try {
                 await client.query('BEGIN')
 
-                const ganadora = await client.query(
-                    `SELECT o.id, o."idTrabajador", o.precio, t."IdPersona" AS "idUsuarioTrabajador"
-                     FROM "Oferta" o
-                     INNER JOIN "Trabajador" t ON t.id = o."idTrabajador"
-                     WHERE o."idTrabajo" = $1 AND o."ESTADO_OFERTA" = 'PENDIENTE'
-                     ORDER BY o.precio ASC, o.fecha_creado ASC
-                     LIMIT 1`,
+                // Lock preventivo: si justo en este instante el cliente
+                // está aceptando una oferta a mano (aceptarOferta también
+                // usa FOR UPDATE sobre esta misma fila), esperamos acá a
+                // que termine para no leer un estado a medio escribir.
+                const fila = await client.query(
+                    `SELECT id, estado, "IdTrabajador", aviso_cierre_enviado
+                     FROM "Cliente-Trabajador"
+                     WHERE id = $1
+                     FOR UPDATE`,
                     [ct.id]
                 )
 
+                const f = fila.rows[0]
+                if (!f || f.estado !== 'PENDIENTE' || f.IdTrabajador != null || f.aviso_cierre_enviado) {
+                    // Ya se asignó a mano, o ya se avisó antes: nada que hacer.
+                    await client.query('COMMIT')
+                    continue
+                }
+
+                const ganadora = await client.query(
+                    `SELECT o.id, o."idTrabajador", o.precio,
+                            t."IdPersona" AS "idUsuarioTrabajador",
+                            cli."IdPersona" AS "idUsuarioCliente",
+                            u.nombre, u.apellido
+                     FROM "Oferta" o
+                     INNER JOIN "Trabajador" t ON t.id = o."idTrabajador"
+                     INNER JOIN "Usuario" u ON u.id = t."IdPersona"
+                     INNER JOIN "Cliente" cli ON cli.id = $2
+                     WHERE o."idTrabajo" = $1 AND o."ESTADO_OFERTA" = 'PENDIENTE'
+                     ORDER BY o.precio ASC, o.fecha_creado ASC
+                     LIMIT 1`,
+                    [ct.id, ct.IdCliente]
+                )
+
                 if (ganadora.rows.length === 0) {
-                    // Nadie ofertó: reabre el reloj para que pueda recibir
-                    // ofertas de nuevo más adelante.
+                    // Nadie ofertó: reabre el reloj para recibir ofertas de nuevo.
                     await client.query(
                         `UPDATE "Cliente-Trabajador" SET subasta_termina = NULL WHERE id = $1`,
                         [ct.id]
@@ -175,32 +206,30 @@ cerrarSubastasVencidas = async () => {
 
                 const oferta = ganadora.rows[0]
 
+                // Único UPDATE que hacemos: marcar que ya avisamos.
+                // No tocamos IdTrabajador, estado, ni ESTADO_OFERTA.
                 await client.query(
                     `UPDATE "Cliente-Trabajador"
-                     SET "IdTrabajador" = $1, precio = $2, estado = 'EN PROCESO', fecha_iniciado = now()
-                     WHERE id = $3`,
-                    [oferta.idTrabajador, oferta.precio, ct.id]
-                )
-                await client.query(
-                    `UPDATE "Oferta" SET "ESTADO_OFERTA" = 'ACEPTADA' WHERE id = $1`,
-                    [oferta.id]
-                )
-                await client.query(
-                    `UPDATE "Oferta" SET "ESTADO_OFERTA" = 'RECHAZADA' WHERE "idTrabajo" = $1 AND id <> $2`,
-                    [ct.id, oferta.id]
+                     SET aviso_cierre_enviado = true
+                     WHERE id = $1 AND estado = 'PENDIENTE'`,
+                    [ct.id]
                 )
 
                 await client.query('COMMIT')
+
                 resultados.push({
                     idTrabajo: ct.id,
                     idCliente: ct.IdCliente,
+                    idOfertaGanadora: oferta.id,
                     idTrabajador: oferta.idTrabajador,
                     idUsuarioTrabajador: oferta.idUsuarioTrabajador,
+                    idUsuarioCliente: oferta.idUsuarioCliente,
+                    nombreTrabajador: `${oferta.nombre} ${oferta.apellido}`,
                     precio: oferta.precio,
                 })
             } catch (err) {
                 await client.query('ROLLBACK')
-                console.error(`Error cerrando subasta ${ct.id}:`, err)
+                console.error(`Error avisando cierre de subasta ${ct.id}:`, err)
             }
         }
     } finally {
@@ -213,22 +242,23 @@ cerrarSubastasVencidas = async () => {
     try {
         await client.connect()
         const sql = `
-            SELECT
-                ct.id,
-                u.nombre,
-                u.apellido,
-                c.estrellas,
-                ct.estado,
-                ct.fecha_iniciado,
-                ct.distancia,
-                ct.fijo,
-                ct.precio,
-                ct.servicio_id,
-                ct.emergencia,
-                ct.horario_requerido,
-                ct.horario_finalizado,
-                s.nombre AS servicio_nombre
-            FROM "Cliente-Trabajador" ct
+    SELECT
+        ct.id,
+        u.nombre,
+        u.apellido,
+        c.estrellas,
+        ct.estado,
+        ct.fecha_iniciado,
+        ct.distancia,
+        ct.fijo,
+        ct.precio,
+        ct.servicio_id,
+        ct.emergencia,
+        ct.horario_requerido,
+        ct.horario_finalizado,
+        ct.trabajo_iniciado_en,
+        s.nombre AS servicio_nombre
+    FROM "Cliente-Trabajador" ct
             INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
             INNER JOIN "Usuario" u ON c."IdPersona" = u.id
             LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
@@ -358,22 +388,6 @@ cerrarSubastasVencidas = async () => {
  * del trabajador (obtenida de su propio Usuario vía IdPersona) y la
  * de LA SOLICITUD (ct.lat/ct.lng en Cliente-Trabajador). Solo servicios
  * que este trabajador ofrece.
- *
- * 👇 IMPORTANTE: se usa ct.lat/ct.lng (la ubicación puntual de ESE
- * pedido), NO u.lat/u.lng (la dirección default del perfil del
- * cliente). Desde que CrearSolicitud.js permite elegir "otra
- * dirección" para un pedido específico, el trabajo puede estar en un
- * lugar distinto al del perfil del cliente — y es esa ubicación la que
- * hay que usar para calcular distancia y decidir si entra en el radio.
- * Si el cliente no tocó nada al crear la solicitud, ct.lat/ct.lng ya
- * vienen copiados de su perfil (ver confirmarSolicitud en
- * solicitud-services.js), así que el comportamiento por defecto es el
- * mismo de antes.
- *
- * 👇 También excluye trabajos donde este trabajador ya tiene una
- * oferta PENDIENTE (evita que le sigan apareciendo en el feed pedidos
- * a los que ya ofertó, sin bloquear que OTROS trabajadores sigan
- * ofertando mientras la subasta esté abierta).
  */
 buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
     const client = new Client(config)
@@ -667,6 +681,159 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
         await client.end()
     }
 }
+ obtenerEstado = async (idTrabajo) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+            const sql = `
+                SELECT
+                    ct.id,
+                    ct.estado,
+                    ct."IdCliente" AS "idCliente",
+                    ct."IdTrabajador" AS "idTrabajador",
+                    ct.llegada_cliente_at,
+                    ct.llegada_trabajador_at,
+                    ct.trabajo_iniciado_en,
+                    ct.fin_cliente_at,
+                    ct.fin_trabajador_at,
+                    ct.fecha_acabado,
+                    cli."IdPersona" AS "idUsuarioCliente",
+                    trab."IdPersona" AS "idUsuarioTrabajador"
+                FROM "Cliente-Trabajador" ct
+                INNER JOIN "Cliente" cli ON cli.id = ct."IdCliente"
+                LEFT JOIN "Trabajador" trab ON trab.id = ct."IdTrabajador"
+                WHERE ct.id = $1
+            `
+            const result = await client.query(sql, [idTrabajo])
+            return result.rows[0] ?? null
+        } catch (err) {
+            console.error('Error en obtenerEstado (trabajo):', err)
+            throw err
+        } finally {
+            await client.end()
+        }
+    }
+
+    // rol: 'CLIENTE' | 'TRABAJADOR'. Idempotente: si ya había confirmado,
+    // no pisa la fecha original (COALESCE). Bloquea la fila con FOR UPDATE
+    // para que dos confirmaciones simultáneas no pisen el chequeo de
+    // "¿ya confirmaron ambos?".
+    confirmarLlegada = async (idTrabajo, rol) => {
+        const client = new Client(config)
+        const columna = rol === 'CLIENTE' ? 'llegada_cliente_at' : 'llegada_trabajador_at'
+        try {
+            await client.connect()
+            await client.query('BEGIN')
+
+            const filaResult = await client.query(
+                `SELECT id, estado, "IdCliente" AS "idCliente", "IdTrabajador" AS "idTrabajador"
+                 FROM "Cliente-Trabajador"
+                 WHERE id = $1
+                 FOR UPDATE`,
+                [idTrabajo]
+            )
+            const fila = filaResult.rows[0]
+            if (!fila) throw new Error('El trabajo no existe')
+            if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
+
+            await client.query(
+                `UPDATE "Cliente-Trabajador" SET ${columna} = COALESCE(${columna}, now()) WHERE id = $1`,
+                [idTrabajo]
+            )
+
+            const actualizado = await client.query(
+                `SELECT llegada_cliente_at, llegada_trabajador_at, trabajo_iniciado_en
+                 FROM "Cliente-Trabajador" WHERE id = $1`,
+                [idTrabajo]
+            )
+            const { llegada_cliente_at, llegada_trabajador_at, trabajo_iniciado_en } = actualizado.rows[0]
+
+            let iniciadoAhora = false
+            if (llegada_cliente_at && llegada_trabajador_at && !trabajo_iniciado_en) {
+                await client.query(
+                    `UPDATE "Cliente-Trabajador" SET trabajo_iniciado_en = now() WHERE id = $1`,
+                    [idTrabajo]
+                )
+                iniciadoAhora = true
+            }
+
+            await client.query('COMMIT')
+
+            return {
+                idTrabajo,
+                idCliente: fila.idCliente,
+                idTrabajador: fila.idTrabajador,
+                ambasLlegadasConfirmadas: !!(llegada_cliente_at && llegada_trabajador_at),
+                trabajoIniciadoAhora: iniciadoAhora,
+            }
+        } catch (err) {
+            await client.query('ROLLBACK')
+            console.error('Error en confirmarLlegada:', err)
+            throw err
+        } finally {
+            await client.end()
+        }
+    }
+
+    confirmarFin = async (idTrabajo, rol) => {
+        const client = new Client(config)
+        const columna = rol === 'CLIENTE' ? 'fin_cliente_at' : 'fin_trabajador_at'
+        try {
+            await client.connect()
+            await client.query('BEGIN')
+
+            const filaResult = await client.query(
+                `SELECT id, estado, trabajo_iniciado_en,
+                        "IdCliente" AS "idCliente", "IdTrabajador" AS "idTrabajador"
+                 FROM "Cliente-Trabajador"
+                 WHERE id = $1
+                 FOR UPDATE`,
+                [idTrabajo]
+            )
+            const fila = filaResult.rows[0]
+            if (!fila) throw new Error('El trabajo no existe')
+            if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
+            if (!fila.trabajo_iniciado_en) throw new Error('Todavía no se confirmó el inicio del trabajo')
+
+            await client.query(
+                `UPDATE "Cliente-Trabajador" SET ${columna} = COALESCE(${columna}, now()) WHERE id = $1`,
+                [idTrabajo]
+            )
+
+            const actualizado = await client.query(
+                `SELECT fin_cliente_at, fin_trabajador_at FROM "Cliente-Trabajador" WHERE id = $1`,
+                [idTrabajo]
+            )
+            const { fin_cliente_at, fin_trabajador_at } = actualizado.rows[0]
+
+            let terminadoAhora = false
+            if (fin_cliente_at && fin_trabajador_at) {
+                await client.query(
+                    `UPDATE "Cliente-Trabajador"
+                     SET estado = 'TERMINADO', fecha_acabado = CURRENT_DATE
+                     WHERE id = $1 AND estado = 'EN PROCESO'`,
+                    [idTrabajo]
+                )
+                terminadoAhora = true
+            }
+
+            await client.query('COMMIT')
+
+            return {
+                idTrabajo,
+                idCliente: fila.idCliente,
+                idTrabajador: fila.idTrabajador,
+                ambosFinesConfirmados: !!(fin_cliente_at && fin_trabajador_at),
+                trabajoTerminadoAhora: terminadoAhora,
+            }
+        } catch (err) {
+            await client.query('ROLLBACK')
+            console.error('Error en confirmarFin:', err)
+            throw err
+        } finally {
+            await client.end()
+        }
+    }
 
 filtrarSolicitudes = async (estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta, precioMin, precioMax) => {
     const client = new Client(config)

@@ -182,6 +182,13 @@ router.post('/ofertas/:idOferta/aceptar', async (req, res) => {
         const resultado = await svc.aceptarOferta(req.params.idOferta)
         res.json(resultado)
     } catch (err) {
+        // 👇 si perdimos la carrera contra el cierre automático de la
+        // subasta (o la oferta ya fue procesada), devolvemos 409
+        // Conflict en vez de 400/500 genérico — así el frontend puede
+        // distinguir "hiciste algo mal" de "alguien más te ganó"
+        if (err.message.includes('ya fue asignada') || err.message.includes('ya fue procesada')) {
+            return res.status(409).json({ message: err.message })
+        }
         res.status(400).json({ message: err.message })
     }
 })

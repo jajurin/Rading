@@ -10,6 +10,37 @@ const idValido = (raw) => {
     const n = Number(raw)
     return raw !== undefined && raw !== null && Number.isInteger(n) && n > 0
 }
+router.get('/:idTrabajo/estado', async (req, res) => {
+    try {
+        const estado = await svc.obtenerEstado(req.params.idTrabajo)
+        res.status(200).json(estado)
+    } catch (error) {
+        console.error(error)
+        res.status(400).json({ message: error.message })
+    }
+})
+
+// POST /trabajo/:idTrabajo/confirmar-llegada  { rol: 'CLIENTE' | 'TRABAJADOR' }
+router.post('/:idTrabajo/confirmar-llegada', async (req, res) => {
+    try {
+        const resultado = await svc.confirmarLlegada(req.params.idTrabajo, req.body.rol)
+        res.status(200).json(resultado)
+    } catch (error) {
+        console.error(error)
+        res.status(400).json({ message: error.message })
+    }
+})
+
+// POST /trabajo/:idTrabajo/confirmar-fin  { rol: 'CLIENTE' | 'TRABAJADOR' }
+router.post('/:idTrabajo/confirmar-fin', async (req, res) => {
+    try {
+        const resultado = await svc.confirmarFin(req.params.idTrabajo, req.body.rol)
+        res.status(200).json(resultado)
+    } catch (error) {
+        console.error(error)
+        res.status(400).json({ message: error.message })
+    }
+})
 
 router.get("/todos", async (req, res) => {
     try {

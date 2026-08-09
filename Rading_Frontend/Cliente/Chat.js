@@ -90,7 +90,7 @@ export default function ChatCliente({ route, navigation }) {
   // En ese caso, el chat recién se crea en el backend cuando se manda
   // el primer mensaje (ver enviarMensaje más abajo).
   const [chatId, setChatId] = useState(route?.params?.chatId ?? null);
-  const [cargando, setCargando] = useState(!!route?.params?.chatId);
+  const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [enviando, setEnviando] = useState(false);
 
@@ -136,40 +136,64 @@ export default function ChatCliente({ route, navigation }) {
   }, [propPreguntasActuales, propRespuestas, propTextosOtro]);
 
   const propServicioElegido = propAnalisis?.servicios?.find((s) => s.id === propServicioId);
+useEffect(() => {
+  let cancelado = false;
 
-  const cargarMensajes = useCallback(async () => {
-    if (!chatId) {
-      setCargando(false);
-      return;
-    }
+  // Ya vino con chatId resuelto (ej: desde PreviaChat) → no hace falta buscar
+  if (route?.params?.chatId) return;
+
+  if (!usuario?.idCliente || !contacto?.idTrabajador) {
+    setCargando(false);
+    return;
+  }
+
+  const resolverChatExistente = async () => {
     try {
-      setError(null);
-      const res = await fetch(`${API_BASE_URL}/chat/${chatId}/mensajes`);
-      if (!res.ok) throw new Error('Respuesta no OK del servidor');
+      const res = await fetch(
+        `${API_BASE_URL}/chat/buscar/${usuario.idCliente}/${contacto.idTrabajador}`
+      );
+      if (!res.ok) throw new Error('No se pudo resolver el chat existente');
       const data = await res.json();
-      setMensajes(data.map((m) => mapearMensaje(m, usuario?.id)));
+      if (cancelado) return;
+
+      if (data.chatId) {
+        setChatId(data.chatId); // dispara cargarMensajes vía su propio efecto (más abajo)
+      } else {
+        setCargando(false); // confirmado: es un chat nuevo, sin mensajes todavía
+      }
     } catch (err) {
-      console.error('Error al cargar mensajes:', err);
-      setError('No pudimos cargar la conversación');
-    } finally {
-      setCargando(false);
+      console.error('Error al resolver chat existente:', err);
+      if (!cancelado) setCargando(false);
     }
-  }, [chatId, usuario]);
+  };
 
-  // Carga inicial de mensajes
-  useEffect(() => {
-    cargarMensajes();
-  }, [cargarMensajes]);
+  resolverChatExistente();
+  return () => { cancelado = true; };
+}, [route?.params?.chatId, usuario?.idCliente, contacto?.idTrabajador]);
 
-  // Marca como leídos los mensajes del otro participante al entrar al chat
-  useEffect(() => {
-    if (!chatId || !usuario?.id) return;
-    fetch(`${API_BASE_URL}/chat/${chatId}/leido`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: usuario.id }),
-    }).catch((err) => console.error('Error al marcar como leído:', err));
-  }, [chatId, usuario]);
+// 👇 Ya no toca `cargando` cuando chatId es null — evita la carrera.
+// Solo se ejecuta de verdad cuando chatId ya está resuelto.
+const cargarMensajes = useCallback(async () => {
+  if (!chatId) return;
+  try {
+    setCargando(true);
+    setError(null);
+    const res = await fetch(`${API_BASE_URL}/chat/${chatId}/mensajes`);
+    if (!res.ok) throw new Error('Respuesta no OK del servidor');
+    const data = await res.json();
+    setMensajes(data.map((m) => mapearMensaje(m, usuario?.id)));
+  } catch (err) {
+    console.error('Error al cargar mensajes:', err);
+    setError('No pudimos cargar la conversación');
+  } finally {
+    setCargando(false);
+  }
+}, [chatId, usuario]);
+
+// Carga los mensajes apenas tengamos un chatId real (por parámetro o resuelto arriba)
+useEffect(() => {
+  if (chatId) cargarMensajes();
+}, [chatId, cargarMensajes]);
 
   useEffect(() => {
     setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 50);

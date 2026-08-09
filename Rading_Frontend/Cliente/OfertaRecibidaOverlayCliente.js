@@ -7,7 +7,9 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import API_URL from '../configS';
- 
+import ConfirmarLlegadaCl from './ConfirmarLlegadaCl';
+import ConfirmarTrabajoCl from './ConfirmarTrabajoCl';
+
 const TrabajoItem = ({ trabajo, onSelect, isSelected }) => (
   <TouchableOpacity
     style={[styles.item, isSelected && styles.itemSelected]}
@@ -28,7 +30,9 @@ const TrabajoItem = ({ trabajo, onSelect, isSelected }) => (
         </Text>
         <View style={styles.estadoBadge}>
           <View style={styles.estadoDot} />
-          <Text style={styles.estadoText}>EN PROCESO</Text>
+          <Text style={styles.estadoText}>
+            {trabajo.trabajo_iniciado_en ? 'EN PROCESO' : 'ESPERANDO LLEGADA'}
+          </Text>
         </View>
       </View>
     </View>
@@ -44,99 +48,125 @@ const TrabajoItem = ({ trabajo, onSelect, isSelected }) => (
     </View>
   </TouchableOpacity>
 );
- 
-const TrabajoDetalle = ({ trabajo, onChat }) => (
-  <View style={styles.detalle}>
- 
-    {/* Trabajador */}
-    <View style={styles.detalleWorkerRow}>
-      <Image
-        source={{ uri: trabajo.foto ?? 'https://i.pravatar.cc/150?img=11' }}
-        style={styles.detalleAvatar}
-      />
-      <View style={styles.detalleWorkerInfo}>
-        <Text style={styles.detalleNombre}>
-          {trabajo.nombre} {trabajo.apellido}
-        </Text>
-        <View style={styles.ratingRow}>
-          <Ionicons name="star" size={14} color="#c87000" />
-          <Text style={styles.rating}>
-            {Number(trabajo.estrellas ?? 0).toFixed(2)}
+
+const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar }) => {
+  const yaLlego = !!trabajo.trabajo_iniciado_en;
+  const yaTermino = trabajo.estado === 'TERMINADO';
+
+  return (
+    <View style={styles.detalle}>
+
+      {/* Trabajador */}
+      <View style={styles.detalleWorkerRow}>
+        <Image
+          source={{ uri: trabajo.foto ?? 'https://i.pravatar.cc/150?img=11' }}
+          style={styles.detalleAvatar}
+        />
+        <View style={styles.detalleWorkerInfo}>
+          <Text style={styles.detalleNombre}>
+            {trabajo.nombre} {trabajo.apellido}
           </Text>
-          {trabajo.distancia && (
-            <>
-              <Text style={styles.ratingDot}>·</Text>
-              <Ionicons name="location-outline" size={13} color="#7a5c00" />
-              <Text style={styles.distanciaText}>{trabajo.distancia} km</Text>
-            </>
-          )}
+          <View style={styles.ratingRow}>
+            <Ionicons name="star" size={14} color="#c87000" />
+            <Text style={styles.rating}>
+              {Number(trabajo.estrellas ?? 0).toFixed(2)}
+            </Text>
+            {trabajo.distancia && (
+              <>
+                <Text style={styles.ratingDot}>·</Text>
+                <Ionicons name="location-outline" size={13} color="#7a5c00" />
+                <Text style={styles.distanciaText}>{trabajo.distancia} km</Text>
+              </>
+            )}
+          </View>
         </View>
       </View>
+
+      {/* Separador */}
+      <View style={styles.separador} />
+
+      {/* Info grid */}
+      <View style={styles.infoGrid}>
+
+        <View style={styles.infoCard}>
+          <Ionicons name="construct-outline" size={16} color="#c87000" />
+          <Text style={styles.infoLabel}>Servicio</Text>
+          <Text style={styles.infoValue}>{trabajo.servicio_nombre ?? '-'}</Text>
+        </View>
+
+        <View style={styles.infoCard}>
+          <Ionicons name="cash-outline" size={16} color="#c87000" />
+          <Text style={styles.infoLabel}>Precio</Text>
+          <Text style={styles.infoValue}>${trabajo.precio ?? '-'}</Text>
+        </View>
+
+        {trabajo.horario_requerido && (
+          <View style={styles.infoCard}>
+            <Ionicons name="time-outline" size={16} color="#c87000" />
+            <Text style={styles.infoLabel}>Horario inicio</Text>
+            <Text style={styles.infoValue}>{trabajo.horario_requerido}</Text>
+          </View>
+        )}
+
+        {trabajo.horario_finalizado && (
+          <View style={styles.infoCard}>
+            <Ionicons name="checkmark-circle-outline" size={16} color="#c87000" />
+            <Text style={styles.infoLabel}>Horario fin</Text>
+            <Text style={styles.infoValue}>{trabajo.horario_finalizado}</Text>
+          </View>
+        )}
+
+        {trabajo.fecha_iniciado && (
+          <View style={[styles.infoCard, styles.infoCardWide]}>
+            <Ionicons name="calendar-outline" size={16} color="#c87000" />
+            <Text style={styles.infoLabel}>Fecha inicio</Text>
+            <Text style={styles.infoValue}>
+              {new Date(trabajo.fecha_iniciado).toLocaleDateString('es-AR')}
+            </Text>
+          </View>
+        )}
+
+        {trabajo.fijo !== undefined && (
+          <View style={styles.infoCard}>
+            <Ionicons name="pricetag-outline" size={16} color="#c87000" />
+            <Text style={styles.infoLabel}>Tipo</Text>
+            <Text style={styles.infoValue}>{trabajo.fijo ? 'Fijo' : 'Variable'}</Text>
+          </View>
+        )}
+
+      </View>
+
+      {/* Acción principal según el estado del trabajo */}
+      {!yaLlego ? (
+        <TouchableOpacity
+          style={styles.llegadaButton}
+          onPress={() => onIniciar(trabajo)}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="navigate-outline" size={18} color="#3a2c00" />
+          <Text style={styles.llegadaText}>Confirmar llegada</Text>
+        </TouchableOpacity>
+      ) : !yaTermino ? (
+        <TouchableOpacity
+          style={styles.finalizarButton}
+          onPress={() => onFinalizar(trabajo)}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="checkmark-done-outline" size={18} color="#fff" />
+          <Text style={styles.finalizarText}>Finalizar trabajo</Text>
+        </TouchableOpacity>
+      ) : null}
+
+      {/* Botón chat */}
+      <TouchableOpacity style={styles.chatButton} onPress={() => onChat(trabajo)} activeOpacity={0.85}>
+        <Ionicons name="chatbox-outline" size={18} color="#FFF" />
+        <Text style={styles.chatText}>Chatear con el trabajador</Text>
+      </TouchableOpacity>
+
     </View>
- 
-    {/* Separador */}
-    <View style={styles.separador} />
- 
-    {/* Info grid */}
-    <View style={styles.infoGrid}>
- 
-      <View style={styles.infoCard}>
-        <Ionicons name="construct-outline" size={16} color="#c87000" />
-        <Text style={styles.infoLabel}>Servicio</Text>
-        <Text style={styles.infoValue}>{trabajo.servicio_nombre ?? '-'}</Text>
-      </View>
- 
-      <View style={styles.infoCard}>
-        <Ionicons name="cash-outline" size={16} color="#c87000" />
-        <Text style={styles.infoLabel}>Precio</Text>
-        <Text style={styles.infoValue}>${trabajo.precio ?? '-'}</Text>
-      </View>
- 
-      {trabajo.horario_requerido && (
-        <View style={styles.infoCard}>
-          <Ionicons name="time-outline" size={16} color="#c87000" />
-          <Text style={styles.infoLabel}>Horario inicio</Text>
-          <Text style={styles.infoValue}>{trabajo.horario_requerido}</Text>
-        </View>
-      )}
- 
-      {trabajo.horario_finalizado && (
-        <View style={styles.infoCard}>
-          <Ionicons name="checkmark-circle-outline" size={16} color="#c87000" />
-          <Text style={styles.infoLabel}>Horario fin</Text>
-          <Text style={styles.infoValue}>{trabajo.horario_finalizado}</Text>
-        </View>
-      )}
- 
-      {trabajo.fecha_iniciado && (
-        <View style={[styles.infoCard, styles.infoCardWide]}>
-          <Ionicons name="calendar-outline" size={16} color="#c87000" />
-          <Text style={styles.infoLabel}>Fecha inicio</Text>
-          <Text style={styles.infoValue}>
-            {new Date(trabajo.fecha_iniciado).toLocaleDateString('es-AR')}
-          </Text>
-        </View>
-      )}
- 
-      {trabajo.fijo !== undefined && (
-        <View style={styles.infoCard}>
-          <Ionicons name="pricetag-outline" size={16} color="#c87000" />
-          <Text style={styles.infoLabel}>Tipo</Text>
-          <Text style={styles.infoValue}>{trabajo.fijo ? 'Fijo' : 'Variable'}</Text>
-        </View>
-      )}
- 
-    </View>
- 
-    {/* Botón chat */}
-    <TouchableOpacity style={styles.chatButton} onPress={() => onChat(trabajo)} activeOpacity={0.85}>
-      <Ionicons name="chatbox-outline" size={18} color="#FFF" />
-      <Text style={styles.chatText}>Chatear con el trabajador</Text>
-    </TouchableOpacity>
- 
-  </View>
-);
- 
+  );
+};
+
 export default function OfertaRecibidaOverlayCliente({
   visible,
   onClose,
@@ -144,7 +174,7 @@ export default function OfertaRecibidaOverlayCliente({
   idCliente,
   usuario,
   navigation
-}) { 
+}) {
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [trabajos, setTrabajos] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -154,14 +184,20 @@ export default function OfertaRecibidaOverlayCliente({
   const [ofertasPendientes, setOfertasPendientes] = useState([]);
   const [loadingOfertas, setLoadingOfertas] = useState(false);
   const [errorOfertas, setErrorOfertas] = useState(false);
- 
+
+  // Controla qué modal de confirmación (llegada / fin) está abierto y sobre qué trabajo
+  const [confirmacion, setConfirmacion] = useState(null); // { tipo: 'llegada' | 'fin', trabajo }
+
   useEffect(() => {
     if (visible && idCliente) {
       fetchTrabajos();
       fetchOfertasPendientes();
     }
+    if (!visible) {
+      setConfirmacion(null);
+    }
   }, [visible, idCliente]);
- 
+
   const fetchTrabajos = async () => {
     try {
       setLoading(true);
@@ -169,7 +205,7 @@ export default function OfertaRecibidaOverlayCliente({
       const data = await res.json();
       const lista = Array.isArray(data) ? data : data.trabajos ?? data.data ?? [];
       setTrabajos(lista);
-      setTrabajoSeleccionado(lista[0] ?? null);
+      setTrabajoSeleccionado(prev => lista.find(t => t.id === prev?.id) ?? lista[0] ?? null);
     } catch (e) {
       console.error('Error al cargar trabajos activos:', e);
     } finally {
@@ -194,23 +230,31 @@ export default function OfertaRecibidaOverlayCliente({
       setLoadingOfertas(false);
     }
   };
- const handleChat = (trabajo) => {
-  onClose?.();
-  navigation?.navigate('ChatCliente', {
-    usuario,
-    contacto: {
-      idTrabajador: trabajo.idTrabajador,
-      nombre: `${trabajo.nombre} ${trabajo.apellido}`.trim(),
-      servicio: trabajo.servicio_nombre,
-      foto: trabajo.foto,
-      online: false,
-    },
-  });
-  onChat?.(trabajo); // mantiene compatibilidad si el padre hacía algo más
-};
+  const handleChat = (trabajo) => {
+    onClose?.();
+    navigation?.navigate('ChatCliente', {
+      usuario,
+      contacto: {
+        idTrabajador: trabajo.idTrabajador,
+        nombre: `${trabajo.nombre} ${trabajo.apellido}`.trim(),
+        servicio: trabajo.servicio_nombre,
+        foto: trabajo.foto,
+        online: false,
+      },
+    });
+    onChat?.(trabajo); // mantiene compatibilidad si el padre hacía algo más
+  };
   const handleSelect = (trabajo) => {
     setTrabajoSeleccionado(prev => prev?.id === trabajo.id ? null : trabajo);
   };
+
+  // Al confirmar llegada o fin, refrescamos la lista para que el detalle
+  // muestre el siguiente paso (o desaparezca si el trabajo ya terminó).
+  const handleConfirmacionOk = () => {
+    fetchTrabajos();
+  };
+
+  const cerrarConfirmacion = () => setConfirmacion(null);
 
   // Total de ofertas sumando todos los trabajos "abiertos"
   const totalOfertas = ofertasPendientes.reduce(
@@ -240,12 +284,12 @@ export default function OfertaRecibidaOverlayCliente({
       Alert.alert('Sin ofertas', 'Todavía no tenés ofertas pendientes de trabajadores.');
     }
   };
- 
+
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.overlay}>
         <View style={styles.container} >
- 
+
           {/* Header: fila 1 = título + cerrar (tocar afuera del título ya
               cierra), fila 2 = acciones (Ofertas / Recientes), separada
               del título para que no queden "pegadas". */}
@@ -307,7 +351,7 @@ export default function OfertaRecibidaOverlayCliente({
             </View>
 
           </View>
- 
+
           {/* Contenido */}
           {loading ? (
             <View style={styles.centerBox}>
@@ -333,19 +377,49 @@ export default function OfertaRecibidaOverlayCliente({
                     isSelected={trabajoSeleccionado?.id === trabajo.id}
                   />
                   {trabajoSeleccionado?.id === trabajo.id && (
-                  <TrabajoDetalle trabajo={trabajo} onChat={handleChat} />
+                    <TrabajoDetalle
+                      trabajo={trabajo}
+                      onChat={handleChat}
+                      onIniciar={(t) => setConfirmacion({ tipo: 'llegada', trabajo: t })}
+                      onFinalizar={(t) => setConfirmacion({ tipo: 'fin', trabajo: t })}
+                    />
                   )}
                 </View>
               ))}
             </ScrollView>
           )}
- 
+
         </View>
       </View>
+
+      {/* Modal de confirmación de llegada / fin, sobre el overlay de la lista */}
+      {confirmacion && (
+        <Modal visible transparent animationType="slide">
+          {confirmacion.tipo === 'llegada' ? (
+            <ConfirmarLlegadaCl
+              idTrabajo={confirmacion.trabajo.id}
+              service={confirmacion.trabajo.servicio_nombre}
+              workerName={`${confirmacion.trabajo.nombre} ${confirmacion.trabajo.apellido}`}
+              eta={confirmacion.trabajo.horario_requerido}
+              onConfirm={handleConfirmacionOk}
+              onClose={cerrarConfirmacion}
+            />
+          ) : (
+            <ConfirmarTrabajoCl
+              idTrabajo={confirmacion.trabajo.id}
+              service={confirmacion.trabajo.servicio_nombre}
+              workerName={`${confirmacion.trabajo.nombre} ${confirmacion.trabajo.apellido}`}
+              duration={confirmacion.trabajo.duracion}
+              onConfirm={handleConfirmacionOk}
+              onClose={cerrarConfirmacion}
+            />
+          )}
+        </Modal>
+      )}
     </Modal>
   );
 }
- 
+
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -360,7 +434,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: "hidden",
   },
- 
+
   // Header (ahora envuelve 2 filas: título y acciones)
   header: {
     paddingHorizontal: 16,
@@ -415,7 +489,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
- 
+
   // Loading / Empty
   centerBox: {
     paddingVertical: 40,
@@ -434,11 +508,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginTop: 6,
   },
- 
+
   // Lista
   lista: { maxHeight: 500 },
   listaContent: { paddingBottom: 8 },
- 
+
   // Item colapsado
   item: {
     flexDirection: "row",
@@ -503,7 +577,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: "#3a2c00",
   },
- 
+
   // Detalle expandido
   detalle: {
     backgroundColor: "#FFF8DC",
@@ -551,13 +625,13 @@ const styles = StyleSheet.create({
     color: "#7a5c00",
     fontWeight: "500",
   },
- 
+
   separador: {
     height: 1,
     backgroundColor: "rgba(0,0,0,0.08)",
     marginBottom: 14,
   },
- 
+
   // Info grid
   infoGrid: {
     flexDirection: "row",
@@ -588,7 +662,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#3a2c00",
   },
- 
+
   // Chat button
   chatButton: {
     backgroundColor: "#0D47C7",
@@ -603,6 +677,38 @@ const styles = StyleSheet.create({
     color: "#FFF",
     fontSize: 14,
     fontWeight: "700",
+  },
+
+  // Botón "Confirmar llegada" / "Finalizar trabajo"
+  llegadaButton: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    paddingVertical: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 10,
+  },
+  llegadaText: {
+    color: "#3a2c00",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  finalizarButton: {
+    backgroundColor: "#1e9e5a",
+    borderRadius: 12,
+    paddingVertical: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 10,
+  },
+  finalizarText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "800",
   },
 
   // Botón "Recientes" (fila de acciones)

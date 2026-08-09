@@ -235,6 +235,7 @@ import config from '../../configs/dbconfig.js'
         ct.emergencia,
         ct.horario_requerido,
         ct.horario_finalizado,
+        ct.trabajo_iniciado_en,
         s.nombre AS servicio_nombre
     FROM "Cliente-Trabajador" ct
     INNER JOIN "Trabajador" t ON ct."IdTrabajador" = t.id
@@ -346,7 +347,7 @@ import config from '../../configs/dbconfig.js'
             return result?.rows ?? []
         }
 
-     // ← NUEVO: categoría preferida guardada en el Cliente
+     // ← categoría preferida guardada en el Cliente
 obtenerCategoriaCliente = async (idCliente) => {
     const client = new Client(config)
     let result
@@ -482,7 +483,7 @@ crearReseñaCliente = async (reseña) => {
             [promedio, total, reseña.idTrabajador]
         )
 
-        // 👇 NUEVO: guarda la nota puntual en el trabajo calificado
+        // guarda la nota puntual en el trabajo calificado
         await client.query(
             `UPDATE "Cliente-Trabajador" SET "estrellasCliente" = $1 WHERE id = $2`,
             [reseña.estrellas, reseña.idTrabajo]
@@ -500,14 +501,12 @@ crearReseñaCliente = async (reseña) => {
     }
 }
 // Cliente ve todas las ofertas pendientes de un trabajo (Cliente-Trabajador)
-// Cliente ve todas las ofertas pendientes de un trabajo (Cliente-Trabajador)
 buscarOfertasPorTrabajo = async (idTrabajo) => {
     const client = new Client(config)
     let result
 
     try {
         await client.connect()
-        console.log('🔵 Ejecutando query con idTrabajo =', idTrabajo, typeof idTrabajo)
 
         const sql = `
             SELECT
@@ -535,11 +534,7 @@ WHERE o."idTrabajo" = $1
 ORDER BY o.fecha_creado ASC
         `
         result = await client.query(sql, [idTrabajo])
- console.log('🟢 Filas devueltas:', result.rows)
     } catch (err) {
-                console.log('🔴 ERROR EN POSTGRES:', err.message)
-                        console.log('🔴 DETALLE:', err.detail, err.position, err.code)
-
         console.error('Error en buscarOfertasPorTrabajo:', err)
         throw err
     } finally {
@@ -550,6 +545,13 @@ ORDER BY o.fecha_creado ASC
 }
 
 // Cliente acepta una oferta → completa el Cliente-Trabajador que ya existía "abierto"
+//
+// FIX carrera con avisarSubastasVencidas: se bloquea la fila de
+// Cliente-Trabajador con FOR UPDATE (así el cron espera si esta
+// transacción está en curso, y viceversa) y el UPDATE final vuelve a
+// chequear estado = 'PENDIENTE'. Además trae idUsuarioCliente (necesario
+// para que el chat de aviso al trabajador figure como enviado por el
+// cliente, no por el propio trabajador).
 aceptarOferta = async (idOferta) => {
     const client = new Client(config)
 
@@ -558,42 +560,80 @@ aceptarOferta = async (idOferta) => {
         await client.query('BEGIN')
 
         const ofertaResult = await client.query(
-            `SELECT o.*, o."ESTADO_OFERTA" AS estado_actual, ct.precio AS "precioSolicitud"
+            `SELECT
+                o.id,
+                o."idTrabajador",
+                o.precio,
+                o."ESTADO_OFERTA" AS estado_actual,
+                ct.id AS "idTrabajo",
+                ct."IdCliente" AS "idCliente",
+                ct.estado AS "estadoTrabajo",
+                ct."IdTrabajador" AS "idTrabajadorAsignado",
+                ct.precio AS "precioSolicitud",
+                trab."IdPersona" AS "idUsuarioTrabajador",
+                cli."IdPersona" AS "idUsuarioCliente"
              FROM "Oferta" o
              INNER JOIN "Cliente-Trabajador" ct ON ct.id = o."idTrabajo"
-             WHERE o.id = $1`,
+             INNER JOIN "Trabajador" trab ON trab.id = o."idTrabajador"
+             INNER JOIN "Cliente" cli ON cli.id = ct."IdCliente"
+             WHERE o.id = $1
+             FOR UPDATE OF ct`,
             [idOferta]
         )
         const oferta = ofertaResult.rows[0]
-        console.log('🟡 [aceptarOferta] fila obtenida:', oferta)   // 👈 debug temporal
 
         if (!oferta) throw new Error('Oferta no encontrada')
-        if (oferta.estado_actual !== 'PENDIENTE') throw new Error('Esta oferta ya fue procesada')
+
+        if (oferta.estado_actual !== 'PENDIENTE') {
+            throw new Error('Esta oferta ya fue procesada')
+        }
+        if (oferta.estadoTrabajo !== 'PENDIENTE' || oferta.idTrabajadorAsignado != null) {
+            throw new Error('Esta solicitud ya fue asignada a otro trabajador')
+        }
 
         const precioFinal = oferta.precio ?? oferta.precioSolicitud
 
-        await client.query(
+        const asignado = await client.query(
             `UPDATE "Cliente-Trabajador"
              SET "IdTrabajador" = $1, precio = $2, estado = 'EN PROCESO', fecha_iniciado = now()
-             WHERE id = $3`,
+             WHERE id = $3 AND estado = 'PENDIENTE' AND "IdTrabajador" IS NULL
+             RETURNING id`,
             [oferta.idTrabajador, precioFinal, oferta.idTrabajo]
         )
 
-        await client.query(
-            `UPDATE "Oferta" SET "ESTADO_OFERTA" = 'ACEPTADA' WHERE id = $1`,
+        if (asignado.rowCount === 0) {
+            throw new Error('Esta solicitud ya fue asignada a otro trabajador')
+        }
+
+        const ofertaActualizada = await client.query(
+            `UPDATE "Oferta" SET "ESTADO_OFERTA" = 'ACEPTADA'
+             WHERE id = $1 AND "ESTADO_OFERTA" = 'PENDIENTE'
+             RETURNING id`,
             [idOferta]
         )
+        if (ofertaActualizada.rowCount === 0) {
+            throw new Error('Esta solicitud ya fue asignada a otro trabajador')
+        }
+
         await client.query(
             `UPDATE "Oferta" SET "ESTADO_OFERTA" = 'RECHAZADA' WHERE "idTrabajo" = $1 AND id <> $2`,
             [oferta.idTrabajo, idOferta]
         )
 
         await client.query('COMMIT')
-        return { idTrabajo: oferta.idTrabajo, precioFinal }
+
+        return {
+            idTrabajo: oferta.idTrabajo,
+            idCliente: oferta.idCliente,
+            idTrabajador: oferta.idTrabajador,
+            idUsuarioTrabajador: oferta.idUsuarioTrabajador,
+            idUsuarioCliente: oferta.idUsuarioCliente,
+            precioFinal,
+        }
 
     } catch (err) {
         await client.query('ROLLBACK')
-        console.error('🔴 Error en aceptarOferta:', err.message)
+        console.error('Error en aceptarOferta:', err.message)
         throw err
     } finally {
         await client.end()
@@ -633,7 +673,6 @@ ORDER BY ct.id DESC
         await client.end()
     }
 
-   console.log('🟢 [contarOfertasPendientes] idCliente:', idCliente, 'filas:', result?.rows)
     return result?.rows ?? []
 }
     }

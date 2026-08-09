@@ -15,6 +15,5 @@ const port = 3000
 const subastaSvc = new SubastaServices()
 
 setInterval(() => {
-    subastaSvc.cerrarSubastasVencidas().catch(err => console.error('Error cerrando subastas:', err))
-}, 60 * 1000) // revisa cada 1 minuto
+subastaSvc.avisarSubastasVencidas().catch(err => console.error('Error avisando subastas:', err))}, 60 * 1000) // revisa cada 1 minuto
 app.listen(port, '0.0.0.0', () => console.log('Servidor en puerto', port))

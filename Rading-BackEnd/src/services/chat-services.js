@@ -23,7 +23,10 @@ export default class ChatServices {
     obtenerMensajes = async (chatId) => {
         return await this.#repo.obtenerMensajes(chatId)
     }
-
+buscarChat = async (idCliente, idTrabajador) => {
+    if (!idCliente || !idTrabajador) throw new Error('Faltan idCliente o idTrabajador')
+    return await this.#repo.buscarChat(idCliente, idTrabajador)
+}
     enviarMensaje = async (body) => {
     const { chatId, idCliente, idTrabajador, enviadorId, contenido, tipo, servicioId, precio, precioOfertado, notaOferta } = body
 

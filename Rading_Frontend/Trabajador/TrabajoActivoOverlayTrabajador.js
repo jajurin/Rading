@@ -5,6 +5,8 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import API_URL from '../configS';
+import ConfirmarLlegadaTr from './ConfirmarLlegadaTr';
+import ConfirmarTrabajoTr from './ConfirmarTrabajoTr';
 
 const AVATAR_CLIENTE = (nombre = '', apellido = '') =>
   `https://ui-avatars.com/api/?name=${nombre}+${apellido}&background=0D47C7&color=fff&size=150`;
@@ -29,7 +31,9 @@ const TrabajoItem = ({ trabajo, onSelect, isSelected }) => (
         </Text>
         <View style={styles.estadoBadge}>
           <View style={styles.estadoDot} />
-          <Text style={styles.estadoText}>EN PROCESO</Text>
+          <Text style={styles.estadoText}>
+            {trabajo.trabajo_iniciado_en ? 'EN PROCESO' : 'ESPERANDO LLEGADA'}
+          </Text>
         </View>
       </View>
     </View>
@@ -40,87 +44,113 @@ const TrabajoItem = ({ trabajo, onSelect, isSelected }) => (
   </TouchableOpacity>
 );
 
-const TrabajoDetalle = ({ trabajo, onChat }) => (
-  <View style={styles.detalle}>
-    <View style={styles.detalleWorkerRow}>
-      <Image
-        source={{ uri: AVATAR_CLIENTE(trabajo.nombre, trabajo.apellido) }}
-        style={styles.detalleAvatar}
-      />
-      <View style={styles.detalleWorkerInfo}>
-        <Text style={styles.detalleNombre}>{trabajo.nombre} {trabajo.apellido}</Text>
-        <View style={styles.ratingRow}>
-          <Ionicons name="star" size={14} color="#c87000" />
-          <Text style={styles.rating}>{Number(trabajo.estrellas ?? 0).toFixed(2)}</Text>
-          {trabajo.distancia && (
-            <>
-              <Text style={styles.ratingDot}>·</Text>
-              <Ionicons name="location-outline" size={13} color="#0D47C7" />
-              <Text style={styles.distanciaText}>{trabajo.distancia} km</Text>
-            </>
-          )}
+const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar }) => {
+  const yaLlego = !!trabajo.trabajo_iniciado_en;
+  const yaTermino = trabajo.estado === 'TERMINADO';
+
+  return (
+    <View style={styles.detalle}>
+      <View style={styles.detalleWorkerRow}>
+        <Image
+          source={{ uri: AVATAR_CLIENTE(trabajo.nombre, trabajo.apellido) }}
+          style={styles.detalleAvatar}
+        />
+        <View style={styles.detalleWorkerInfo}>
+          <Text style={styles.detalleNombre}>{trabajo.nombre} {trabajo.apellido}</Text>
+          <View style={styles.ratingRow}>
+            <Ionicons name="star" size={14} color="#c87000" />
+            <Text style={styles.rating}>{Number(trabajo.estrellas ?? 0).toFixed(2)}</Text>
+            {trabajo.distancia && (
+              <>
+                <Text style={styles.ratingDot}>·</Text>
+                <Ionicons name="location-outline" size={13} color="#0D47C7" />
+                <Text style={styles.distanciaText}>{trabajo.distancia} km</Text>
+              </>
+            )}
+          </View>
         </View>
       </View>
+
+      <View style={styles.separador} />
+
+      <View style={styles.infoGrid}>
+        <View style={styles.infoCard}>
+          <Ionicons name="construct-outline" size={16} color="#0D47C7" />
+          <Text style={styles.infoLabel}>Servicio</Text>
+          <Text style={styles.infoValue}>{trabajo.servicio_nombre ?? '-'}</Text>
+        </View>
+        <View style={styles.infoCard}>
+          <Ionicons name="cash-outline" size={16} color="#0D47C7" />
+          <Text style={styles.infoLabel}>Precio</Text>
+          <Text style={styles.infoValue}>${trabajo.precio ?? '-'}</Text>
+        </View>
+        {trabajo.horario_requerido && (
+          <View style={styles.infoCard}>
+            <Ionicons name="time-outline" size={16} color="#0D47C7" />
+            <Text style={styles.infoLabel}>Horario inicio</Text>
+            <Text style={styles.infoValue}>{trabajo.horario_requerido}</Text>
+          </View>
+        )}
+        {trabajo.horario_finalizado && (
+          <View style={styles.infoCard}>
+            <Ionicons name="checkmark-circle-outline" size={16} color="#0D47C7" />
+            <Text style={styles.infoLabel}>Horario fin</Text>
+            <Text style={styles.infoValue}>{trabajo.horario_finalizado}</Text>
+          </View>
+        )}
+        {trabajo.fecha_iniciado && (
+          <View style={[styles.infoCard, styles.infoCardWide]}>
+            <Ionicons name="calendar-outline" size={16} color="#0D47C7" />
+            <Text style={styles.infoLabel}>Fecha inicio</Text>
+            <Text style={styles.infoValue}>
+              {new Date(trabajo.fecha_iniciado).toLocaleDateString('es-AR')}
+            </Text>
+          </View>
+        )}
+        {trabajo.fijo !== undefined && (
+          <View style={styles.infoCard}>
+            <Ionicons name="pricetag-outline" size={16} color="#0D47C7" />
+            <Text style={styles.infoLabel}>Tipo</Text>
+            <Text style={styles.infoValue}>{trabajo.fijo ? 'Fijo' : 'Variable'}</Text>
+          </View>
+        )}
+        {trabajo.emergencia !== undefined && (
+          <View style={styles.infoCard}>
+            <Ionicons name="flash-outline" size={16} color="#0D47C7" />
+            <Text style={styles.infoLabel}>Emergencia</Text>
+            <Text style={styles.infoValue}>{trabajo.emergencia ? 'Sí' : 'No'}</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Acción principal según el estado del trabajo */}
+      {!yaLlego ? (
+        <TouchableOpacity
+          style={styles.llegadaButton}
+          onPress={() => onIniciar(trabajo)}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="navigate-outline" size={18} color="#fff" />
+          <Text style={styles.llegadaText}>Confirmar llegada</Text>
+        </TouchableOpacity>
+      ) : !yaTermino ? (
+        <TouchableOpacity
+          style={styles.finalizarButton}
+          onPress={() => onFinalizar(trabajo)}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="checkmark-done-outline" size={18} color="#fff" />
+          <Text style={styles.finalizarText}>Finalizar trabajo</Text>
+        </TouchableOpacity>
+      ) : null}
+
+      <TouchableOpacity style={styles.chatButton} onPress={() => onChat(trabajo)} activeOpacity={0.85}>
+        <Ionicons name="chatbox-outline" size={18} color="#fff" />
+        <Text style={styles.chatText}>Chatear con el cliente</Text>
+      </TouchableOpacity>
     </View>
-
-    <View style={styles.separador} />
-
-    <View style={styles.infoGrid}>
-      <View style={styles.infoCard}>
-        <Ionicons name="construct-outline" size={16} color="#0D47C7" />
-        <Text style={styles.infoLabel}>Servicio</Text>
-        <Text style={styles.infoValue}>{trabajo.servicio_nombre ?? '-'}</Text>
-      </View>
-      <View style={styles.infoCard}>
-        <Ionicons name="cash-outline" size={16} color="#0D47C7" />
-        <Text style={styles.infoLabel}>Precio</Text>
-        <Text style={styles.infoValue}>${trabajo.precio ?? '-'}</Text>
-      </View>
-      {trabajo.horario_requerido && (
-        <View style={styles.infoCard}>
-          <Ionicons name="time-outline" size={16} color="#0D47C7" />
-          <Text style={styles.infoLabel}>Horario inicio</Text>
-          <Text style={styles.infoValue}>{trabajo.horario_requerido}</Text>
-        </View>
-      )}
-      {trabajo.horario_finalizado && (
-        <View style={styles.infoCard}>
-          <Ionicons name="checkmark-circle-outline" size={16} color="#0D47C7" />
-          <Text style={styles.infoLabel}>Horario fin</Text>
-          <Text style={styles.infoValue}>{trabajo.horario_finalizado}</Text>
-        </View>
-      )}
-      {trabajo.fecha_iniciado && (
-        <View style={[styles.infoCard, styles.infoCardWide]}>
-          <Ionicons name="calendar-outline" size={16} color="#0D47C7" />
-          <Text style={styles.infoLabel}>Fecha inicio</Text>
-          <Text style={styles.infoValue}>
-            {new Date(trabajo.fecha_iniciado).toLocaleDateString('es-AR')}
-          </Text>
-        </View>
-      )}
-      {trabajo.fijo !== undefined && (
-        <View style={styles.infoCard}>
-          <Ionicons name="pricetag-outline" size={16} color="#0D47C7" />
-          <Text style={styles.infoLabel}>Tipo</Text>
-          <Text style={styles.infoValue}>{trabajo.fijo ? 'Fijo' : 'Variable'}</Text>
-        </View>
-      )}
-      {trabajo.emergencia !== undefined && (
-        <View style={styles.infoCard}>
-          <Ionicons name="flash-outline" size={16} color="#0D47C7" />
-          <Text style={styles.infoLabel}>Emergencia</Text>
-          <Text style={styles.infoValue}>{trabajo.emergencia ? 'Sí' : 'No'}</Text>
-        </View>
-      )}
-    </View>
-
-    <TouchableOpacity style={styles.chatButton} onPress={() => onChat(trabajo)} activeOpacity={0.85}>
-      <Ionicons name="chatbox-outline" size={18} color="#fff" />
-      <Text style={styles.chatText}>Chatear con el cliente</Text>
-    </TouchableOpacity>
-  </View>
-);
+  );
+};
 
 // Válido solo si es un número entero positivo real (cubre null, undefined,
 // NaN, y también el caso "null" como string que rompía la query en Postgres).
@@ -134,6 +164,9 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
   const [loading, setLoading] = useState(false);
   const [trabajoSeleccionado, setTrabajoSeleccionado] = useState(null);
 
+  // Controla qué modal de confirmación (llegada / fin) está abierto y sobre qué trabajo
+  const [confirmacion, setConfirmacion] = useState(null); // { tipo: 'llegada' | 'fin', trabajo }
+
   useEffect(() => {
     if (visible && esIdValido(idTrabajador)) {
       fetchTrabajos();
@@ -141,6 +174,7 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
     if (!visible) {
       setTrabajos([]);
       setTrabajoSeleccionado(null);
+      setConfirmacion(null);
     }
   }, [visible, idTrabajador]);
 
@@ -152,7 +186,7 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
       const data = await res.json();
       const lista = Array.isArray(data) ? data : data.trabajos ?? data.data ?? [];
       setTrabajos(lista);
-      setTrabajoSeleccionado(lista[0] ?? null);
+      setTrabajoSeleccionado(prev => lista.find(t => t.id === prev?.id) ?? lista[0] ?? null);
     } catch (e) {
       console.error('Error al cargar trabajos activos (trabajador):', e);
       setTrabajos([]);
@@ -165,6 +199,14 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
   const handleSelect = (trabajo) => {
     setTrabajoSeleccionado(prev => prev?.id === trabajo.id ? null : trabajo);
   };
+
+  // Al confirmar llegada o fin, refrescamos la lista para que el detalle
+  // muestre el siguiente paso (o desaparezca si el trabajo ya terminó).
+  const handleConfirmacionOk = () => {
+    fetchTrabajos();
+  };
+
+  const cerrarConfirmacion = () => setConfirmacion(null);
 
   if (!visible) return null;
 
@@ -227,7 +269,12 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
                     isSelected={trabajoSeleccionado?.id === trabajo.id}
                   />
                   {trabajoSeleccionado?.id === trabajo.id && (
-                    <TrabajoDetalle trabajo={trabajo} onChat={onChat} />
+                    <TrabajoDetalle
+                      trabajo={trabajo}
+                      onChat={onChat}
+                      onIniciar={(t) => setConfirmacion({ tipo: 'llegada', trabajo: t })}
+                      onFinalizar={(t) => setConfirmacion({ tipo: 'fin', trabajo: t })}
+                    />
                   )}
                 </View>
               ))}
@@ -235,6 +282,31 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
           )}
         </View>
       </View>
+
+      {/* Modal de confirmación de llegada / fin, sobre el overlay de la lista */}
+      {confirmacion && (
+        <Modal visible transparent animationType="slide">
+          {confirmacion.tipo === 'llegada' ? (
+            <ConfirmarLlegadaTr
+              idTrabajo={confirmacion.trabajo.id}
+              service={confirmacion.trabajo.servicio_nombre}
+              clientName={`${confirmacion.trabajo.nombre} ${confirmacion.trabajo.apellido}`}
+              address={confirmacion.trabajo.direccion ?? 'Dirección no disponible'}
+              onConfirm={handleConfirmacionOk}
+              onClose={cerrarConfirmacion}
+            />
+          ) : (
+            <ConfirmarTrabajoTr
+              idTrabajo={confirmacion.trabajo.id}
+              service={confirmacion.trabajo.servicio_nombre}
+              clientName={`${confirmacion.trabajo.nombre} ${confirmacion.trabajo.apellido}`}
+              duration={confirmacion.trabajo.duracion}
+              onConfirm={handleConfirmacionOk}
+              onClose={cerrarConfirmacion}
+            />
+          )}
+        </Modal>
+      )}
     </Modal>
   );
 }
@@ -287,4 +359,8 @@ const styles = StyleSheet.create({
   infoValue: { fontSize: 14, fontWeight: "800", color: "#0d2a6e" },
   chatButton: { backgroundColor: "#1565D8", borderRadius: 12, paddingVertical: 13, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   chatText: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  llegadaButton: { backgroundColor: "#FFD000", borderRadius: 12, paddingVertical: 13, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10 },
+  llegadaText: { color: "#0d2a6e", fontSize: 14, fontWeight: "800" },
+  finalizarButton: { backgroundColor: "#1e9e5a", borderRadius: 12, paddingVertical: 13, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10 },
+  finalizarText: { color: "#fff", fontSize: 14, fontWeight: "800" },
 });

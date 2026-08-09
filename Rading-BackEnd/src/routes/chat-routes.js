@@ -19,13 +19,14 @@ const storage = multer.diskStorage({
     }
 })
 // GET /chat/buscar/:idCliente/:idTrabajador
-router.get('/chat/buscar/:idCliente/:idTrabajador', async (req, res) => {
+router.get('/buscar/:idCliente/:idTrabajador', async (req, res) => {
   try {
     const { idCliente, idTrabajador } = req.params
-    const chatId = await chatRepository.buscarChat(idCliente, idTrabajador)
-    res.json({ chatId }) // null si todavía no existe
+    const chatId = await svc.buscarChat(idCliente, idTrabajador)
+    res.json({ chatId })
   } catch (err) {
-    res.status(500).json({ message: 'Error al buscar el chat' })
+    console.error(err)
+    res.status(500).json({ message: 'Error al buscar el chat', error: err.message })
   }
 })
 const upload = multer({
