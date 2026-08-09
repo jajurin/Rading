@@ -25,7 +25,8 @@ import HomeTrabajador from './Trabajador/HomeTrabajador';
 import MasOfertasScreen from './Trabajador/MasOfertas';
 import DetalleOfertaTrabajador from './Trabajador/DetalleOfertaTrabajador';
 import OfertaRecibidaOverlayCliente from './Cliente/OfertaRecibidaOverlayCliente';
-
+import ChatTrabajador from './Trabajador/Chattrabajador';
+import PreviaChatTrabajador from './Trabajador/PreviaChatTrabajador';
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -40,7 +41,8 @@ export default function App() {
 
           <Stack.Screen name="ChatsCliente" component={ChatsCliente} />
           <Stack.Screen name="ChatCliente" component={ChatCliente} />
-
+          <Stack.Screen name="ChatTrabajador" component={ChatTrabajador} />
+<Stack.Screen name="PreviaChatTrabajador" component={PreviaChatTrabajador} />
           <Stack.Screen name="RecibirOfertasScreen" component={RecibirOfertasScreen} />
           <Stack.Screen name="ClasificarTrabajador" component={ClasificarTrabajador} />
           <Stack.Screen name="PerfilScreen" component={PerfilScreen} />

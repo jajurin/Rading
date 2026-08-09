@@ -150,127 +150,130 @@ export default class chatRepository {
 
     // Mensajes de un chat, con precio/servicio/estado de la propuesta
     // vinculada (si el mensaje es tipo PROPUESTA y tiene trabajo_id).
-    obtenerMensajes = async (chatId) => {
-        const client = new Client(config)
-        try {
-            await client.connect()
-            const sql = `
-                SELECT
-                    m.id,
-                    m.chat_id,
-                    m.enviador_id,
-                    m.contenido,
-                    m.tipo,
-                    m.created_at,
-                    ct.precio,
-                    ct.estado AS "ESTADO_OFERTA",
-                    s.nombre AS servicio_nombre,
-                    EXISTS (
-                        SELECT 1 FROM "Mensajes_Estatus" me
-                        WHERE me.mensaje_id = m.id AND me.user_id <> m.enviador_id
-                    ) AS leido
-                FROM "Mensajes" m
-                LEFT JOIN "Cliente-Trabajador" ct ON ct.id = m.trabajo_id
-                LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
-                WHERE m.chat_id = $1 AND m.deleted_at IS NULL
-                ORDER BY m.created_at ASC
-            `
-            const result = await client.query(sql, [chatId])
-            return result?.rows ?? []
-        } catch (err) {
-            console.error('Error en obtenerMensajes:', err)
-            throw err
-        } finally {
-            await client.end()
-        }
+   obtenerMensajes = async (chatId) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        const sql = `
+            SELECT
+                m.id,
+                m.chat_id,
+                m.enviador_id,
+                m.contenido,
+                m.tipo,
+                m.created_at,
+                m.precio_ofertado,
+                m.nota_oferta,
+                ct.precio,
+                ct.estado AS "ESTADO_OFERTA",
+                s.nombre AS servicio_nombre,
+                EXISTS (
+                    SELECT 1 FROM "Mensajes_Estatus" me
+                    WHERE me.mensaje_id = m.id AND me.user_id <> m.enviador_id
+                ) AS leido
+            FROM "Mensajes" m
+            LEFT JOIN "Cliente-Trabajador" ct ON ct.id = m.trabajo_id
+            LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+            WHERE m.chat_id = $1 AND m.deleted_at IS NULL
+            ORDER BY m.created_at ASC
+        `
+        const result = await client.query(sql, [chatId])
+        return result?.rows ?? []
+    } catch (err) {
+        console.error('Error en obtenerMensajes:', err)
+        throw err
+    } finally {
+        await client.end()
     }
+}
 
     // Si tipo === 'PROPUESTA', primero crea la fila del trabajo en
     // "Cliente-Trabajador" (con precio y servicio) y vincula el mensaje
     // a esa fila via trabajo_id. OJO: en "Cliente-Trabajador" las columnas
     // son camelCase ("IdCliente", "IdTrabajador") y necesitan comillas,
     // a diferencia de "Chat" que usa snake_case (id_cliente, id_trabajador).
-    enviarMensaje = async ({ chatId, idCliente, idTrabajador, enviadorId, contenido, tipo = 'TEXTO', servicioId = null, precio = null }) => {
-        const client = new Client(config)
-        try {
-            await client.connect()
-            await client.query('BEGIN')
+  enviarMensaje = async ({ chatId, idCliente, idTrabajador, enviadorId, contenido, tipo = 'TEXTO', servicioId = null, precio = null, precioOfertado = null, notaOferta = null }) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        await client.query('BEGIN')
 
-            let finalChatId = chatId
-            let finalIdCliente = idCliente
-            let finalIdTrabajador = idTrabajador
+        let finalChatId = chatId
+        let finalIdCliente = idCliente
+        let finalIdTrabajador = idTrabajador
 
-            if (!finalChatId) {
-                const buscar = await client.query(
-                    `SELECT id FROM "Chat" WHERE id_cliente = $1 AND id_trabajador = $2`,
-                    [idCliente, idTrabajador]
-                )
-
-                if (buscar.rows.length > 0) {
-                    finalChatId = buscar.rows[0].id
-                } else {
-                    const crear = await client.query(
-                        `INSERT INTO "Chat" (id_cliente, id_trabajador, updated_at)
-                         VALUES ($1, $2, now())
-                         RETURNING id`,
-                        [idCliente, idTrabajador]
-                    )
-                    finalChatId = crear.rows[0].id
-                }
-            } else if (tipo === 'PROPUESTA' && (!finalIdCliente || !finalIdTrabajador)) {
-                // Si vino chatId pero no idCliente/idTrabajador (chat ya existente),
-                // los necesitamos para crear la fila en Cliente-Trabajador.
-                const chatInfo = await client.query(
-                    `SELECT id_cliente, id_trabajador FROM "Chat" WHERE id = $1`,
-                    [finalChatId]
-                )
-                if (chatInfo.rows.length > 0) {
-                    finalIdCliente = chatInfo.rows[0].id_cliente
-                    finalIdTrabajador = chatInfo.rows[0].id_trabajador
-                }
-            }
-
-            let trabajoId = null
-            if (tipo === 'PROPUESTA') {
-                const crearTrabajo = await client.query(
-                    `INSERT INTO "Cliente-Trabajador"
-                        ("IdCliente", "IdTrabajador", servicio_id, precio, descripcion, estado)
-                     VALUES ($1, $2, $3, $4, $5, 'PENDIENTE')
-                     RETURNING id`,
-                    [finalIdCliente, finalIdTrabajador, servicioId, precio, contenido]
-                )
-                trabajoId = crearTrabajo.rows[0].id
-            }
-
-            const sql = `
-                INSERT INTO "Mensajes" (chat_id, enviador_id, contenido, tipo, trabajo_id)
-                VALUES ($1, $2, $3, $4, $5)
-                RETURNING id, chat_id, enviador_id, contenido, tipo, created_at, trabajo_id
-            `
-            const result = await client.query(sql, [finalChatId, enviadorId, contenido, tipo, trabajoId])
-
-            await client.query(
-                `UPDATE "Chat" SET last_message_at = now(), updated_at = now() WHERE id = $1`,
-                [finalChatId]
+        if (!finalChatId) {
+            const buscar = await client.query(
+                `SELECT id FROM "Chat" WHERE id_cliente = $1 AND id_trabajador = $2`,
+                [idCliente, idTrabajador]
             )
 
-            await client.query('COMMIT')
-
-            // Si fue propuesta, devolvemos precio/servicio ya resueltos para
-            // que el front no tenga que esperar al próximo fetch de mensajes.
-            if (tipo === 'PROPUESTA') {
-                return { ...result.rows[0], precio, ESTADO_OFERTA: 'PENDIENTE' }
+            if (buscar.rows.length > 0) {
+                finalChatId = buscar.rows[0].id
+            } else {
+                const crear = await client.query(
+                    `INSERT INTO "Chat" (id_cliente, id_trabajador, updated_at)
+                     VALUES ($1, $2, now())
+                     RETURNING id`,
+                    [idCliente, idTrabajador]
+                )
+                finalChatId = crear.rows[0].id
             }
-            return result.rows[0]
-        } catch (err) {
-            await client.query('ROLLBACK')
-            console.error('Error en enviarMensaje:', err)
-            throw err
-        } finally {
-            await client.end()
+        } else if (tipo === 'PROPUESTA' && (!finalIdCliente || !finalIdTrabajador)) {
+            const chatInfo = await client.query(
+                `SELECT id_cliente, id_trabajador FROM "Chat" WHERE id = $1`,
+                [finalChatId]
+            )
+            if (chatInfo.rows.length > 0) {
+                finalIdCliente = chatInfo.rows[0].id_cliente
+                finalIdTrabajador = chatInfo.rows[0].id_trabajador
+            }
         }
-    }
 
+        let trabajoId = null
+        if (tipo === 'PROPUESTA') {
+            const crearTrabajo = await client.query(
+                `INSERT INTO "Cliente-Trabajador"
+                    ("IdCliente", "IdTrabajador", servicio_id, precio, descripcion, estado)
+                 VALUES ($1, $2, $3, $4, $5, 'PENDIENTE')
+                 RETURNING id`,
+                [finalIdCliente, finalIdTrabajador, servicioId, precio, contenido]
+            )
+            trabajoId = crearTrabajo.rows[0].id
+        }
+
+        // OFERTA_TRABAJADOR: no crea fila en Cliente-Trabajador, se guarda
+        // el precio ofertado y la nota directamente en el mensaje.
+        const sql = `
+            INSERT INTO "Mensajes" (chat_id, enviador_id, contenido, tipo, trabajo_id, precio_ofertado, nota_oferta)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, chat_id, enviador_id, contenido, tipo, created_at, trabajo_id, precio_ofertado, nota_oferta
+        `
+        const result = await client.query(sql, [
+            finalChatId, enviadorId, contenido, tipo, trabajoId,
+            tipo === 'OFERTA_TRABAJADOR' ? precioOfertado : null,
+            tipo === 'OFERTA_TRABAJADOR' ? notaOferta : null,
+        ])
+
+        await client.query(
+            `UPDATE "Chat" SET last_message_at = now(), updated_at = now() WHERE id = $1`,
+            [finalChatId]
+        )
+
+        await client.query('COMMIT')
+
+        if (tipo === 'PROPUESTA') {
+            return { ...result.rows[0], precio, ESTADO_OFERTA: 'PENDIENTE' }
+        }
+        return result.rows[0]
+    } catch (err) {
+        await client.query('ROLLBACK')
+        console.error('Error en enviarMensaje:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
     // Guarda un mensaje de tipo ARCHIVO (imagen o documento ya subido a disco/storage)
     enviarMensajeArchivo = async ({ chatId, idCliente, idTrabajador, enviadorId, archivoUrl, archivoNombre, tipo }) => {
         const client = new Client(config)

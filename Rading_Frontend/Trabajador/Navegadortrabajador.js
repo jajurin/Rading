@@ -126,8 +126,8 @@ const RADIO_BUSQUEDA_KM = 5;
 const NAV_ITEMS = [
   { key: 'inicio',   label: 'Inicio',  Icon: Icons.Home,    screen: 'HomeTrabajador' },
   { key: 'busqueda', label: 'Buscar',  Icon: Icons.Search,  screen: 'BuscadorTrabajador' },
-  { key: 'fab',      label: null,      Icon: Icons.Radar,   screen: null }, // el fab no navega, dispara la búsqueda por radar
-  { key: 'chats',    label: 'Chats',   Icon: Icons.Chat,    screen: null }, // TODO: crear ChatsTrabajador
+  { key: 'fab',      label: null,      Icon: Icons.Radar,   screen: null },
+  { key: 'chats',    label: 'Chats',   Icon: Icons.Chat,    screen: 'PreviaChatTrabajador' },
   { key: 'perfil',   label: 'Perfil',  Icon: Icons.Profile, screen: null }, // TODO: crear PerfilTrabajador
 ];
 

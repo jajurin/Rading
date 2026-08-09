@@ -25,20 +25,26 @@ export default class ChatServices {
     }
 
     enviarMensaje = async (body) => {
-        const { chatId, idCliente, idTrabajador, enviadorId, contenido, tipo, servicioId, precio } = body
+    const { chatId, idCliente, idTrabajador, enviadorId, contenido, tipo, servicioId, precio, precioOfertado, notaOferta } = body
 
-        if (!enviadorId || !contenido) {
-            throw new Error('Faltan enviadorId o contenido')
-        }
-        if (!chatId && (!idCliente || !idTrabajador)) {
-            throw new Error('Falta chatId, o idCliente + idTrabajador para crear el chat')
-        }
-        if (tipo === 'PROPUESTA' && (!servicioId || precio == null)) {
-            throw new Error('Faltan servicioId o precio para la propuesta')
-        }
-
-        return await this.#repo.enviarMensaje({ chatId, idCliente, idTrabajador, enviadorId, contenido, tipo, servicioId, precio })
+    if (!enviadorId || !contenido) {
+        throw new Error('Faltan enviadorId o contenido')
     }
+    if (!chatId && (!idCliente || !idTrabajador)) {
+        throw new Error('Falta chatId, o idCliente + idTrabajador para crear el chat')
+    }
+    if (tipo === 'PROPUESTA' && (!servicioId || precio == null)) {
+        throw new Error('Faltan servicioId o precio para la propuesta')
+    }
+    if (tipo === 'OFERTA_TRABAJADOR' && precioOfertado == null) {
+        throw new Error('Falta el precio ofertado')
+    }
+
+    return await this.#repo.enviarMensaje({
+        chatId, idCliente, idTrabajador, enviadorId, contenido, tipo,
+        servicioId, precio, precioOfertado, notaOferta,
+    })
+}
 
     enviarMensajeArchivo = async ({ chatId, idCliente, idTrabajador, enviadorId, archivoUrl, archivoNombre, tipo }) => {
         if (!enviadorId || !archivoUrl) {
