@@ -300,6 +300,11 @@ export default function DetalleOfertaTrabajador() {
   const [errorEnvioOferta, setErrorEnvioOferta] = useState(null);
   const [resultadoOferta, setResultadoOferta] = useState(null); // { modo, subastaTermina } al confirmar
 
+  // 👇 Precio fijo ahora también es una POSTULACIÓN: el trabajador no toma
+  // el trabajo directo, queda como oferta PENDIENTE hasta que el cliente
+  // elija con quién trabajar (igual que en la subasta, ver aceptarOferta
+  // en cliente-repositories.js). El backend (enviarOferta) ya no asigna
+  // "IdTrabajador" automáticamente para ct.fijo === true.
   const handleEnviarOferta = () => {
     if (!oferta?.fijo) {
       // Subasta: abrimos el modal a completar precio/mensaje
@@ -312,13 +317,14 @@ export default function DetalleOfertaTrabajador() {
       return;
     }
 
-    // Precio fijo: confirmación directa, sin modal
+    // Precio fijo: confirmación directa, sin modal — pero es una
+    // POSTULACIÓN, no una asignación. El cliente decide.
     Alert.alert(
-      'Tomar este trabajo',
-      `Vas a tomar este trabajo por $${Number(oferta.precio).toLocaleString('es-AR')}. ¿Confirmás?`,
+      'Postularte a este trabajo',
+      `Vas a postularte para tomar este trabajo por $${Number(oferta.precio).toLocaleString('es-AR')}. El cliente va a decidir si te elige a vos.`,
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Confirmar', onPress: confirmarOfertaDirecta },
+        { text: 'Postularme', onPress: confirmarOfertaDirecta },
       ]
     );
   };
@@ -332,9 +338,9 @@ export default function DetalleOfertaTrabajador() {
         body: JSON.stringify({ idTrabajo: oferta.id, idTrabajador: trabajadorId, precio: oferta.precio }),
       });
       const data = await resp.json();
-      if (!resp.ok) throw new Error(data?.message || 'No se pudo tomar el trabajo.');
+      if (!resp.ok) throw new Error(data?.message || 'No se pudo enviar la postulación.');
 
-      Alert.alert('¡Listo!', 'El trabajo quedó asignado a tu nombre.');
+      Alert.alert('¡Postulación enviada!', 'Te avisaremos si el cliente te elige para este trabajo.');
       navigation.goBack();
     } catch (e) {
       Alert.alert('No se pudo', e.message || 'Intentá de nuevo.');
@@ -511,7 +517,7 @@ export default function DetalleOfertaTrabajador() {
         </View>
         <TouchableOpacity style={styles.enviarBtn} onPress={handleEnviarOferta} activeOpacity={0.9}>
           <Icons.Check />
-          <Text style={styles.enviarBtnText}>Enviar oferta</Text>
+          <Text style={styles.enviarBtnText}>{oferta.fijo ? 'Postularme' : 'Ofertar'}</Text>
         </TouchableOpacity>
       </View>
 

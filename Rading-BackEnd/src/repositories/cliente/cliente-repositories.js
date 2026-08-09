@@ -511,25 +511,28 @@ buscarOfertasPorTrabajo = async (idTrabajo) => {
 
         const sql = `
             SELECT
-                o.id,
-                o."idTrabajador",
-                o.precio,
-                o."costoExtraMin",
-                o."costoExtraMax",
-                o.mensaje,
-                o."ESTADO_OFERTA" AS estado,
-                u.nombre,
-                u.apellido,
-                t.foto,
-                t.estrellas,
-                ct.precio AS "precioSolicitud"
-            FROM "Oferta" o
-            INNER JOIN "Trabajador" t ON t.id = o."idTrabajador"
-            INNER JOIN "Usuario" u ON u.id = t."IdPersona"
-            INNER JOIN "Cliente-Trabajador" ct ON ct.id = o."idTrabajo"
-            WHERE o."idTrabajo" = $1
-              AND o."ESTADO_OFERTA" = 'PENDIENTE'
-            ORDER BY o.fecha_creado ASC
+    o.id,
+    o."idTrabajador",
+    o.precio,
+    o."costoExtraMin",
+    o."costoExtraMax",
+    o.mensaje,
+    o."ESTADO_OFERTA" AS estado,
+    u.nombre,
+    u.apellido,
+    t.foto,
+    t.estrellas,
+    ct.precio AS "precioSolicitud",
+    ct.fijo,
+    ct.emergencia,
+    ct.subasta_termina AS "subastaTermina"
+FROM "Oferta" o
+INNER JOIN "Trabajador" t ON t.id = o."idTrabajador"
+INNER JOIN "Usuario" u ON u.id = t."IdPersona"
+INNER JOIN "Cliente-Trabajador" ct ON ct.id = o."idTrabajo"
+WHERE o."idTrabajo" = $1
+  AND o."ESTADO_OFERTA" = 'PENDIENTE'
+ORDER BY o.fecha_creado ASC
         `
         result = await client.query(sql, [idTrabajo])
  console.log('🟢 Filas devueltas:', result.rows)
@@ -605,18 +608,21 @@ contarOfertasPendientes = async (idCliente) => {
         await client.connect()
 
         const sql = `
-            SELECT
-                ct.id AS "idTrabajo",
-                s.nombre AS servicio_nombre,
-                COUNT(o.id) AS "cantidadOfertas"
-            FROM "Cliente-Trabajador" ct
-            LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
-            INNER JOIN "Oferta" o ON o."idTrabajo" = ct.id
-                AND o."ESTADO_OFERTA" = 'PENDIENTE'
-            WHERE ct."IdCliente" = $1
-              AND ct."IdTrabajador" IS NULL
-            GROUP BY ct.id, s.nombre
-            ORDER BY ct.id DESC
+           SELECT
+    ct.id AS "idTrabajo",
+    s.nombre AS servicio_nombre,
+    ct.fijo,
+    ct.emergencia,
+    ct.subasta_termina AS "subastaTermina",
+    COUNT(o.id) AS "cantidadOfertas"
+FROM "Cliente-Trabajador" ct
+LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+INNER JOIN "Oferta" o ON o."idTrabajo" = ct.id
+    AND o."ESTADO_OFERTA" = 'PENDIENTE'
+WHERE ct."IdCliente" = $1
+  AND ct."IdTrabajador" IS NULL
+GROUP BY ct.id, s.nombre, ct.fijo, ct.emergencia, ct.subasta_termina
+ORDER BY ct.id DESC
         `
         result = await client.query(sql, [idCliente])
 

@@ -21,6 +21,7 @@ const COLORS = {
   white:  '#ffffff',
   ink:    '#1a1a2e',
   green:  '#22c55e',
+  red:    '#e23744',
 }
 
 const shadow = (elevation = 6) => ({
@@ -108,6 +109,60 @@ function SolicitudesChips({ solicitudes, seleccionada, onSeleccionar }) {
         )
       })}
     </ScrollView>
+  )
+}
+
+// ─── Selector de tipo: Subasta / Fijos / Urgentes ─────────────────────────
+// Separa las ofertas por naturaleza: en subasta se compite por precio (con
+// reloj), en fijo el trabajador se postula al precio ya fijado por el
+// cliente, y "Urgentes" es un corte transversal (emergencia = true) que
+// puede traer ofertas de ambos tipos.
+const TIPOS = [
+  { key: 'subasta',  label: 'Subasta',   icon: 'hammer-outline' },
+  { key: 'fijo',      label: 'Fijos',     icon: 'pricetag-outline' },
+  { key: 'urgente',   label: 'Urgentes',  icon: 'alert-circle-outline' },
+]
+
+function TipoSelector({ tipo, onSeleccionar, conteos }) {
+  return (
+    <View style={styles.tipoRow}>
+      {TIPOS.map(t => {
+        const activo = tipo === t.key
+        const conteo = conteos[t.key] ?? 0
+        const esUrgente = t.key === 'urgente'
+        return (
+          <TouchableOpacity
+            key={t.key}
+            style={[
+              styles.tipoBtn,
+              activo && (esUrgente ? styles.tipoBtnActivoUrgente : styles.tipoBtnActivo),
+            ]}
+            onPress={() => onSeleccionar(t.key)}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name={t.icon}
+              size={15}
+              color={activo ? COLORS.white : (esUrgente ? COLORS.red : COLORS.gray)}
+            />
+            <Text style={[
+              styles.tipoBtnText,
+              activo && styles.tipoBtnTextActivo,
+              !activo && esUrgente && { color: COLORS.red },
+            ]}>
+              {t.label}
+            </Text>
+            {conteo > 0 && (
+              <View style={[styles.tipoBadge, activo && styles.tipoBadgeActivo]}>
+                <Text style={[styles.tipoBadgeText, activo && styles.tipoBadgeTextActivo]}>
+                  {conteo}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        )
+      })}
+    </View>
   )
 }
 
@@ -204,6 +259,9 @@ const mapearOfertas = (data, idTrabajo, servicioNombreOverride = null) =>
     costoExtraMax: Number(o.costoExtraMax ?? 0),
     precio: Number(o.precio ?? o.precioSolicitud ?? 0),
     servicioNombre: servicioNombreOverride,
+    fijo: Boolean(o.fijo),
+    emergencia: Boolean(o.emergencia),
+    subastaTermina: o.subastaTermina ?? null,
   }))
 
 export default function RecibirOfertasScreen({ route, navigation }) {
@@ -215,6 +273,9 @@ export default function RecibirOfertasScreen({ route, navigation }) {
 
   // idTrabajo seleccionado: null = "General" (todas), o un id puntual
   const [seleccionada, setSeleccionada] = useState(idTrabajoInicial ?? null)
+
+  // tipo seleccionado: 'subasta' | 'fijo' | 'urgente'
+  const [tipo, setTipo] = useState('subasta')
 
   const [ofertas, setOfertas] = useState([])
   const [loading, setLoading] = useState(true)
@@ -342,21 +403,43 @@ export default function RecibirOfertasScreen({ route, navigation }) {
     }
   }
 
-  // la "mejor oferta" se calcula POR solicitud (idTrabajo), no globalmente
+  // la "mejor oferta" se calcula POR solicitud (idTrabajo), no globalmente,
+  // y solo tiene sentido en subastas (en fijo todas valen lo mismo)
   const mejoresPorTrabajo = useMemo(() => {
     const mapa = new Map()
     ofertas.forEach(o => {
+      if (o.fijo) return // precio fijo: no hay "mejor oferta", decide el cliente
       const actual = mapa.get(o.idTrabajo)
       if (!actual || o.precio < actual.precio) mapa.set(o.idTrabajo, o)
     })
     return mapa
   }, [ofertas])
 
+  // conteos para los badges del selector de tipo
+  const conteosPorTipo = useMemo(() => ({
+    subasta: ofertas.filter(o => !o.fijo).length,
+    fijo: ofertas.filter(o => o.fijo).length,
+    urgente: ofertas.filter(o => o.emergencia).length,
+  }), [ofertas])
+
+  // ofertas ya filtradas por el tipo elegido en el selector
+  const ofertasFiltradas = useMemo(() => {
+    if (tipo === 'urgente') return ofertas.filter(o => o.emergencia)
+    if (tipo === 'fijo') return ofertas.filter(o => o.fijo)
+    return ofertas.filter(o => !o.fijo) // 'subasta'
+  }, [ofertas, tipo])
+
   const tituloHeader = useMemo(() => {
     if (seleccionada == null) return 'Todas tus solicitudes'
     const s = solicitudes.find(s => s.idTrabajo === seleccionada)
     return s?.servicio_nombre || tituloSolicitud || servicioNombre || 'Tu solicitud'
   }, [seleccionada, solicitudes, tituloSolicitud, servicioNombre])
+
+  const mensajeVacio = useMemo(() => {
+    if (tipo === 'urgente') return 'No tenés ofertas urgentes pendientes'
+    if (tipo === 'fijo') return 'Todavía nadie se postuló a tus trabajos de precio fijo'
+    return 'Todavía no recibiste ofertas en subastas'
+  }, [tipo])
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -384,6 +467,10 @@ export default function RecibirOfertasScreen({ route, navigation }) {
         />
       )}
 
+      {!loading && !error && (
+        <TipoSelector tipo={tipo} onSeleccionar={setTipo} conteos={conteosPorTipo} />
+      )}
+
       {loading ? (
         <View style={styles.centerBox}>
           <ActivityIndicator size="large" color={COLORS.blue} />
@@ -396,26 +483,28 @@ export default function RecibirOfertasScreen({ route, navigation }) {
             <Text style={styles.retryText}>Reintentar</Text>
           </TouchableOpacity>
         </View>
-      ) : ofertas.length === 0 ? (
+      ) : ofertasFiltradas.length === 0 ? (
         <View style={styles.centerBox}>
-          <Ionicons name="mail-open-outline" size={48} color={COLORS.grayLight} />
-          <Text style={styles.emptyText}>
-            {seleccionada == null
-              ? 'Todavía no recibiste ofertas'
-              : 'Esta solicitud todavía no tiene ofertas'}
-          </Text>
+          <Ionicons
+            name={tipo === 'urgente' ? 'alert-circle-outline' : 'mail-open-outline'}
+            size={48}
+            color={COLORS.grayLight}
+          />
+          <Text style={styles.emptyText}>{mensajeVacio}</Text>
         </View>
       ) : (
         <ScrollView style={styles.body} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
 
           <View style={styles.seccionRow}>
-            <Text style={styles.seccionLabel}>Ofertas recibidas</Text>
+            <Text style={styles.seccionLabel}>
+              {tipo === 'urgente' ? 'Ofertas urgentes' : tipo === 'fijo' ? 'Postulaciones a precio fijo' : 'Ofertas en subasta'}
+            </Text>
             <View style={styles.contadorPill}>
-              <Text style={styles.contadorText}>{ofertas.length}</Text>
+              <Text style={styles.contadorText}>{ofertasFiltradas.length}</Text>
             </View>
           </View>
 
-          {ofertas.map(item => (
+          {ofertasFiltradas.map(item => (
             <View key={`${item.idTrabajo}-${item.id}`}>
               {seleccionada == null && item.servicioNombre && (
                 <View style={styles.servicioTag}>
@@ -500,6 +589,43 @@ const styles = StyleSheet.create({
   chipTextActive: { color: COLORS.white },
   chipCount: { fontSize: 11, fontWeight: '700', color: COLORS.grayLight },
   chipCountActive: { color: 'rgba(255,255,255,0.75)' },
+
+  // ── Selector de tipo (Subasta / Fijos / Urgentes) ──
+  tipoRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
+  },
+  tipoBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: COLORS.bg,
+  },
+  tipoBtnActivo: { backgroundColor: COLORS.blue },
+  tipoBtnActivoUrgente: { backgroundColor: COLORS.red },
+  tipoBtnText: { fontSize: 12.5, fontWeight: '700', color: COLORS.gray },
+  tipoBtnTextActivo: { color: COLORS.white },
+  tipoBadge: {
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    borderRadius: 8,
+    minWidth: 17,
+    height: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  tipoBadgeActivo: { backgroundColor: 'rgba(255,255,255,0.25)' },
+  tipoBadgeText: { fontSize: 10, fontWeight: '700', color: COLORS.ink },
+  tipoBadgeTextActivo: { color: COLORS.white },
 
   servicioTag: {
     flexDirection: 'row', alignItems: 'center', gap: 4,

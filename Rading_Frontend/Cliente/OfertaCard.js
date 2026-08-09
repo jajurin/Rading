@@ -1,8 +1,5 @@
 // OfertaCard.jsx
-// Componente independiente de una oferta. Se importa desde
-// RecibirOfertasScreen.jsx
-
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 
@@ -13,6 +10,7 @@ const COLORS = {
   bg:     '#f4f6fb',
   white:  '#ffffff',
   ink:    '#1a1a2e',
+  red:    '#e23744',
 }
 
 const shadow = (elevation = 6) => ({
@@ -20,7 +18,7 @@ const shadow = (elevation = 6) => ({
   shadowOffset: { width: 0, height: elevation / 1.5 },
   shadowOpacity: 0.16,
   shadowRadius: elevation,
-  elevation, // Android
+  elevation,
 })
 
 function Iniciales({ nombre, size = 48, bg = '#b0b8c8', ring }) {
@@ -54,25 +52,100 @@ function Estrellas({ rating, size = 12 }) {
   )
 }
 
-export default function OfertaCard({ item, esMejor, onAceptar }) {
+// ─── Contador regresivo para subastas ─────────────────────────────────────
+function useCountdown(targetDate) {
+  const [msRestantes, setMsRestantes] = useState(() =>
+    targetDate ? new Date(targetDate).getTime() - Date.now() : null
+  )
+
+  useEffect(() => {
+    if (!targetDate) return
+    const tick = () => setMsRestantes(new Date(targetDate).getTime() - Date.now())
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [targetDate])
+
+  return msRestantes
+}
+
+function formatearRestante(ms) {
+  if (ms <= 0) return 'Cerrando…'
+  const totalSeg = Math.floor(ms / 1000)
+  const h = Math.floor(totalSeg / 3600)
+  const m = Math.floor((totalSeg % 3600) / 60)
+  const s = totalSeg % 60
+  if (h > 0) return `${h}h ${m}m`
+  if (m > 0) return `${m}m ${s}s`
+  return `${s}s`
+}
+
+function CountdownBadge({ expiraEn }) {
+  const msRestantes = useCountdown(expiraEn)
+  if (msRestantes == null) return null
+
+  const cerrada = msRestantes <= 0
+  const urgente = !cerrada && msRestantes <= 15 * 60 * 1000
+
   return (
-    <View style={[styles.card, esMejor && styles.cardMejor]}>
-      {/* Franja superior sutil para dar profundidad */}
+    <View style={[styles.countdownBadge, (urgente || cerrada) && styles.countdownBadgeUrgente]}>
+      <Ionicons name="time-outline" size={12} color={COLORS.white} />
+      <Text style={styles.countdownText}>
+        {cerrada ? 'Cerrando…' : formatearRestante(msRestantes)}
+      </Text>
+    </View>
+  )
+}
+
+export default function OfertaCard({ item, esMejor, onAceptar }) {
+  const esSubasta = !item.fijo
+  const mostrarMejor = esSubasta && esMejor
+
+  return (
+    <View style={[styles.card, mostrarMejor && styles.cardMejor]}>
       <View style={styles.topGlow} pointerEvents="none" />
 
-      {esMejor && (
-        <View style={styles.mejorBadge}>
-          <Ionicons name="trophy" size={12} color={COLORS.ink} />
-          <Text style={styles.mejorBadgeText}>Mejor oferta</Text>
+      {/* Fila de tags: tipo + urgencia a la izq, contador + mejor oferta a la der */}
+      <View style={styles.badgesRow}>
+        <View style={styles.tagsLeft}>
+          <View style={[styles.tipoTag, esSubasta ? styles.tipoTagSubasta : styles.tipoTagFijo]}>
+            <Ionicons
+              name={esSubasta ? 'hammer-outline' : 'pricetag-outline'}
+              size={11}
+              color={esSubasta ? COLORS.white : COLORS.ink}
+            />
+            <Text style={[styles.tipoTagText, !esSubasta && styles.tipoTagTextFijo]}>
+              {esSubasta ? 'Subasta' : 'Precio fijo'}
+            </Text>
+          </View>
+
+          {item.emergencia && (
+            <View style={styles.emergenciaTag}>
+              <Ionicons name="alert-circle" size={11} color={COLORS.white} />
+              <Text style={styles.emergenciaTagText}>Urgente</Text>
+            </View>
+          )}
         </View>
-      )}
+
+        <View style={styles.tagsRight}>
+          {esSubasta && item.subastaTermina && (
+            <CountdownBadge expiraEn={item.subastaTermina} />
+          )}
+          {mostrarMejor && (
+            <View style={styles.mejorBadge}>
+              <Ionicons name="trophy" size={12} color={COLORS.ink} />
+              <Text style={styles.mejorBadgeText}>Mejor oferta</Text>
+            </View>
+          )}
+        </View>
+      </View>
 
       <View style={styles.row}>
         <Iniciales
           nombre={item.nombre}
           size={52}
-          bg={esMejor ? COLORS.yellow : 'rgba(255,255,255,0.18)'}
-          ring={esMejor ? COLORS.white : 'rgba(255,255,255,0.35)'}
+          bg={mostrarMejor ? COLORS.yellow : 'rgba(255,255,255,0.18)'}
+          ring={mostrarMejor ? COLORS.white : 'rgba(255,255,255,0.35)'}
         />
 
         <View style={styles.info}>
@@ -126,23 +199,51 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.05)',
   },
 
-  mejorBadge: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
+  badgesRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: COLORS.yellow,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 12,
+  },
+  tagsLeft:  { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, flexWrap: 'wrap' },
+  tagsRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+
+  tipoTag: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderRadius: 20, paddingHorizontal: 9, paddingVertical: 4,
+  },
+  tipoTagSubasta: { backgroundColor: 'rgba(255,255,255,0.16)' },
+  tipoTagFijo:    { backgroundColor: COLORS.yellow },
+  tipoTagText:     { fontSize: 10.5, fontWeight: '700', color: COLORS.white },
+  tipoTagTextFijo: { color: COLORS.ink },
+
+  emergenciaTag: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: COLORS.red, borderRadius: 20,
+    paddingHorizontal: 9, paddingVertical: 4,
+  },
+  emergenciaTagText: { fontSize: 10.5, fontWeight: '700', color: COLORS.white },
+
+  mejorBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: COLORS.yellow, borderRadius: 20,
+    paddingHorizontal: 10, paddingVertical: 4,
     ...Platform.select({
       ios:     { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
       android: { elevation: 2 },
     }),
   },
   mejorBadgeText: { fontSize: 11, fontWeight: '700', color: COLORS.ink },
+
+  countdownBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: 20,
+    paddingHorizontal: 9, paddingVertical: 4,
+  },
+  countdownBadgeUrgente: { backgroundColor: COLORS.red },
+  countdownText: { fontSize: 10.5, fontWeight: '700', color: COLORS.white },
 
   row:         { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 14 },
   info:        { flex: 1 },

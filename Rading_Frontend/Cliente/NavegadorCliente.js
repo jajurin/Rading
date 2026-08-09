@@ -438,12 +438,13 @@ export default function BottomNavBar({ usuario, pantallaActiva }) {
 
 const styles = StyleSheet.create({
   wrapper: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
+  position: 'absolute',
+  bottom: 0,
+  left: 0,
+  right: 0,
+  alignItems: 'center',
+  backgroundColor: THEME.bar, // 👈 nuevo: la franja del safe area queda blanca, igual que la barra
+},
   container: {
     width: '100%',
     // MÃ¡s margen a los costados para que quede como una cÃ¡psula

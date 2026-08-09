@@ -69,19 +69,31 @@ enviarOferta = async (idTrabajo, idTrabajador, { precio, costoExtraMin = null, c
             throw new Error('Esta solicitud ya no está disponible')
         }
 
-        // ── Precio fijo: se asigna directo, sin pasar por "Oferta" ──
+        // Evita que el mismo trabajador se postule/oferte dos veces mientras
+        // tenga una oferta pendiente activa (aplica a fijo y a subasta).
+        const yaOferto = await client.query(
+            `SELECT id FROM "Oferta"
+             WHERE "idTrabajo" = $1 AND "idTrabajador" = $2 AND "ESTADO_OFERTA" = 'PENDIENTE'`,
+            [idTrabajo, idTrabajador]
+        )
+        if (yaOferto.rows.length > 0) {
+            throw new Error('Ya te postulaste a este trabajo')
+        }
+
+        // ── Precio fijo: el trabajador se POSTULA al precio que ya fijó el
+        // cliente. NO se asigna automático — queda PENDIENTE en "Oferta" y
+        // es el cliente el que elige (vía aceptarOferta), igual que en la
+        // subasta. Puede haber varios trabajadores postulados al mismo
+        // trabajo mientras el cliente no elija a ninguno. ──
         if (ct.fijo) {
-            const asignar = await client.query(
-                `UPDATE "Cliente-Trabajador"
-                 SET "IdTrabajador" = $1, estado = 'EN PROCESO', fecha_iniciado = now()
-                 WHERE id = $2 AND "IdTrabajador" IS NULL AND estado = 'PENDIENTE'
+            const ofertaResult = await client.query(
+                `INSERT INTO "Oferta"
+                    ("idTrabajador", "idTrabajo", precio, "costoExtraMin", "costoExtraMax", mensaje, "ESTADO_OFERTA", fecha_creado)
+                 VALUES ($1, $2, $3, $4, $5, $6, 'PENDIENTE', now())
                  RETURNING *`,
-                [idTrabajador, idTrabajo]
+                [idTrabajador, idTrabajo, ct.precio, costoExtraMin, costoExtraMax, mensaje]
             )
-            if (asignar.rows.length === 0) {
-                throw new Error('Otro trabajador ya tomó esta solicitud')
-            }
-            return { modo: 'directo', trabajo: asignar.rows[0] }
+            return { modo: 'fijo', oferta: ofertaResult.rows[0] }
         }
 
         // ── Subasta: la primera oferta arranca el reloj ──
@@ -97,17 +109,6 @@ enviarOferta = async (idTrabajo, idTrabajador, { precio, costoExtraMin = null, c
             subastaTermina = abrir.rows[0]?.subasta_termina ?? subastaTermina
         } else if (new Date(subastaTermina) <= new Date()) {
             throw new Error('La subasta para esta solicitud ya cerró')
-        }
-
-        // Evita que el mismo trabajador oferte dos veces por el mismo trabajo
-        // mientras tenga una oferta pendiente activa.
-        const yaOferto = await client.query(
-            `SELECT id FROM "Oferta"
-             WHERE "idTrabajo" = $1 AND "idTrabajador" = $2 AND "ESTADO_OFERTA" = 'PENDIENTE'`,
-            [idTrabajo, idTrabajador]
-        )
-        if (yaOferto.rows.length > 0) {
-            throw new Error('Ya enviaste una oferta para este trabajo')
         }
 
         const ofertaResult = await client.query(
