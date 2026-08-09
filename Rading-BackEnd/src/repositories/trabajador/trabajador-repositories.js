@@ -2,7 +2,7 @@ import config from '../../configs/dbconfig.js'
 import usuarioRepository from '../general/usuario-repositories.js'
 import pkg from 'pg'
 const { Client } = pkg
- 
+ const DURACION_SUBASTA_HORAS = 2
 export default class trabajadorRepository {
  #usuarioRepo = new usuarioRepository()
     /**
@@ -51,6 +51,161 @@ export default class trabajadorRepository {
     }
 
     return result?.rows ?? []
+}
+enviarOferta = async (idTrabajo, idTrabajador, { precio, costoExtraMin = null, costoExtraMax = null, mensaje = null }) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+
+        const trabajo = await client.query(
+            `SELECT id, fijo, estado, "IdTrabajador", precio, subasta_termina
+             FROM "Cliente-Trabajador"
+             WHERE id = $1`,
+            [idTrabajo]
+        )
+        const ct = trabajo.rows[0]
+        if (!ct) throw new Error('La solicitud no existe')
+        if (ct.estado !== 'PENDIENTE' || ct.IdTrabajador != null) {
+            throw new Error('Esta solicitud ya no está disponible')
+        }
+
+        // ── Precio fijo: se asigna directo, sin pasar por "Oferta" ──
+        if (ct.fijo) {
+            const asignar = await client.query(
+                `UPDATE "Cliente-Trabajador"
+                 SET "IdTrabajador" = $1, estado = 'EN PROCESO', fecha_iniciado = now()
+                 WHERE id = $2 AND "IdTrabajador" IS NULL AND estado = 'PENDIENTE'
+                 RETURNING *`,
+                [idTrabajador, idTrabajo]
+            )
+            if (asignar.rows.length === 0) {
+                throw new Error('Otro trabajador ya tomó esta solicitud')
+            }
+            return { modo: 'directo', trabajo: asignar.rows[0] }
+        }
+
+        // ── Subasta: la primera oferta arranca el reloj ──
+        let subastaTermina = ct.subasta_termina
+        if (!subastaTermina) {
+            const abrir = await client.query(
+                `UPDATE "Cliente-Trabajador"
+                 SET subasta_termina = now() + ($2 * INTERVAL '1 hour')
+                 WHERE id = $1 AND subasta_termina IS NULL
+                 RETURNING subasta_termina`,
+                [idTrabajo, DURACION_SUBASTA_HORAS]
+            )
+            subastaTermina = abrir.rows[0]?.subasta_termina ?? subastaTermina
+        } else if (new Date(subastaTermina) <= new Date()) {
+            throw new Error('La subasta para esta solicitud ya cerró')
+        }
+
+        // Evita que el mismo trabajador oferte dos veces por el mismo trabajo
+        // mientras tenga una oferta pendiente activa.
+        const yaOferto = await client.query(
+            `SELECT id FROM "Oferta"
+             WHERE "idTrabajo" = $1 AND "idTrabajador" = $2 AND "ESTADO_OFERTA" = 'PENDIENTE'`,
+            [idTrabajo, idTrabajador]
+        )
+        if (yaOferto.rows.length > 0) {
+            throw new Error('Ya enviaste una oferta para este trabajo')
+        }
+
+        const ofertaResult = await client.query(
+            `INSERT INTO "Oferta"
+                ("idTrabajador", "idTrabajo", precio, "costoExtraMin", "costoExtraMax", mensaje, "ESTADO_OFERTA", fecha_creado)
+             VALUES ($1, $2, $3, $4, $5, $6, 'PENDIENTE', now())
+             RETURNING *`,
+            [idTrabajador, idTrabajo, precio, costoExtraMin, costoExtraMax, mensaje]
+        )
+
+        return { modo: 'subasta', oferta: ofertaResult.rows[0], subastaTermina }
+    } catch (err) {
+        console.error('Error en enviarOferta:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
+
+// Cierra toda subasta vencida sin trabajador asignado: elige la oferta
+// de menor precio (empate → la más vieja), asigna el trabajo, y marca
+// el resto de las ofertas como RECHAZADA. Devuelve qué se cerró, para
+// que el service pueda avisarle al cliente por chat.
+cerrarSubastasVencidas = async () => {
+    const client = new Client(config)
+    const resultados = []
+    try {
+        await client.connect()
+
+        const vencidas = await client.query(
+            `SELECT ct.id, ct."IdCliente"
+             FROM "Cliente-Trabajador" ct
+             WHERE ct.fijo = false
+               AND ct.estado = 'PENDIENTE'
+               AND ct."IdTrabajador" IS NULL
+               AND ct.subasta_termina IS NOT NULL
+               AND ct.subasta_termina <= now()`
+        )
+
+        for (const ct of vencidas.rows) {
+            try {
+                await client.query('BEGIN')
+
+                const ganadora = await client.query(
+                    `SELECT o.id, o."idTrabajador", o.precio, t."IdPersona" AS "idUsuarioTrabajador"
+                     FROM "Oferta" o
+                     INNER JOIN "Trabajador" t ON t.id = o."idTrabajador"
+                     WHERE o."idTrabajo" = $1 AND o."ESTADO_OFERTA" = 'PENDIENTE'
+                     ORDER BY o.precio ASC, o.fecha_creado ASC
+                     LIMIT 1`,
+                    [ct.id]
+                )
+
+                if (ganadora.rows.length === 0) {
+                    // Nadie ofertó: reabre el reloj para que pueda recibir
+                    // ofertas de nuevo más adelante.
+                    await client.query(
+                        `UPDATE "Cliente-Trabajador" SET subasta_termina = NULL WHERE id = $1`,
+                        [ct.id]
+                    )
+                    await client.query('COMMIT')
+                    continue
+                }
+
+                const oferta = ganadora.rows[0]
+
+                await client.query(
+                    `UPDATE "Cliente-Trabajador"
+                     SET "IdTrabajador" = $1, precio = $2, estado = 'EN PROCESO', fecha_iniciado = now()
+                     WHERE id = $3`,
+                    [oferta.idTrabajador, oferta.precio, ct.id]
+                )
+                await client.query(
+                    `UPDATE "Oferta" SET "ESTADO_OFERTA" = 'ACEPTADA' WHERE id = $1`,
+                    [oferta.id]
+                )
+                await client.query(
+                    `UPDATE "Oferta" SET "ESTADO_OFERTA" = 'RECHAZADA' WHERE "idTrabajo" = $1 AND id <> $2`,
+                    [ct.id, oferta.id]
+                )
+
+                await client.query('COMMIT')
+                resultados.push({
+                    idTrabajo: ct.id,
+                    idCliente: ct.IdCliente,
+                    idTrabajador: oferta.idTrabajador,
+                    idUsuarioTrabajador: oferta.idUsuarioTrabajador,
+                    precio: oferta.precio,
+                })
+            } catch (err) {
+                await client.query('ROLLBACK')
+                console.error(`Error cerrando subasta ${ct.id}:`, err)
+            }
+        }
+    } finally {
+        await client.end()
+    }
+    return resultados
 }
  mostrarTrabajosActivos = async (idTrabajador) => {
     const client = new Client(config)
@@ -213,6 +368,11 @@ export default class trabajadorRepository {
  * vienen copiados de su perfil (ver confirmarSolicitud en
  * solicitud-services.js), así que el comportamiento por defecto es el
  * mismo de antes.
+ *
+ * 👇 También excluye trabajos donde este trabajador ya tiene una
+ * oferta PENDIENTE (evita que le sigan apareciendo en el feed pedidos
+ * a los que ya ofertó, sin bloquear que OTROS trabajadores sigan
+ * ofertando mientras la subasta esté abierta).
  */
 buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
     const client = new Client(config)
@@ -270,6 +430,12 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
                   FROM "Trabajador_Servicio"
                   WHERE trabajadores_id = $1
               )
+              AND NOT EXISTS (
+                  SELECT 1 FROM "Oferta" o
+                  WHERE o."idTrabajo" = ct.id
+                    AND o."idTrabajador" = $1
+                    AND o."ESTADO_OFERTA" = 'PENDIENTE'
+              )
               AND (
                   6371 * acos(
                       LEAST(1, GREATEST(-1,
@@ -291,6 +457,7 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
         await client.end()
     }
 }
+
    obtenerDetalleOferta = async (idTrabajo, idTrabajador = null) => {
     const client = new Client(config)
     try {
@@ -360,6 +527,7 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
         await client.end()
     }
 }
+
     /**
      * Registra un trabajador: inserta en Usuario y luego en Trabajador.
      * Recibe un objeto con todos los campos del modelo.

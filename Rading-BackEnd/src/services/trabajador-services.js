@@ -14,6 +14,16 @@ export default class TrabajadorServices {
 obtenerDetalleOferta = async (idTrabajo, idTrabajador) => {
     return await this.#repo.obtenerDetalleOferta(idTrabajo, idTrabajador ?? null)
 }
+enviarOferta = async (idTrabajo, idTrabajador, datos) => {
+    if (!idTrabajo || !idTrabajador || datos?.precio == null) {
+        throw new Error('Faltan idTrabajo, idTrabajador o precio')
+    }
+    return await this.#repo.enviarOferta(idTrabajo, idTrabajador, datos)
+}
+
+cerrarSubastasVencidas = async () => {
+    return await this.#repo.cerrarSubastasVencidas()
+}
     registrarTrabajador = async (body) => {
         const trabajador = new Trabajador(
             body.nombre, body.apellido, body.email, body.direccion,

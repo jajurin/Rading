@@ -6,6 +6,9 @@ import {
   ScrollView,
   ActivityIndicator,
   TouchableOpacity,
+  TextInput,
+  Alert,
+  Modal,
   FlatList,
   Dimensions,
   Linking,
@@ -124,6 +127,11 @@ const Icons = {
       <Circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.4" opacity="0.3" />
       <Circle cx="12" cy="12" r="5.6" stroke={color} strokeWidth="1.4" opacity="0.5" />
       <Circle cx="12" cy="12" r="1.7" fill={color} />
+    </Svg>
+  ),
+  Close: ({ color = COLORS.textMuted, size = 18 }) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M6 6L18 18M18 6L6 18" stroke={color} strokeWidth="2" strokeLinecap="round" />
     </Svg>
   ),
 };
@@ -249,28 +257,28 @@ export default function DetalleOfertaTrabajador() {
   const trabajadorId = route.params?.trabajadorId;
 
   const cargarDetalle = useCallback(async () => {
-  setError(null);
-  setLoading(true);
-  try {
-    if (!ofertaId) throw new Error('No se especificó la solicitud a mostrar.');
+    setError(null);
+    setLoading(true);
+    try {
+      if (!ofertaId) throw new Error('No se especificó la solicitud a mostrar.');
 
-    const url = trabajadorId
-      ? `${API_URL}/trabajador/detalleOferta/${ofertaId}?trabajadorId=${trabajadorId}`
-      : `${API_URL}/trabajador/detalleOferta/${ofertaId}`;
+      const url = trabajadorId
+        ? `${API_URL}/trabajador/detalleOferta/${ofertaId}?trabajadorId=${trabajadorId}`
+        : `${API_URL}/trabajador/detalleOferta/${ofertaId}`;
 
-    const resp = await fetch(url);
-    if (!resp.ok) {
-      const body = await resp.json().catch(() => ({}));
-      throw new Error(body?.message || 'No pudimos cargar el detalle de la solicitud.');
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body?.message || 'No pudimos cargar el detalle de la solicitud.');
+      }
+      const data = await resp.json();
+      setOferta(data);
+    } catch (e) {
+      setError(e?.message || 'No pudimos cargar el detalle de la solicitud.');
+    } finally {
+      setLoading(false);
     }
-    const data = await resp.json();
-    setOferta(data);
-  } catch (e) {
-    setError(e?.message || 'No pudimos cargar el detalle de la solicitud.');
-  } finally {
-    setLoading(false);
-  }
-}, [ofertaId, trabajadorId]);
+  }, [ofertaId, trabajadorId]);
 
   useEffect(() => {
     cargarDetalle();
@@ -283,9 +291,100 @@ export default function DetalleOfertaTrabajador() {
     Linking.openURL(url);
   };
 
+  const [mostrarModalOferta, setMostrarModalOferta] = useState(false);
+  const [ofertaPrecio, setOfertaPrecio] = useState('');
+  const [ofertaCostoMin, setOfertaCostoMin] = useState('');
+  const [ofertaCostoMax, setOfertaCostoMax] = useState('');
+  const [ofertaMensaje, setOfertaMensaje] = useState('');
+  const [enviandoOferta, setEnviandoOferta] = useState(false);
+  const [errorEnvioOferta, setErrorEnvioOferta] = useState(null);
+  const [resultadoOferta, setResultadoOferta] = useState(null); // { modo, subastaTermina } al confirmar
+
   const handleEnviarOferta = () => {
-    // TODO: navegar al formulario de oferta cuando exista
-    // navigation.navigate('EnviarOferta', { ofertaId });
+    if (!oferta?.fijo) {
+      // Subasta: abrimos el modal a completar precio/mensaje
+      setOfertaPrecio('');
+      setOfertaCostoMin('');
+      setOfertaCostoMax('');
+      setOfertaMensaje('');
+      setErrorEnvioOferta(null);
+      setMostrarModalOferta(true);
+      return;
+    }
+
+    // Precio fijo: confirmación directa, sin modal
+    Alert.alert(
+      'Tomar este trabajo',
+      `Vas a tomar este trabajo por $${Number(oferta.precio).toLocaleString('es-AR')}. ¿Confirmás?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Confirmar', onPress: confirmarOfertaDirecta },
+      ]
+    );
+  };
+
+  const confirmarOfertaDirecta = async () => {
+    setEnviandoOferta(true);
+    try {
+      const resp = await fetch(`${API_URL}/trabajador/enviarOferta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idTrabajo: oferta.id, idTrabajador: trabajadorId, precio: oferta.precio }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data?.message || 'No se pudo tomar el trabajo.');
+
+      Alert.alert('¡Listo!', 'El trabajo quedó asignado a tu nombre.');
+      navigation.goBack();
+    } catch (e) {
+      Alert.alert('No se pudo', e.message || 'Intentá de nuevo.');
+    } finally {
+      setEnviandoOferta(false);
+    }
+  };
+
+  const confirmarOfertaSubasta = async () => {
+    const precioNum = Number(ofertaPrecio);
+    if (!ofertaPrecio || isNaN(precioNum) || precioNum <= 0) {
+      setErrorEnvioOferta('Ingresá un precio válido.');
+      return;
+    }
+
+    if (ofertaCostoMin && ofertaCostoMax && Number(ofertaCostoMax) < Number(ofertaCostoMin)) {
+      setErrorEnvioOferta('El costo extra máximo no puede ser menor al mínimo.');
+      return;
+    }
+
+    setEnviandoOferta(true);
+    setErrorEnvioOferta(null);
+    try {
+      const resp = await fetch(`${API_URL}/trabajador/enviarOferta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idTrabajo: oferta.id,
+          idTrabajador: trabajadorId,
+          precio: precioNum,
+          costoExtraMin: ofertaCostoMin ? Number(ofertaCostoMin) : null,
+          costoExtraMax: ofertaCostoMax ? Number(ofertaCostoMax) : null,
+          mensaje: ofertaMensaje.trim() || null,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data?.message || 'No se pudo enviar la oferta.');
+
+      setResultadoOferta(data);
+      setMostrarModalOferta(false);
+      setTimeout(() => {
+        Alert.alert('¡Oferta enviada!', 'Te avisaremos si ganás la subasta.', [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
+      }, 350);
+    } catch (e) {
+      setErrorEnvioOferta(e.message || 'No se pudo enviar la oferta.');
+    } finally {
+      setEnviandoOferta(false);
+    }
   };
 
   if (loading) {
@@ -415,6 +514,110 @@ export default function DetalleOfertaTrabajador() {
           <Text style={styles.enviarBtnText}>Enviar oferta</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Modal: ofertar en subasta */}
+      <Modal
+        visible={mostrarModalOferta}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !enviandoOferta && setMostrarModalOferta(false)}
+      >
+        <View style={styles.modalOverlaySubasta}>
+          <TouchableOpacity
+            style={styles.modalBackdropTouchable}
+            activeOpacity={1}
+            onPress={() => !enviandoOferta && setMostrarModalOferta(false)}
+          />
+          <View style={styles.modalCardSubasta}>
+            <View style={styles.modalHeaderSubasta}>
+              <Text style={styles.modalTituloSubasta}>Ofertar por este trabajo</Text>
+              <TouchableOpacity
+                onPress={() => !enviandoOferta && setMostrarModalOferta(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Icons.Close />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubtituloSubasta}>
+              Es una subasta: gana quien ofrezca el precio más bajo antes de que cierre.
+            </Text>
+
+            <Text style={styles.propLabel}>Tu precio</Text>
+            <View style={styles.propInputWrap}>
+              <Text style={styles.propInputPrefix}>$</Text>
+              <TextInput
+                style={styles.propInputSubasta}
+                placeholder="0"
+                placeholderTextColor={COLORS.textFaint}
+                keyboardType="numeric"
+                value={ofertaPrecio}
+                onChangeText={(t) => setOfertaPrecio(t.replace(/[^0-9]/g, ''))}
+              />
+            </View>
+
+            <Text style={styles.propLabel}>Costo extra posible (opcional)</Text>
+            <Text style={styles.propHint}>
+              Si el trabajo puede tener gastos adicionales (materiales, repuestos, etc.), indicá un rango estimado.
+            </Text>
+            <View style={styles.propRangoRow}>
+              <View style={[styles.propInputWrap, { flex: 1 }]}>
+                <Text style={styles.propInputPrefix}>$</Text>
+                <TextInput
+                  style={styles.propInputSubasta}
+                  placeholder="Mínimo"
+                  placeholderTextColor={COLORS.textFaint}
+                  keyboardType="numeric"
+                  value={ofertaCostoMin}
+                  onChangeText={(t) => setOfertaCostoMin(t.replace(/[^0-9]/g, ''))}
+                />
+              </View>
+              <View style={styles.propRangoSeparadorWrap}>
+                <Text style={styles.propRangoSeparador}>—</Text>
+              </View>
+              <View style={[styles.propInputWrap, { flex: 1 }]}>
+                <Text style={styles.propInputPrefix}>$</Text>
+                <TextInput
+                  style={styles.propInputSubasta}
+                  placeholder="Máximo"
+                  placeholderTextColor={COLORS.textFaint}
+                  keyboardType="numeric"
+                  value={ofertaCostoMax}
+                  onChangeText={(t) => setOfertaCostoMax(t.replace(/[^0-9]/g, ''))}
+                />
+              </View>
+            </View>
+
+            <Text style={styles.propLabel}>Nota (opcional)</Text>
+            <TextInput
+              style={[styles.propInputSubasta, styles.propInputMultiline]}
+              placeholder="Ej: incluye materiales..."
+              placeholderTextColor={COLORS.textFaint}
+              multiline
+              value={ofertaMensaje}
+              onChangeText={setOfertaMensaje}
+            />
+
+            {errorEnvioOferta && <Text style={styles.modalErrorTexto}>{errorEnvioOferta}</Text>}
+
+            <TouchableOpacity
+              style={[styles.modalEnviarBtn, enviandoOferta && styles.modalEnviarBtnDisabled]}
+              onPress={confirmarOfertaSubasta}
+              disabled={enviandoOferta}
+              activeOpacity={0.9}
+            >
+              {enviandoOferta ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Icons.Check size={16} />
+                  <Text style={styles.enviarBtnText}>Enviar oferta</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -606,4 +809,117 @@ const styles = StyleSheet.create({
   emptySubtitle: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', lineHeight: 18 },
   retryBtn: { marginTop: 14, backgroundColor: COLORS.blue, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12 },
   retryBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
+
+  // -----------------------------------------------------------------------
+  // Modal: ofertar en subasta
+  // -----------------------------------------------------------------------
+  modalOverlaySubasta: {
+    flex: 1,
+    backgroundColor: 'rgba(15,27,45,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalBackdropTouchable: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modalCardSubasta: {
+    backgroundColor: COLORS.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 22,
+    paddingTop: 20,
+    paddingBottom: 34,
+  },
+  modalHeaderSubasta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalTituloSubasta: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.text,
+  },
+  modalSubtituloSubasta: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    marginTop: 8,
+    marginBottom: 18,
+    lineHeight: 18,
+  },
+  propLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  propInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.4,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: '#FAFBFE',
+  },
+  propInputPrefix: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    marginRight: 4,
+  },
+  propInputSubasta: {
+    flex: 1,
+    borderWidth: 1.4,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 14.5,
+    color: COLORS.text,
+    backgroundColor: '#FAFBFE',
+  },
+  propInputMultiline: {
+    minHeight: 70,
+    textAlignVertical: 'top',
+  },
+  propHint: {
+    fontSize: 11.5,
+    color: COLORS.textFaint,
+    marginTop: -2,
+    marginBottom: 8,
+    lineHeight: 15,
+  },
+  propRangoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  propRangoSeparadorWrap: {
+    paddingHorizontal: 2,
+  },
+  propRangoSeparador: {
+    fontSize: 14,
+    color: COLORS.textFaint,
+    fontWeight: '700',
+  },
+  modalErrorTexto: {
+    color: '#C0392B',
+    fontSize: 12.5,
+    fontWeight: '600',
+    marginTop: 10,
+  },
+  modalEnviarBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.success,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 22,
+  },
+  modalEnviarBtnDisabled: {
+    opacity: 0.6,
+  },
 });

@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // TODO: ajustá el nombre/path exacto de tu archivo con la URL base del
@@ -280,6 +280,16 @@ export default function OfertasCercanasTrabajador() {
   useEffect(() => {
     cargarOfertas();
   }, [cargarOfertas]);
+
+  // Vuelve a pedir la lista cada vez que esta pantalla recupera el foco
+  // (por ejemplo al volver con goBack() desde el detalle luego de ofertar),
+  // así el trabajo recién ofertado deja de aparecer sin tener que
+  // desmontar/remontar toda la pantalla.
+  useFocusEffect(
+    useCallback(() => {
+      cargarOfertas();
+    }, [cargarOfertas])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);

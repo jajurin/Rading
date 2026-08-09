@@ -126,6 +126,18 @@ router.get("/solicitudesNuevas/:id", async (req, res) => {
         res.status(500).json({ message: "Error al obtener solicitudes nuevas", error })
     }
 })
+// POST /trabajador/enviarOferta  { idTrabajo, idTrabajador, precio, costoExtraMin, costoExtraMax, mensaje }
+router.post("/enviarOferta", async (req, res) => {
+    try {
+        const { idTrabajo, idTrabajador, precio, costoExtraMin, costoExtraMax, mensaje } = req.body
+        const resultado = await svc.enviarOferta(idTrabajo, idTrabajador, { precio, costoExtraMin, costoExtraMax, mensaje })
+        res.status(201).json(resultado)
+    } catch (error) {
+        console.error(error)
+        const status = /ya tomó|ya cerró|ya no está disponible|Faltan/.test(error.message) ? 409 : 500
+        res.status(status).json({ message: error.message || "Error al enviar la oferta" })
+    }
+})
 // GET /trabajador/ofertasCercanas/:id?radioKm=5
 router.get("/ofertasCercanas/:id", async (req, res) => {
     if (!idValido(req.params.id)) {
