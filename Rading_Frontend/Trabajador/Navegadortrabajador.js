@@ -125,7 +125,8 @@ const RADIO_BUSQUEDA_KM = 5;
 // completá el campo screen acá y ya queda andando.
 const NAV_ITEMS = [
   { key: 'inicio',   label: 'Inicio',  Icon: Icons.Home,    screen: 'HomeTrabajador' },
-{ key: 'busqueda', label: 'Ofertas', Icon: Icons.Search, screen: 'MisOfertasTrabajador' },  { key: 'fab',      label: null,      Icon: Icons.Radar,   screen: null },
+  { key: 'busqueda', label: 'Ofertas', Icon: Icons.Search, screen: 'MisOfertasTrabajador' },
+  { key: 'fab',      label: null,      Icon: Icons.Radar,   screen: null },
   { key: 'chats',    label: 'Chats',   Icon: Icons.Chat,    screen: 'PreviaChatTrabajador' },
   { key: 'perfil',   label: 'Perfil',  Icon: Icons.Profile, screen: null }, // TODO: crear PerfilTrabajador
 ];
@@ -133,7 +134,7 @@ const NAV_ITEMS = [
 const FAB_INDEX = NAV_ITEMS.findIndex((i) => i.key === 'fab');
 const FAB_RING_SIZE = 60;
 
-function NavTabItem({ item, isActive, onPress }) {
+function NavTabItem({ item, isActive, onPress, mostrarBadge }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(isActive ? 1 : 0)).current;
 
@@ -180,7 +181,10 @@ function NavTabItem({ item, isActive, onPress }) {
       activeOpacity={1}
     >
       <Animated.View style={[styles.tabContent, { transform: [{ scale: scaleAnim }] }]}>
-        <item.Icon color={isActive ? THEME.active : THEME.textInactive} size={21} />
+        <View style={{ position: 'relative' }}>
+          <item.Icon color={isActive ? THEME.active : THEME.textInactive} size={21} />
+          {mostrarBadge && <View style={styles.badgeDot} />}
+        </View>
 
         <Animated.Text
           style={[
@@ -309,12 +313,11 @@ function FabButton({ onPress, isActive, transitPulseKey }) {
  *   renderizando ('inicio' | 'busqueda' | 'fab' | 'chats' | 'perfil') para
  *   que se marque el tab correcto como activo. Si no lo pasás, arranca en 'inicio'.
  * - onRadarPress: opcional. Función que se dispara al tocar el botón
- *   central en vez de la navegación por default. Útil si querés, por
- *   ejemplo, abrir un overlay/loader de "buscando ofertas..." en la misma
- *   pantalla sin navegar. Si no la pasás, navega a BuscadorTrabajador
- *   mandando { modoRadar: true, radioKm: RADIO_BUSQUEDA_KM }.
+ *   central en vez de la navegación por default.
+ * - tieneChatsSinLeer: opcional. Si es true, muestra un puntito rojo
+ *   sobre el ícono de "Chats" para avisar que hay mensajes sin leer.
  */
-export default function BottomNavBarTrabajador({ usuario, pantallaActiva, onRadarPress }) {
+export default function BottomNavBarTrabajador({ usuario, pantallaActiva, onRadarPress, tieneChatsSinLeer }) {
   const [activeTab, setActiveTab] = useState(pantallaActiva || 'inicio');
   const [rowWidth, setRowWidth] = useState(0);
   const [fabTransitPulse, setFabTransitPulse] = useState(0);
@@ -464,6 +467,7 @@ export default function BottomNavBarTrabajador({ usuario, pantallaActiva, onRada
                   item={item}
                   isActive={activeTab === item.key}
                   onPress={() => irA(item)}
+                  mostrarBadge={item.key === 'chats' && !!tieneChatsSinLeer}
                 />
               )
             )}
@@ -542,6 +546,17 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 10,
     letterSpacing: 0.3,
+  },
+  badgeDot: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#E53935',
+    borderWidth: 1.5,
+    borderColor: '#fff',
   },
 
   // ---- Botón central (radar), en línea con los demás, misma altura ----

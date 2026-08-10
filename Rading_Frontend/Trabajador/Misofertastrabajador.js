@@ -15,7 +15,7 @@ import {
 import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
+import BottomNavBarTrabajador from './Navegadortrabajador';
 // TODO: ajustá el path si tu estructura de carpetas es distinta.
 import API_URL from '../configS';
 
@@ -606,13 +606,15 @@ export default function MisOfertasTrabajador() {
         />
       )}
 
-      <EditarOfertaModal
+ <EditarOfertaModal
         visible={!!ofertaEditando}
         oferta={ofertaEditando}
         trabajadorId={trabajadorId}
         onClose={() => setOfertaEditando(null)}
         onGuardado={handleGuardadoEdicion}
       />
+
+      <BottomNavBarTrabajador usuario={usuario} pantallaActiva="busqueda" />
     </View>
   );
 }

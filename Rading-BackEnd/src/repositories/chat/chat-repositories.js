@@ -162,6 +162,8 @@ export default class chatRepository {
                 m.contenido,
                 m.tipo,
                 m.created_at,
+                m.edited_at,
+                m.duracion_audio,
                 m.precio_ofertado,
                 m.nota_oferta,
                 ct.precio,
@@ -186,7 +188,28 @@ export default class chatRepository {
         await client.end()
     }
 }
+// ── Agregar dentro de la clase, junto a los demás métodos ──
 
+    // Edita el contenido de un mensaje de tipo TEXTO, solo si pertenece a userId.
+    editarMensaje = async (mensajeId, contenido, userId) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+            const sql = `
+                UPDATE "Mensajes"
+                SET contenido = $1, edited_at = now()
+                WHERE id = $2 AND enviador_id = $3 AND tipo = 'TEXTO' AND deleted_at IS NULL
+                RETURNING id, chat_id, enviador_id, contenido, tipo, created_at, edited_at
+            `
+            const result = await client.query(sql, [contenido, mensajeId, userId])
+            return result.rows[0] ?? null
+        } catch (err) {
+            console.error('Error en editarMensaje:', err)
+            throw err
+        } finally {
+            await client.end()
+        }
+    }
     // Si tipo === 'PROPUESTA', primero crea la fila del trabajo en
     // "Cliente-Trabajador" (con precio y servicio) y vincula el mensaje
     // a esa fila via trabajo_id. OJO: en "Cliente-Trabajador" las columnas
@@ -275,7 +298,7 @@ export default class chatRepository {
     }
 }
     // Guarda un mensaje de tipo ARCHIVO (imagen o documento ya subido a disco/storage)
-    enviarMensajeArchivo = async ({ chatId, idCliente, idTrabajador, enviadorId, archivoUrl, archivoNombre, tipo }) => {
+ enviarMensajeArchivo = async ({ chatId, idCliente, idTrabajador, enviadorId, archivoUrl, archivoNombre, tipo, duracionAudio = null }) => {
         const client = new Client(config)
         try {
             await client.connect()
@@ -301,14 +324,12 @@ export default class chatRepository {
                 }
             }
 
-            // Guardamos la URL del archivo como contenido; archivoNombre queda
-            // en un aparte por si después querés mostrarlo distinto en el chat
             const sql = `
-                INSERT INTO "Mensajes" (chat_id, enviador_id, contenido, tipo)
-                VALUES ($1, $2, $3, $4)
-                RETURNING id, chat_id, enviador_id, contenido, tipo, created_at
+                INSERT INTO "Mensajes" (chat_id, enviador_id, contenido, tipo, duracion_audio)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id, chat_id, enviador_id, contenido, tipo, created_at, duracion_audio
             `
-            const result = await client.query(sql, [finalChatId, enviadorId, archivoUrl, tipo])
+            const result = await client.query(sql, [finalChatId, enviadorId, archivoUrl, tipo, duracionAudio])
 
             await client.query(
                 `UPDATE "Chat" SET last_message_at = now(), updated_at = now() WHERE id = $1`,

@@ -109,7 +109,8 @@ const THEME = {
 // y el indicador se transforma en un anillo circular a su alrededor.
 const NAV_ITEMS = [
   { key: 'inicio',   label: 'Inicio',  Icon: Icons.Home,    screen: 'HomeCliente' },
-{ key: 'busqueda', label: 'Solicitudes', Icon: Icons.Search, screen: 'MisSolicitudesCliente' },  { key: 'fab',      label: null,      Icon: Icons.Plus,    screen: 'CrearSolicitud' },
+  { key: 'busqueda', label: 'Solicitudes', Icon: Icons.Search, screen: 'MisSolicitudesCliente' },
+  { key: 'fab',      label: null,      Icon: Icons.Plus,    screen: 'CrearSolicitud' },
   { key: 'chats',    label: 'Chats',   Icon: Icons.Chat,    screen: 'ChatsCliente' },
   { key: 'perfil',   label: 'Perfil',  Icon: Icons.Profile, screen: 'PerfilScreen' },
 ];
@@ -117,7 +118,7 @@ const NAV_ITEMS = [
 const FAB_INDEX = NAV_ITEMS.findIndex((i) => i.key === 'fab');
 const FAB_RING_SIZE = 60;
 
-function NavTabItem({ item, isActive, onPress }) {
+function NavTabItem({ item, isActive, onPress, mostrarBadge }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(isActive ? 1 : 0)).current;
 
@@ -164,7 +165,10 @@ function NavTabItem({ item, isActive, onPress }) {
       activeOpacity={1}
     >
       <Animated.View style={[styles.tabContent, { transform: [{ scale: scaleAnim }] }]}>
-        <item.Icon color={isActive ? THEME.active : THEME.textInactive} size={21} />
+        <View style={{ position: 'relative' }}>
+          <item.Icon color={isActive ? THEME.active : THEME.textInactive} size={21} />
+          {mostrarBadge && <View style={styles.badgeDot} />}
+        </View>
 
         <Animated.Text
           style={[
@@ -293,8 +297,10 @@ function FabButton({ onPress, isActive, transitPulseKey }) {
  * - pantallaActiva: opcional. Le decÃ­s desde quÃ© pantalla la estÃ¡s
  *   renderizando ('inicio' | 'busqueda' | 'fab' | 'chats' | 'perfil') para
  *   que se marque el tab correcto como activo. Si no lo pasÃ¡s, arranca en 'inicio'.
+ * - tieneChatsSinLeer: opcional. Si es true, muestra un puntito rojo
+ *   sobre el ícono de "Chats" para avisar que hay mensajes sin leer.
  */
-export default function BottomNavBar({ usuario, pantallaActiva }) {
+export default function BottomNavBar({ usuario, pantallaActiva, tieneChatsSinLeer }) {
   const [activeTab, setActiveTab] = useState(pantallaActiva || 'inicio');
   const [rowWidth, setRowWidth] = useState(0);
   const [fabTransitPulse, setFabTransitPulse] = useState(0);
@@ -425,6 +431,7 @@ export default function BottomNavBar({ usuario, pantallaActiva }) {
                   item={item}
                   isActive={activeTab === item.key}
                   onPress={() => irA(item)}
+                  mostrarBadge={item.key === 'chats' && !!tieneChatsSinLeer}
                 />
               )
             )}
@@ -437,18 +444,15 @@ export default function BottomNavBar({ usuario, pantallaActiva }) {
 
 const styles = StyleSheet.create({
   wrapper: {
-  position: 'absolute',
-  bottom: 0,
-  left: 0,
-  right: 0,
-  alignItems: 'center',
-  backgroundColor: THEME.bar, // 👈 nuevo: la franja del safe area queda blanca, igual que la barra
-},
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    backgroundColor: THEME.bar, // 👈 nuevo: la franja del safe area queda blanca, igual que la barra
+  },
   container: {
     width: '100%',
-    // MÃ¡s margen a los costados para que quede como una cÃ¡psula
-    // flotante chica y centrada, bien separada de los bordes del celu
-    // (estilo WhatsApp), en vez de una barra que casi toca los bordes.
     paddingHorizontal: 5,
     alignItems: 'center',
   },
@@ -473,8 +477,6 @@ const styles = StyleSheet.create({
   },
   slidingPill: {
     position: 'absolute',
-    // Ocupa el carril completo: en Inicio/Perfil llega hasta el borde
-    // de la barra, y en los del medio hasta la mitad de cada vecino.
     top: 0,
     left: 0,
     height: 52,
@@ -509,6 +511,17 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 10,
     letterSpacing: 0.3,
+  },
+  badgeDot: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#E53935',
+    borderWidth: 1.5,
+    borderColor: '#fff',
   },
 
   // ---- BotÃ³n central (+), en lÃ­nea con los demÃ¡s, misma altura ----

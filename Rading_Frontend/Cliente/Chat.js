@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import Header from '../Header';
 import BottomNavBar from './NavegadorCliente';
 import API_URL from '../configS';
+import { Video, ResizeMode, Audio } from 'expo-av';
 import {
   View,
   Text,
@@ -16,6 +17,7 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
+  Keyboard,
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,8 +36,6 @@ const ACCENT_BORDER = '#D9822B';
 const DANGER     = '#C0392B';
 const API_BASE_URL = API_URL;
 
-// Valor especial para "el cliente prefiere escribir su propia respuesta"
-// en vez de tocar uno de los chips que devuelve la IA.
 const OPCION_OTRO = '__otro__';
 
 const obtenerIniciales = (nombre = '') =>
@@ -46,20 +46,29 @@ const obtenerIniciales = (nombre = '') =>
     .map((p) => p[0]?.toUpperCase())
     .join('');
 
-// Detecta si el contenido de un mensaje de tipo archivo es una imagen,
-// mirando la extensión de la URL. Si tu backend ya distingue el tipo
-// de archivo (por ej. un campo 'mimetype' o un 'tipo' propio en la
-// tabla Mensajes), lo ideal es reemplazar esto por ese dato real.
 const esUrlImagen = (url = '') =>
   /\.(jpg|jpeg|png|gif|webp|jfif|bmp|heic|heif)(\?.*)?$/i.test(url);
 
-// Convierte una fila de "Mensajes" del backend a la forma que usa el render
 const mapearMensaje = (m, idUsuario) => {
   let tipo = 'texto';
-  if (m.tipo === 'PROPUESTA') {
-    tipo = 'servicio';
-  } else if (esUrlImagen(m.contenido)) {
-    tipo = 'imagen';
+  switch (m.tipo) {
+    case 'PROPUESTA':
+      tipo = 'servicio';
+      break;
+    case 'IMAGEN':
+      tipo = 'imagen';
+      break;
+    case 'VIDEO':
+      tipo = 'video';
+      break;
+    case 'AUDIO':
+      tipo = 'audio';
+      break;
+    case 'ARCHIVO':
+      tipo = 'archivo';
+      break;
+    default:
+      tipo = esUrlImagen(m.contenido) ? 'imagen' : 'texto';
   }
 
   return {
@@ -67,15 +76,139 @@ const mapearMensaje = (m, idUsuario) => {
     tipo,
     autor: m.enviador_id === idUsuario ? 'cliente' : 'trabajador',
     texto: m.contenido,
-    servicio: m.servicio_nombre, // si tu backend lo manda para mensajes tipo PROPUESTA
+    servicio: m.servicio_nombre,
     precio: m.precio,
     estado: m.ESTADO_OFERTA,
     leido: !!m.leido,
+    editado: !!m.edited_at,
+    duracionAudio: m.duracion_audio,
     hora: m.created_at
       ? new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
       : '',
   };
 };
+
+// ── Burbuja de audio (componente separado: necesita su propio estado/hooks) ──
+function formatearTiempoAudio(ms) {
+  const total = Math.floor((ms || 0) / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function BurbujaAudio({ item, esCliente, contacto }) {
+  const [reproduciendo, setReproduciendo] = useState(false);
+  const [cargando, setCargando] = useState(false);
+  const [posicion, setPosicion] = useState(0);
+  const [duracion, setDuracion] = useState((item.duracionAudio || 0) * 1000);
+  const sonidoRef = useRef(null);
+useEffect(() => {
+  // Precalentamos permiso + modo de audio para que la primera grabación
+  // no falle por timing con el sistema operativo.
+  (async () => {
+    try {
+      await Audio.requestPermissionsAsync();
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+    } catch (e) {
+      // Silencioso: si falla acá, se reintenta solo cuando el usuario grabe
+    }
+  })();
+}, []);
+  const onStatusUpdate = useCallback((status) => {
+    if (!status.isLoaded) return;
+    setPosicion(status.positionMillis || 0);
+    if (status.durationMillis) setDuracion(status.durationMillis);
+    setReproduciendo(status.isPlaying);
+    if (status.didJustFinish) {
+      setReproduciendo(false);
+      setPosicion(0);
+    }
+  }, []);
+
+  const toggleReproducir = async () => {
+    try {
+      if (!sonidoRef.current) {
+        setCargando(true);
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+        });
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: item.texto },
+          { progressUpdateIntervalMillis: 200 },
+          onStatusUpdate
+        );
+        sonidoRef.current = sound;
+        setCargando(false);
+        await sound.playAsync();
+        return;
+      }
+
+      const status = await sonidoRef.current.getStatusAsync();
+      if (!status.isLoaded) return;
+
+      if (status.isPlaying) {
+        await sonidoRef.current.pauseAsync();
+      } else {
+        if (status.didJustFinish || status.positionMillis >= (status.durationMillis || 0)) {
+          await sonidoRef.current.setPositionAsync(0);
+        }
+        await sonidoRef.current.playAsync();
+      }
+    } catch (err) {
+      console.error('Error al reproducir audio:', err);
+      setCargando(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => { sonidoRef.current?.unloadAsync(); };
+  }, []);
+
+  const progresoPct = duracion > 0 ? Math.min(100, (posicion / duracion) * 100) : 0;
+
+  return (
+    <View style={[styles.filaMensaje, { justifyContent: esCliente ? 'flex-end' : 'flex-start' }]}>
+      {!esCliente && <AvatarMini contacto={contacto} />}
+      <View
+        style={[
+          styles.burbujaAudio,
+          esCliente ? styles.burbujaCliente : styles.burbujaTrabajador,
+          item.fallo && styles.burbujaFallo,
+        ]}
+      >
+        <TouchableOpacity onPress={toggleReproducir} style={styles.audioPlayBtn} disabled={cargando}>
+          {cargando ? (
+            <ActivityIndicator size="small" color={esCliente ? '#fff' : BLUE_DARK} />
+          ) : (
+            <Ionicons name={reproduciendo ? 'pause' : 'play'} size={18} color={esCliente ? '#fff' : BLUE_DARK} />
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.audioOndaWrap}>
+          <View
+            style={[
+              styles.audioOndaFondo,
+              { backgroundColor: esCliente ? 'rgba(255,255,255,0.35)' : 'rgba(21,101,216,0.18)' },
+            ]}
+          />
+          <View
+            style={[
+              styles.audioOndaProgreso,
+              { width: `${progresoPct}%`, backgroundColor: esCliente ? '#fff' : BLUE_DARK },
+            ]}
+          />
+        </View>
+
+        <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>
+          {formatearTiempoAudio(reproduciendo || posicion > 0 ? posicion : duracion)}
+        </Text>
+
+        {item.fallo && <Ionicons name="alert-circle" size={13} color="#FFD1D1" style={{ marginLeft: 4 }} />}
+      </View>
+    </View>
+  );
+}
 
 export default function ChatCliente({ route, navigation }) {
   const insets = useSafeAreaInsets();
@@ -85,20 +218,27 @@ export default function ChatCliente({ route, navigation }) {
   const listRef = useRef(null);
   const [mensajes, setMensajes] = useState([]);
   const [texto, setTexto] = useState('');
-  // chatId puede venir de PreviaChat.js (charla ya existente) o ser null
-  // si se entró desde "Chatear con el trabajador" por primera vez.
-  // En ese caso, el chat recién se crea en el backend cuando se manda
-  // el primer mensaje (ver enviarMensaje más abajo).
+  const [alturaHeader, setAlturaHeader] = useState(0);
+  const [tecladoVisible, setTecladoVisible] = useState(false);
+
   const [chatId, setChatId] = useState(route?.params?.chatId ?? null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [enviando, setEnviando] = useState(false);
 
-  // Menú de opciones del botón "+" (adjuntar archivo / enviar propuesta)
   const [mostrarOpciones, setMostrarOpciones] = useState(false);
-
-  // Estado de subida de archivos (foto / cámara / documento)
   const [subiendoArchivo, setSubiendoArchivo] = useState(false);
+
+  // ── Grabación de audio ──────────────────────────────────────────────
+  const [grabando, setGrabando] = useState(false);
+  const [grabacion, setGrabacion] = useState(null);
+  const [segundosGrabando, setSegundosGrabando] = useState(0);
+  const intervaloGrabacionRef = useRef(null);
+
+  // ── Edición de mensajes ──────────────────────────────────────────────
+  const [editandoMensaje, setEditandoMensaje] = useState(null);
+  const [textoEdicion, setTextoEdicion] = useState('');
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
 
   // ── Overlay de "Enviar propuesta" ──────────────────────────────────
   const [mostrarPropuesta, setMostrarPropuesta] = useState(false);
@@ -108,9 +248,6 @@ export default function ChatCliente({ route, navigation }) {
   const [enviandoPropuesta, setEnviandoPropuesta] = useState(false);
   const [errorPropuesta, setErrorPropuesta] = useState(null);
 
-  // ── IA dentro del overlay de propuesta (misma lógica que CrearSolicitud,
-  // pero sin plazo/emergencia: acá alcanza con analizar el problema del
-  // cliente para sugerir servicio + precio) ─────────────────────────────
   const [propAnalizando, setPropAnalizando] = useState(false);
   const [propErrorIA, setPropErrorIA] = useState(null);
   const [propAnalisis, setPropAnalisis] = useState(null);
@@ -136,64 +273,77 @@ export default function ChatCliente({ route, navigation }) {
   }, [propPreguntasActuales, propRespuestas, propTextosOtro]);
 
   const propServicioElegido = propAnalisis?.servicios?.find((s) => s.id === propServicioId);
-useEffect(() => {
-  let cancelado = false;
 
-  // Ya vino con chatId resuelto (ej: desde PreviaChat) → no hace falta buscar
-  if (route?.params?.chatId) return;
+  useEffect(() => {
+    const mostrar = Keyboard.addListener('keyboardDidShow', () => setTecladoVisible(true));
+    const ocultar = Keyboard.addListener('keyboardDidHide', () => setTecladoVisible(false));
+    return () => {
+      mostrar.remove();
+      ocultar.remove();
+    };
+  }, []);
 
-  if (!usuario?.idCliente || !contacto?.idTrabajador) {
-    setCargando(false);
-    return;
-  }
-
-  const resolverChatExistente = async () => {
-    try {
-      const res = await fetch(
-        `${API_BASE_URL}/chat/buscar/${usuario.idCliente}/${contacto.idTrabajador}`
-      );
-      if (!res.ok) throw new Error('No se pudo resolver el chat existente');
-      const data = await res.json();
-      if (cancelado) return;
-
-      if (data.chatId) {
-        setChatId(data.chatId); // dispara cargarMensajes vía su propio efecto (más abajo)
-      } else {
-        setCargando(false); // confirmado: es un chat nuevo, sin mensajes todavía
-      }
-    } catch (err) {
-      console.error('Error al resolver chat existente:', err);
-      if (!cancelado) setCargando(false);
+  useEffect(() => {
+    let cancelado = false;
+    if (route?.params?.chatId) return;
+    if (!usuario?.idCliente || !contacto?.idTrabajador) {
+      setCargando(false);
+      return;
     }
-  };
 
-  resolverChatExistente();
-  return () => { cancelado = true; };
-}, [route?.params?.chatId, usuario?.idCliente, contacto?.idTrabajador]);
+    const resolverChatExistente = async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/chat/buscar/${usuario.idCliente}/${contacto.idTrabajador}`
+        );
+        if (!res.ok) throw new Error('No se pudo resolver el chat existente');
+        const data = await res.json();
+        if (cancelado) return;
 
-// 👇 Ya no toca `cargando` cuando chatId es null — evita la carrera.
-// Solo se ejecuta de verdad cuando chatId ya está resuelto.
-const cargarMensajes = useCallback(async () => {
-  if (!chatId) return;
-  try {
-    setCargando(true);
-    setError(null);
-    const res = await fetch(`${API_BASE_URL}/chat/${chatId}/mensajes`);
-    if (!res.ok) throw new Error('Respuesta no OK del servidor');
-    const data = await res.json();
-    setMensajes(data.map((m) => mapearMensaje(m, usuario?.id)));
-  } catch (err) {
-    console.error('Error al cargar mensajes:', err);
-    setError('No pudimos cargar la conversación');
-  } finally {
-    setCargando(false);
-  }
-}, [chatId, usuario]);
+        if (data.chatId) {
+          setChatId(data.chatId);
+        } else {
+          setCargando(false);
+        }
+      } catch (err) {
+        console.error('Error al resolver chat existente:', err);
+        if (!cancelado) setCargando(false);
+      }
+    };
 
-// Carga los mensajes apenas tengamos un chatId real (por parámetro o resuelto arriba)
-useEffect(() => {
-  if (chatId) cargarMensajes();
-}, [chatId, cargarMensajes]);
+    resolverChatExistente();
+    return () => { cancelado = true; };
+  }, [route?.params?.chatId, usuario?.idCliente, contacto?.idTrabajador]);
+
+  useEffect(() => {
+    if (!chatId || !usuario?.id) return;
+    fetch(`${API_BASE_URL}/chat/${chatId}/leido`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: usuario.id }),
+    }).catch((err) => console.error('Error al marcar como leído:', err));
+  }, [chatId, usuario]);
+
+  const cargarMensajes = useCallback(async () => {
+    if (!chatId) return;
+    try {
+      setCargando(true);
+      setError(null);
+      const res = await fetch(`${API_BASE_URL}/chat/${chatId}/mensajes`);
+      if (!res.ok) throw new Error('Respuesta no OK del servidor');
+      const data = await res.json();
+      setMensajes(data.map((m) => mapearMensaje(m, usuario?.id)));
+    } catch (err) {
+      console.error('Error al cargar mensajes:', err);
+      setError('No pudimos cargar la conversación');
+    } finally {
+      setCargando(false);
+    }
+  }, [chatId, usuario]);
+
+  useEffect(() => {
+    if (chatId) cargarMensajes();
+  }, [chatId, cargarMensajes]);
 
   useEffect(() => {
     setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 50);
@@ -208,7 +358,6 @@ useEffect(() => {
       return;
     }
 
-    // Mostramos el mensaje al toque (optimista) y lo reconciliamos con la respuesta real
     const idTemp = `local-${Date.now()}`;
     const nuevoLocal = {
       id: idTemp,
@@ -224,9 +373,6 @@ useEffect(() => {
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 60);
 
     try {
-      // Si ya existe el chat, mandamos chatId.
-      // Si es la primera vez, mandamos idCliente + idTrabajador y el
-      // backend crea el Chat y el mensaje en la misma operación.
       const body = chatId
         ? { chatId, enviadorId: usuario.id, contenido, tipo: 'TEXTO' }
         : {
@@ -245,9 +391,6 @@ useEffect(() => {
       if (!res.ok) throw new Error('Respuesta no OK del servidor');
       const guardado = await res.json();
 
-      // Si este era el primer mensaje, el backend acaba de crear el chat:
-      // guardamos su id para que los próximos mensajes y el "marcar leído"
-      // ya lo usen directamente.
       if (!chatId && guardado.chat_id) {
         setChatId(guardado.chat_id);
       }
@@ -261,7 +404,6 @@ useEffect(() => {
       );
     } catch (err) {
       console.error('Error al enviar mensaje:', err);
-      // Marcamos el mensaje local como fallido en vez de sacarlo de la lista
       setMensajes((prev) =>
         prev.map((m) => (m.id === idTemp ? { ...m, fallo: true } : m))
       );
@@ -270,10 +412,51 @@ useEffect(() => {
     }
   };
 
-  // --- Opciones del botón "+" ---
+  // --- Edición de mensajes de texto propios ---
+  const abrirEdicion = (item) => {
+    if (item.tipo !== 'texto' || item.autor !== 'cliente' || item.fallo) return;
+    setEditandoMensaje(item);
+    setTextoEdicion(item.texto);
+  };
 
-  // Sube el archivo (imagen o documento) al backend y lo agrega al chat
-  const subirYEnviarArchivo = async (archivo) => {
+  const guardarEdicion = async () => {
+    if (!editandoMensaje || !textoEdicion.trim() || guardandoEdicion) return;
+    const nuevoTexto = textoEdicion.trim();
+    setGuardandoEdicion(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/chat/mensaje/${editandoMensaje.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contenido: nuevoTexto, userId: usuario.id }),
+      });
+      if (!res.ok) throw new Error('No se pudo editar el mensaje');
+      setMensajes((prev) =>
+        prev.map((m) => (m.id === editandoMensaje.id ? { ...m, texto: nuevoTexto, editado: true } : m))
+      );
+      setEditandoMensaje(null);
+    } catch (err) {
+      console.error('Error al editar mensaje:', err);
+      setError('No se pudo editar el mensaje.');
+    } finally {
+      setGuardandoEdicion(false);
+    }
+  };
+const fetchConReintento = async (url, opciones, intentos = 2) => {
+  let ultimoError;
+  for (let i = 0; i < intentos; i++) {
+    try {
+      return await fetch(url, opciones);
+    } catch (err) {
+      ultimoError = err;
+      if (i < intentos - 1) {
+        await new Promise((r) => setTimeout(r, 700));
+      }
+    }
+  }
+  throw ultimoError;
+};
+  // --- Subida de archivos (fotos, docs, audios) ---
+  const subirYEnviarArchivo = async (archivo, extraForm = {}) => {
     if (!usuario?.id || (!chatId && (!usuario?.idCliente || !contacto?.idTrabajador))) {
       setError('Faltan datos para enviar el archivo.');
       return;
@@ -303,15 +486,14 @@ useEffect(() => {
         formData.append('idTrabajador', contacto.idTrabajador);
       }
       formData.append('enviadorId', usuario.id);
+      Object.entries(extraForm).forEach(([k, v]) => formData.append(k, String(v)));
 
-      const res = await fetch(`${API_BASE_URL}/chat/mensaje/archivo`, {
-        method: 'POST',
-        body: formData,
-      });
+      const res = await fetchConReintento(`${API_BASE_URL}/chat/mensaje/archivo`, {
+  method: 'POST',
+  body: formData,
+});
 
       const textoBruto = await res.text();
-      console.log('STATUS:', res.status, 'BODY:', textoBruto);
-
       if (!res.ok) throw new Error(`Servidor respondió ${res.status}: ${textoBruto}`);
       const guardado = JSON.parse(textoBruto);
 
@@ -329,7 +511,6 @@ useEffect(() => {
     }
   };
 
-  // Pide permiso de galería (fotos/videos) y abre el picker
   const elegirDeGaleria = async () => {
     setMostrarOpciones(false);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -346,7 +527,6 @@ useEffect(() => {
     }
   };
 
-  // Pide permiso de cámara y saca una foto
   const tomarFoto = async () => {
     setMostrarOpciones(false);
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -360,7 +540,6 @@ useEffect(() => {
     }
   };
 
-  // Documento (pdf, doc, etc.)
   const elegirDocumento = async () => {
     setMostrarOpciones(false);
     const resultado = await DocumentPicker.getDocumentAsync({
@@ -372,14 +551,70 @@ useEffect(() => {
     if (archivo) subirYEnviarArchivo(archivo);
   };
 
-  // Abre el overlay de propuesta (precarga el servicio del contacto si existe)
+  // --- Grabación de audio ---
+  const iniciarGrabacion = async () => {
+    try {
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        setError('Necesitamos permiso para usar el micrófono.');
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      setGrabacion(recording);
+      setGrabando(true);
+      setSegundosGrabando(0);
+      intervaloGrabacionRef.current = setInterval(() => {
+        setSegundosGrabando((s) => s + 1);
+      }, 1000);
+    } catch (err) {
+      console.error('Error al iniciar grabación:', err);
+      setError('No se pudo iniciar la grabación.');
+    }
+  };
+
+  const cancelarGrabacion = async () => {
+    clearInterval(intervaloGrabacionRef.current);
+    if (grabacion) {
+      try { await grabacion.stopAndUnloadAsync(); } catch {}
+    }
+    setGrabacion(null);
+    setGrabando(false);
+    setSegundosGrabando(0);
+  };
+
+  const detenerYEnviarGrabacion = async () => {
+    clearInterval(intervaloGrabacionRef.current);
+    if (!grabacion) return;
+    try {
+      await grabacion.stopAndUnloadAsync();
+      const uri = grabacion.getURI();
+      const duracion = segundosGrabando;
+      setGrabacion(null);
+      setGrabando(false);
+      setSegundosGrabando(0);
+
+      if (duracion < 1) return; // grabación muy corta, la ignoramos
+
+      await subirYEnviarArchivo(
+        { uri, name: `audio_${Date.now()}.m4a`, mimeType: 'audio/m4a' },
+        { duracionAudio: duracion }
+      );
+    } catch (err) {
+      console.error('Error al detener grabación:', err);
+      setError('No se pudo enviar el audio.');
+    }
+  };
+
+  // --- Propuesta ---
   const handleAgregarPropuesta = () => {
     setMostrarOpciones(false);
     setPropServicio(contacto?.servicio || '');
     setPropPrecio('');
     setPropDescripcion('');
     setErrorPropuesta(null);
-    // reseteo del flujo de IA
     setPropAnalizando(false);
     setPropErrorIA(null);
     setPropAnalisis(null);
@@ -396,8 +631,6 @@ useEffect(() => {
     setMostrarPropuesta(false);
   };
 
-  // Si el cliente edita la descripción a mano después de haber analizado,
-  // invalidamos el análisis anterior (igual que en CrearSolicitud).
   const invalidarAnalisisPropPrevio = useCallback(() => {
     if (propAnalisis) {
       setPropAnalisis(null);
@@ -416,9 +649,6 @@ useEffect(() => {
     setPropTextosOtro((prev) => ({ ...prev, [idx]: txt }));
   }, []);
 
-  // Llama a /solicitud/analizar. Si viene con descripcionExtra, es porque
-  // se está respondiendo una tanda de aclaraciones: se suma sobre el
-  // contexto acumulado (propContexto) en vez de arrancar de cero.
   const analizarPropuestaConIA = useCallback(async (descripcionExtra = '') => {
     if (!propDescripcionValida && !descripcionExtra) return;
     setPropAnalizando(true);
@@ -466,8 +696,6 @@ useEffect(() => {
     analizarPropuestaConIA(txt);
   }, [propPreguntasActuales, propRespuestas, propTextosOtro, analizarPropuestaConIA]);
 
-  // Envía la propuesta como un mensaje tipo PROPUESTA (misma lógica
-  // optimista que enviarMensaje, pero con los datos de servicio/precio).
   const enviarPropuesta = async () => {
     if (enviandoPropuesta || propAnalizando || propNecesitaAclaracion) return;
 
@@ -552,7 +780,6 @@ useEffect(() => {
         )
       );
 
-      // Éxito: cerramos el overlay y limpiamos todo (incluido el estado de IA)
       setMostrarPropuesta(false);
       setPropServicio('');
       setPropPrecio('');
@@ -573,10 +800,14 @@ useEffect(() => {
     }
   };
 
+  // ── Render ────────────────────────────────────────────────────────
+
   const renderBurbujaTexto = (item) => {
     const esCliente = item.autor === 'cliente';
     return (
-      <View
+      <TouchableOpacity
+        activeOpacity={esCliente && !item.fallo ? 0.85 : 1}
+        onLongPress={() => abrirEdicion(item)}
         style={[
           styles.filaMensaje,
           { justifyContent: esCliente ? 'flex-end' : 'flex-start' },
@@ -595,7 +826,7 @@ useEffect(() => {
           </Text>
           <View style={styles.filaHora}>
             <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>
-              {item.fallo ? 'No se pudo enviar' : item.hora}
+              {item.fallo ? 'No se pudo enviar' : item.hora}{item.editado ? ' · Editado' : ''}
             </Text>
             {esCliente && !item.fallo && (
               <Ionicons
@@ -615,12 +846,52 @@ useEffect(() => {
             )}
           </View>
         </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderBurbujaVideo = (item) => {
+    const esCliente = item.autor === 'cliente';
+    return (
+      <View
+        style={[
+          styles.filaMensaje,
+          { justifyContent: esCliente ? 'flex-end' : 'flex-start' },
+        ]}
+      >
+        {!esCliente && <AvatarMini contacto={contacto} />}
+        <View
+          style={[
+            styles.burbujaImagenWrap,
+            esCliente ? styles.burbujaImagenCliente : styles.burbujaImagenTrabajador,
+            item.fallo && styles.burbujaFallo,
+          ]}
+        >
+          <Video
+            source={{ uri: item.texto }}
+            style={styles.imagenChat}
+            resizeMode={ResizeMode.COVER}
+            useNativeControls
+            isLooping={false}
+          />
+          <View style={[styles.filaHora, { paddingHorizontal: 4, paddingTop: 4 }]}>
+            <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>
+              {item.fallo ? 'No se pudo enviar' : item.hora}
+            </Text>
+            {esCliente && !item.fallo && (
+              <Ionicons
+                name={item.leido ? 'checkmark-done' : 'checkmark'}
+                size={14}
+                color={esCliente ? 'rgba(255,255,255,0.85)' : '#A0AEC0'}
+                style={{ marginLeft: 4 }}
+              />
+            )}
+          </View>
+        </View>
       </View>
     );
   };
 
-  // Mensajes tipo archivo cuya URL apunta a una imagen: se muestran
-  // como una foto en la burbuja en vez del link crudo.
   const renderBurbujaImagen = (item) => {
     const esCliente = item.autor === 'cliente';
     return (
@@ -717,6 +988,8 @@ useEffect(() => {
   const renderItem = ({ item }) => {
     if (item.tipo === 'servicio') return renderTarjetaServicio(item);
     if (item.tipo === 'imagen') return renderBurbujaImagen(item);
+    if (item.tipo === 'video') return renderBurbujaVideo(item);
+    if (item.tipo === 'audio') return <BurbujaAudio item={item} esCliente={item.autor === 'cliente'} contacto={contacto} />;
     return renderBurbujaTexto(item);
   };
 
@@ -725,8 +998,10 @@ useEffect(() => {
       <StatusBar barStyle="light-content" backgroundColor={STATUS_BAR} />
       <Header />
 
-      {/* Sub-header del chat: contacto activo */}
-      <View style={styles.chatHeader}>
+      <View
+        style={styles.chatHeader}
+        onLayout={(e) => setAlturaHeader(e.nativeEvent.layout.height)}
+      >
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -761,8 +1036,8 @@ useEffect(() => {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={90}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? alturaHeader : 0}
       >
         {cargando ? (
           <View style={styles.estadoWrap}>
@@ -779,6 +1054,11 @@ useEffect(() => {
           </View>
         ) : (
           <FlatList
+            onContentSizeChange={() => {
+              if (mensajes.length > 0) {
+                listRef.current?.scrollToEnd({ animated: false });
+              }
+            }}
             ref={listRef}
             data={mensajes}
             keyExtractor={(item) => item.id}
@@ -802,45 +1082,78 @@ useEffect(() => {
         )}
 
         {/* Barra de entrada */}
-        <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-          <TouchableOpacity
-            style={styles.adjuntarButton}
-            activeOpacity={0.8}
-            onPress={() => setMostrarOpciones((v) => !v)}
-            disabled={subiendoArchivo}
-          >
-            {subiendoArchivo ? (
-              <ActivityIndicator size="small" color={BLUE_DARK} />
-            ) : (
-              <Ionicons name={mostrarOpciones ? 'close' : 'add'} size={22} color={BLUE_DARK} />
-            )}
-          </TouchableOpacity>
+        <View
+          style={[
+            styles.inputBar,
+            { paddingBottom: tecladoVisible ? 10 : Math.max(insets.bottom, 10) },
+          ]}
+        >
+          {grabando ? (
+            <View style={styles.grabandoRow}>
+              <View style={styles.grabandoDot} />
+              <Text style={styles.grabandoTexto}>
+                {Math.floor(segundosGrabando / 60)}:{String(segundosGrabando % 60).padStart(2, '0')}
+              </Text>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity onPress={cancelarGrabacion} style={styles.grabandoCancelar}>
+                <Ionicons name="trash" size={18} color={DANGER} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={detenerYEnviarGrabacion} style={styles.grabandoEnviar}>
+                <Ionicons name="send" size={17} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.adjuntarButton}
+                activeOpacity={0.8}
+                onPress={() => setMostrarOpciones((v) => !v)}
+                disabled={subiendoArchivo}
+              >
+                {subiendoArchivo ? (
+                  <ActivityIndicator size="small" color={BLUE_DARK} />
+                ) : (
+                  <Ionicons name={mostrarOpciones ? 'close' : 'add'} size={22} color={BLUE_DARK} />
+                )}
+              </TouchableOpacity>
 
-          <TextInput
-            style={styles.textInput}
-            placeholder="Escribí un mensaje..."
-            placeholderTextColor="#9AA5B5"
-            value={texto}
-            onChangeText={setTexto}
-            multiline
-          />
+              <TextInput
+                style={styles.textInput}
+                placeholder="Escribí un mensaje..."
+                placeholderTextColor="#9AA5B5"
+                value={texto}
+                onChangeText={setTexto}
+                multiline
+              />
 
-          <TouchableOpacity
-            style={[styles.enviarButton, !texto.trim() && styles.enviarButtonDisabled]}
-            onPress={enviarMensaje}
-            activeOpacity={0.85}
-            disabled={!texto.trim() || enviando}
-          >
-            {enviando ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons name="send" size={17} color="#fff" />
-            )}
-          </TouchableOpacity>
+              {texto.trim() ? (
+                <TouchableOpacity
+                  style={styles.enviarButton}
+                  onPress={enviarMensaje}
+                  activeOpacity={0.85}
+                  disabled={enviando}
+                >
+                  {enviando ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="send" size={17} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.enviarButton}
+                  onPress={iniciarGrabacion}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="mic" size={19} color="#fff" />
+                </TouchableOpacity>
+              )}
+            </>
+          )}
         </View>
       </KeyboardAvoidingView>
 
-      {/* Menú de opciones del botón "+" (foto / cámara / documento / propuesta) */}
+      {/* Menú de opciones del botón "+" */}
       <Modal
         visible={mostrarOpciones}
         transparent
@@ -922,7 +1235,55 @@ useEffect(() => {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* ── Overlay: armar y enviar una propuesta (ahora con IA) ────────── */}
+      {/* Modal: editar mensaje */}
+      <Modal
+        visible={!!editandoMensaje}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !guardandoEdicion && setEditandoMensaje(null)}
+      >
+        <KeyboardAvoidingView
+          style={styles.overlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <TouchableWithoutFeedback onPress={() => !guardandoEdicion && setEditandoMensaje(null)}>
+            <View style={StyleSheet.absoluteFillObject} />
+          </TouchableWithoutFeedback>
+          <View style={styles.editarCard}>
+            <Text style={styles.propTitulo}>Editar mensaje</Text>
+            <TextInput
+              style={[styles.propInput, { marginTop: 12, minHeight: 60, textAlignVertical: 'top' }]}
+              value={textoEdicion}
+              onChangeText={setTextoEdicion}
+              multiline
+              autoFocus
+              editable={!guardandoEdicion}
+            />
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+              <TouchableOpacity
+                onPress={() => setEditandoMensaje(null)}
+                style={[styles.reintentarBtn, { flex: 1, backgroundColor: '#E9EDF5' }]}
+                disabled={guardandoEdicion}
+              >
+                <Text style={[styles.reintentarBtnText, { color: '#5B6478' }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={guardarEdicion}
+                style={[styles.reintentarBtn, { flex: 1, backgroundColor: BLUE_DARK }]}
+                disabled={guardandoEdicion || !textoEdicion.trim()}
+              >
+                {guardandoEdicion ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.reintentarBtnText}>Guardar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Overlay: armar y enviar una propuesta (con IA) */}
       <Modal
         visible={mostrarPropuesta}
         transparent
@@ -976,7 +1337,6 @@ useEffect(() => {
                 editable={!enviandoPropuesta && !propAnalizando}
               />
 
-              {/* Botón de IA: analiza el texto y sugiere servicio + precio */}
               <TouchableOpacity
                 style={[
                   styles.propIaBtn,
@@ -1003,7 +1363,6 @@ useEffect(() => {
               )}
               {propErrorIA && <Text style={styles.propError}>{propErrorIA}</Text>}
 
-              {/* ── Preguntas de aclaración de la IA ── */}
               {propAnalisis && propNecesitaAclaracion && propPreguntasActuales.length > 0 && (
                 <View style={styles.propAclaracionBox}>
                   <View style={styles.propAclaracionHeaderRow}>
@@ -1072,7 +1431,6 @@ useEffect(() => {
                 </View>
               )}
 
-              {/* ── Selector de servicio sugerido (solo si la IA ya definió opciones) ── */}
               {propAnalisis && !propNecesitaAclaracion && propAnalisis.servicios?.length > 0 && (
                 <>
                   <View style={styles.propBadgeIa}>
@@ -1125,7 +1483,6 @@ useEffect(() => {
                 </>
               )}
 
-              {/* Servicio manual, por si no se usó la IA o se quiere ajustar */}
               {!(propAnalisis && !propNecesitaAclaracion && propAnalisis.servicios?.length > 0) && (
                 <>
                   <Text style={styles.propLabel}>Servicio</Text>
@@ -1154,7 +1511,6 @@ useEffect(() => {
                 />
               </View>
 
-              {/* Vista previa, para que se vea igual a como llega al chat */}
               {(propServicio.trim() || propPrecio) && !propNecesitaAclaracion && (
                 <View style={styles.propPreviewWrap}>
                   <Text style={styles.propPreviewLabel}>Vista previa</Text>
@@ -1220,7 +1576,6 @@ function AvatarMini({ contacto }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
 
-  // ---- Sub-header de chat ----
   chatHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1264,7 +1619,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
   },
 
-  // ---- Estados (loading / error / vacío) ----
   estadoWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
   estadoTexto: { marginTop: 10, color: '#8A94A6', fontSize: 13, textAlign: 'center' },
   reintentarBtn: {
@@ -1273,10 +1627,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 18,
     paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   reintentarBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 
-  // ---- Lista de mensajes ----
   listaContent: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 18, flexGrow: 1 },
   diaDividerWrap: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   diaDividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(21,101,216,0.12)' },
@@ -1329,7 +1684,6 @@ const styles = StyleSheet.create({
   horaClienteTexto: { color: 'rgba(255,255,255,0.75)', fontSize: 10 },
   horaTrabajadorTexto: { color: '#A0AEC0', fontSize: 10, marginTop: 6 },
 
-  // ---- Burbuja de imagen (foto adjunta en el chat) ----
   burbujaImagenWrap: {
     maxWidth: '65%',
     borderRadius: 18,
@@ -1361,6 +1715,25 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: '#E8ECF3',
   },
+
+  // ---- Burbuja de audio ----
+  burbujaAudio: {
+    maxWidth: '74%',
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  audioPlayBtn: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+audioOndaWrap: { flex: 1, height: 24, justifyContent: 'center', position: 'relative' },
+audioOndaFondo: { position: 'absolute', left: 0, right: 0, height: 3, borderRadius: 2 },
+audioOndaProgreso: { position: 'absolute', left: 0, height: 3, borderRadius: 2 },
 
   // ---- Tarjeta de servicio (presupuesto) ----
   tarjetaServicio: {
@@ -1435,6 +1808,33 @@ const styles = StyleSheet.create({
   },
   enviarButtonDisabled: { backgroundColor: '#B9C6DB', shadowOpacity: 0 },
 
+  // ---- Grabación de audio ----
+  grabandoRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: BG,
+    borderRadius: 19,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    gap: 10,
+  },
+  grabandoDot: {
+    width: 10, height: 10, borderRadius: 5,
+    backgroundColor: DANGER,
+  },
+  grabandoTexto: { color: '#1A202C', fontWeight: '700', fontSize: 14 },
+  grabandoCancelar: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: 'rgba(192,57,43,0.10)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  grabandoEnviar: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: BLUE,
+    justifyContent: 'center', alignItems: 'center',
+  },
+
   // ---- Menú de opciones (archivo / propuesta) ----
   overlay: {
     flex: 1,
@@ -1467,6 +1867,16 @@ const styles = StyleSheet.create({
   opcionTitulo: { color: '#1A202C', fontSize: 14, fontWeight: '700' },
   opcionSubtitulo: { color: '#8A94A6', fontSize: 11.5, marginTop: 1 },
   opcionDivider: { height: 1, backgroundColor: 'rgba(21,101,216,0.08)', marginLeft: 14 + 38 + 12 },
+
+  // ---- Modal: editar mensaje ----
+  editarCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    marginHorizontal: 24,
+    alignSelf: 'center',
+    width: '86%',
+  },
 
   // ---- Overlay: crear/enviar propuesta ----
   propOverlay: { flex: 1, justifyContent: 'flex-end' },
@@ -1581,7 +1991,6 @@ const styles = StyleSheet.create({
   propEnviarBtnDisabled: { backgroundColor: '#B9C6DB', shadowOpacity: 0, elevation: 0 },
   propEnviarBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
 
-  // ---- IA dentro del overlay de propuesta ----
   propIaBtn: {
     flexDirection: 'row',
     marginTop: 12,

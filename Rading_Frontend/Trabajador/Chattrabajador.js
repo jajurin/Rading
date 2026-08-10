@@ -1,26 +1,17 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import Header from '../Header';
 import API_URL from '../configS';
+import { Video, ResizeMode } from 'expo-av';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  FlatList,
-  Image,
-  StatusBar,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-  Modal,
+  View, Text, StyleSheet, TouchableOpacity, TouchableWithoutFeedback,
+  FlatList, Image, StatusBar, TextInput, KeyboardAvoidingView, Platform,
+  ActivityIndicator, Modal, Keyboard, // 👈 agregar
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-
+import { Audio } from 'expo-av';
 const BLUE       = '#1565D8';
 const BLUE_DARK  = '#0d47a8';
 const BLUE_LIGHT = '#3b7ff0';
@@ -47,37 +38,246 @@ const esUrlImagen = (url = '') =>
 // del chat), y "trabajador" es el usuario logueado (el trabajador).
 const mapearMensaje = (m, idUsuario) => {
   let tipo = 'texto';
-  if (m.tipo === 'PROPUESTA') {
-    tipo = 'propuestaCliente'; // propuesta que mandó el cliente (solo lectura acá)
-  } else if (m.tipo === 'OFERTA_TRABAJADOR') {
-    tipo = 'oferta';
-  } else if (esUrlImagen(m.contenido)) {
-    tipo = 'imagen';
+  switch (m.tipo) {
+    case 'PROPUESTA':
+      tipo = 'propuestaCliente';
+      break;
+      case 'AUDIO':          // 👈 agregar
+  tipo = 'audio';       // 👈 agregar
+  break;  
+    case 'OFERTA_TRABAJADOR':
+      tipo = 'oferta';
+      break;
+    case 'IMAGEN':
+      tipo = 'imagen';
+      break;
+    case 'VIDEO':
+      tipo = 'video';
+      break;
+    case 'ARCHIVO':
+      tipo = 'archivo';
+      break;
+    default:
+      // TEXTO u otros casos viejos: fallback por extensión
+      tipo = esUrlImagen(m.contenido) ? 'imagen' : 'texto';
   }
 
   return {
-    id: String(m.id),
-    tipo,
-    autor: m.enviador_id === idUsuario ? 'trabajador' : 'cliente',
-    texto: m.contenido,
-    servicio: m.servicio_nombre,
-    precio: m.precio,
-    precioOfertado: m.precio_ofertado,
-    notaOferta: m.nota_oferta,
-    estado: m.ESTADO_OFERTA,
-    leido: !!m.leido,
-    hora: m.created_at
-      ? new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
-      : '',
-  };
+  id: String(m.id),
+  tipo,
+  autor: m.enviador_id === idUsuario ? 'trabajador' : 'cliente',
+  texto: m.contenido,
+  servicio: m.servicio_nombre,
+  precio: m.precio,
+  precioOfertado: m.precio_ofertado,
+  notaOferta: m.nota_oferta,
+  estado: m.ESTADO_OFERTA,
+  leido: !!m.leido,
+  duracionAudio: m.duracion_audio,   // 👈 agregar
+  hora: m.created_at
+    ? new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+    : '',
 };
+};
+function formatearTiempoAudio(ms) {
+  const total = Math.floor((ms || 0) / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
+function BurbujaAudio({ item, esTrabajador, contacto }) {
+  const [reproduciendo, setReproduciendo] = useState(false);
+  const [cargando, setCargando] = useState(false);
+  const [posicion, setPosicion] = useState(0);
+  const [duracion, setDuracion] = useState((item.duracionAudio || 0) * 1000);
+  const sonidoRef = useRef(null);
+useEffect(() => {
+  // Precalentamos permiso + modo de audio para que la primera grabación
+  // no falle por timing con el sistema operativo.
+  (async () => {
+    try {
+      await Audio.requestPermissionsAsync();
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+    } catch (e) {
+      // Silencioso: si falla acá, se reintenta solo cuando el usuario grabe
+    }
+  })();
+}, []);
+  const onStatusUpdate = useCallback((status) => {
+    if (!status.isLoaded) return;
+    setPosicion(status.positionMillis || 0);
+    if (status.durationMillis) setDuracion(status.durationMillis);
+    setReproduciendo(status.isPlaying);
+    if (status.didJustFinish) {
+      setReproduciendo(false);
+      setPosicion(0);
+    }
+  }, []);
+
+  const toggleReproducir = async () => {
+    try {
+      if (!sonidoRef.current) {
+        setCargando(true);
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+        });
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: item.texto },
+          { progressUpdateIntervalMillis: 200 },
+          onStatusUpdate
+        );
+        sonidoRef.current = sound;
+        setCargando(false);
+        await sound.playAsync();
+        return;
+      }
+
+      const status = await sonidoRef.current.getStatusAsync();
+      if (!status.isLoaded) return;
+
+      if (status.isPlaying) {
+        await sonidoRef.current.pauseAsync();
+      } else {
+        if (status.didJustFinish || status.positionMillis >= (status.durationMillis || 0)) {
+          await sonidoRef.current.setPositionAsync(0);
+        }
+        await sonidoRef.current.playAsync();
+      }
+    } catch (err) {
+      console.error('Error al reproducir audio:', err);
+      setCargando(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => { sonidoRef.current?.unloadAsync(); };
+  }, []);
+
+  const progresoPct = duracion > 0 ? Math.min(100, (posicion / duracion) * 100) : 0;
+
+  return (
+    <View style={[styles.filaMensaje, { justifyContent: esTrabajador ? 'flex-end' : 'flex-start' }]}>
+      {!esTrabajador && <AvatarMini contacto={contacto} />}
+      <View
+        style={[
+          styles.burbujaAudio,
+          esTrabajador ? styles.burbujaTrabajadorMio : styles.burbujaCliente,
+          item.fallo && styles.burbujaFallo,
+        ]}
+      >
+        <TouchableOpacity onPress={toggleReproducir} style={styles.audioPlayBtn} disabled={cargando}>
+          {cargando ? (
+            <ActivityIndicator size="small" color={esTrabajador ? '#fff' : BLUE_DARK} />
+          ) : (
+            <Ionicons name={reproduciendo ? 'pause' : 'play'} size={18} color={esTrabajador ? '#fff' : BLUE_DARK} />
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.audioOndaWrap}>
+          <View
+            style={[
+              styles.audioOndaFondo,
+              { backgroundColor: esTrabajador ? 'rgba(255,255,255,0.35)' : 'rgba(21,101,216,0.18)' },
+            ]}
+          />
+          <View
+            style={[
+              styles.audioOndaProgreso,
+              { width: `${progresoPct}%`, backgroundColor: esTrabajador ? '#fff' : BLUE_DARK },
+            ]}
+          />
+        </View>
+
+        <Text style={esTrabajador ? styles.horaTrabajadorMioTexto : styles.horaClienteTexto}>
+          {formatearTiempoAudio(reproduciendo || posicion > 0 ? posicion : duracion)}
+        </Text>
+
+        {item.fallo && <Ionicons name="alert-circle" size={13} color="#FFD1D1" style={{ marginLeft: 4 }} />}
+      </View>
+    </View>
+  );
+}
 export default function ChatTrabajador({ route, navigation }) {
   const insets = useSafeAreaInsets();
   // contacto acá es el CLIENTE con el que el trabajador está hablando.
   const contacto = route?.params?.contacto;
   const usuario = route?.params?.usuario;
+const [grabando, setGrabando] = useState(false);
+const [grabacion, setGrabacion] = useState(null);
+const [segundosGrabando, setSegundosGrabando] = useState(0);
+const intervaloGrabacionRef = useRef(null);
 
+const iniciarGrabacion = async () => {
+  try {
+    const { status } = await Audio.requestPermissionsAsync();
+    if (status !== 'granted') {
+      setError('Necesitamos permiso para usar el micrófono.');
+      return;
+    }
+    await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+    const { recording } = await Audio.Recording.createAsync(
+      Audio.RecordingOptionsPresets.HIGH_QUALITY
+    );
+    setGrabacion(recording);
+    setGrabando(true);
+    setSegundosGrabando(0);
+    intervaloGrabacionRef.current = setInterval(() => {
+      setSegundosGrabando((s) => s + 1);
+    }, 1000);
+  } catch (err) {
+    console.error('Error al iniciar grabación:', err);
+    setError('No se pudo iniciar la grabación.');
+  }
+};
+
+const cancelarGrabacion = async () => {
+  clearInterval(intervaloGrabacionRef.current);
+  if (grabacion) {
+    try { await grabacion.stopAndUnloadAsync(); } catch {}
+  }
+  setGrabacion(null);
+  setGrabando(false);
+  setSegundosGrabando(0);
+};
+const fetchConReintento = async (url, opciones, intentos = 2) => {
+  let ultimoError;
+  for (let i = 0; i < intentos; i++) {
+    try {
+      return await fetch(url, opciones);
+    } catch (err) {
+      ultimoError = err;
+      if (i < intentos - 1) {
+        await new Promise((r) => setTimeout(r, 700));
+      }
+    }
+  }
+  throw ultimoError;
+};
+const detenerYEnviarGrabacion = async () => {
+  clearInterval(intervaloGrabacionRef.current);
+  if (!grabacion) return;
+  try {
+    await grabacion.stopAndUnloadAsync();
+    const uri = grabacion.getURI();
+    const duracion = segundosGrabando;
+    setGrabacion(null);
+    setGrabando(false);
+    setSegundosGrabando(0);
+
+    // Reusa subirYEnviarArchivo, pasándole un objeto "archivo" compatible
+    if (duracion < 1) return; // grabación muy corta, la ignoramos
+
+await subirYEnviarArchivo(
+  { uri, name: `audio_${Date.now()}.m4a`, mimeType: 'audio/m4a' },
+  { duracionAudio: duracion }
+);
+  } catch (err) {
+    console.error('Error al detener grabación:', err);
+    setError('No se pudo enviar el audio.');
+  }
+};
   const listRef = useRef(null);
   const [mensajes, setMensajes] = useState([]);
   const [texto, setTexto] = useState('');
@@ -95,7 +295,17 @@ export default function ChatTrabajador({ route, navigation }) {
   const [ofertaNota, setOfertaNota] = useState('');
   const [enviandoOferta, setEnviandoOferta] = useState(false);
   const [errorOferta, setErrorOferta] = useState(null);
+const [alturaHeader, setAlturaHeader] = useState(0);
+const [tecladoVisible, setTecladoVisible] = useState(false);
 
+useEffect(() => {
+  const mostrar = Keyboard.addListener('keyboardDidShow', () => setTecladoVisible(true));
+  const ocultar = Keyboard.addListener('keyboardDidHide', () => setTecladoVisible(false));
+  return () => {
+    mostrar.remove();
+    ocultar.remove();
+  };
+}, []);
   const cargarMensajes = useCallback(async () => {
     if (!chatId) {
       setCargando(false);
@@ -197,7 +407,7 @@ export default function ChatTrabajador({ route, navigation }) {
 
   // --- Opciones del botón "+" ---
 
-  const subirYEnviarArchivo = async (archivo) => {
+  const subirYEnviarArchivo = async (archivo, extraForm = {}) => {
     if (!usuario?.id || (!chatId && (!usuario?.idTrabajador || !contacto?.idCliente))) {
       setError('Faltan datos para enviar el archivo.');
       return;
@@ -226,12 +436,12 @@ export default function ChatTrabajador({ route, navigation }) {
         formData.append('idCliente', contacto.idCliente);
         formData.append('idTrabajador', usuario.idTrabajador);
       }
-      formData.append('enviadorId', usuario.id);
-
-      const res = await fetch(`${API_BASE_URL}/chat/mensaje/archivo`, {
-        method: 'POST',
-        body: formData,
-      });
+     formData.append('enviadorId', usuario.id);
+Object.entries(extraForm).forEach(([k, v]) => formData.append(k, String(v))); // 👈 agregar
+    const res = await fetchConReintento(`${API_BASE_URL}/chat/mensaje/archivo`, {
+  method: 'POST',
+  body: formData,
+});
 
       const textoBruto = await res.text();
       if (!res.ok) throw new Error(`Servidor respondió ${res.status}: ${textoBruto}`);
@@ -433,7 +643,50 @@ export default function ChatTrabajador({ route, navigation }) {
       </View>
     );
   };
-
+const renderBurbujaVideo = (item) => {
+  const esTrabajador = item.autor === 'trabajador';
+  return (
+    <View
+      style={[
+        styles.filaMensaje,
+        { justifyContent: esTrabajador ? 'flex-end' : 'flex-start' },
+      ]}
+    >
+      {!esTrabajador && <AvatarMini contacto={contacto} />}
+      <View
+        style={[
+          styles.burbujaImagenWrap,
+          esTrabajador ? styles.burbujaImagenTrabajadorMio : styles.burbujaImagenCliente,
+          item.fallo && styles.burbujaFallo,
+        ]}
+      >
+        <Video
+          source={{ uri: item.texto }}
+          style={styles.imagenChat}
+          resizeMode={ResizeMode.COVER}
+          useNativeControls
+          isLooping={false}
+        />
+        <View style={[styles.filaHora, { paddingHorizontal: 4, paddingTop: 4 }]}>
+          <Text style={esTrabajador ? styles.horaTrabajadorMioTexto : styles.horaClienteTexto}>
+            {item.fallo ? 'No se pudo enviar' : item.hora}
+          </Text>
+          {esTrabajador && !item.fallo && (
+            <Ionicons
+              name={item.leido ? 'checkmark-done' : 'checkmark'}
+              size={14}
+              color="rgba(255,255,255,0.85)"
+              style={{ marginLeft: 4 }}
+            />
+          )}
+          {item.fallo && (
+            <Ionicons name="alert-circle" size={13} color="#FFD1D1" style={{ marginLeft: 4 }} />
+          )}
+        </View>
+      </View>
+    </View>
+  );
+};
   const renderBurbujaImagen = (item) => {
     const esTrabajador = item.autor === 'trabajador';
     return (
@@ -546,18 +799,23 @@ export default function ChatTrabajador({ route, navigation }) {
   };
 
   const renderItem = ({ item }) => {
-    if (item.tipo === 'oferta') return renderTarjetaOferta(item);
-    if (item.tipo === 'propuestaCliente') return renderTarjetaPropuestaCliente(item);
-    if (item.tipo === 'imagen') return renderBurbujaImagen(item);
-    return renderBurbujaTexto(item);
-  };
+  if (item.tipo === 'oferta') return renderTarjetaOferta(item);
+  if (item.tipo === 'propuestaCliente') return renderTarjetaPropuestaCliente(item);
+  if (item.tipo === 'imagen') return renderBurbujaImagen(item);
+  if (item.tipo === 'video') return renderBurbujaVideo(item);
+  if (item.tipo === 'audio') return <BurbujaAudio item={item} esTrabajador={item.autor === 'trabajador'} contacto={contacto} />; // 👈 agregar
+  return renderBurbujaTexto(item);
+};
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor={STATUS_BAR} />
       <Header />
 
-      <View style={styles.chatHeader}>
+      <View
+  style={styles.chatHeader}
+  onLayout={(e) => setAlturaHeader(e.nativeEvent.layout.height)}
+>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -590,10 +848,10 @@ export default function ChatTrabajador({ route, navigation }) {
       </View>
 
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={90}
-      >
+  style={{ flex: 1 }}
+  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+  keyboardVerticalOffset={Platform.OS === 'ios' ? alturaHeader : 0}
+>
         {cargando ? (
           <View style={styles.estadoWrap}>
             <ActivityIndicator size="large" color={BLUE} />
@@ -609,6 +867,11 @@ export default function ChatTrabajador({ route, navigation }) {
           </View>
         ) : (
           <FlatList
+          onContentSizeChange={() => {
+  if (mensajes.length > 0) {
+    listRef.current?.scrollToEnd({ animated: false });
+  }
+}}
             ref={listRef}
             data={mensajes}
             keyExtractor={(item) => item.id}
@@ -631,42 +894,75 @@ export default function ChatTrabajador({ route, navigation }) {
           />
         )}
 
-        <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-          <TouchableOpacity
-            style={styles.adjuntarButton}
-            activeOpacity={0.8}
-            onPress={() => setMostrarOpciones((v) => !v)}
-            disabled={subiendoArchivo}
-          >
-            {subiendoArchivo ? (
-              <ActivityIndicator size="small" color={BLUE_DARK} />
-            ) : (
-              <Ionicons name={mostrarOpciones ? 'close' : 'add'} size={22} color={BLUE_DARK} />
-            )}
-          </TouchableOpacity>
+<View
+  style={[
+    styles.inputBar,
+    { paddingBottom: tecladoVisible ? 10 : Math.max(insets.bottom, 10) },
+  ]}
+>
+  {grabando ? (
+    <View style={styles.grabandoRow}>
+      <View style={styles.grabandoDot} />
+      <Text style={styles.grabandoTexto}>
+        {Math.floor(segundosGrabando / 60)}:{String(segundosGrabando % 60).padStart(2, '0')}
+      </Text>
+      <View style={{ flex: 1 }} />
+      <TouchableOpacity onPress={cancelarGrabacion} style={styles.grabandoCancelar}>
+        <Ionicons name="trash" size={18} color={DANGER} />
+      </TouchableOpacity>
+      <TouchableOpacity onPress={detenerYEnviarGrabacion} style={styles.grabandoEnviar}>
+        <Ionicons name="send" size={17} color="#fff" />
+      </TouchableOpacity>
+    </View>
+  ) : (
+    <>
+      <TouchableOpacity
+        style={styles.adjuntarButton}
+        activeOpacity={0.8}
+        onPress={() => setMostrarOpciones((v) => !v)}
+        disabled={subiendoArchivo}
+      >
+        {subiendoArchivo ? (
+          <ActivityIndicator size="small" color={BLUE_DARK} />
+        ) : (
+          <Ionicons name={mostrarOpciones ? 'close' : 'add'} size={22} color={BLUE_DARK} />
+        )}
+      </TouchableOpacity>
 
-          <TextInput
-            style={styles.textInput}
-            placeholder="Escribí un mensaje..."
-            placeholderTextColor="#9AA5B5"
-            value={texto}
-            onChangeText={setTexto}
-            multiline
-          />
+      <TextInput
+        style={styles.textInput}
+        placeholder="Escribí un mensaje..."
+        placeholderTextColor="#9AA5B5"
+        value={texto}
+        onChangeText={setTexto}
+        multiline
+      />
 
-          <TouchableOpacity
-            style={[styles.enviarButton, !texto.trim() && styles.enviarButtonDisabled]}
-            onPress={enviarMensaje}
-            activeOpacity={0.85}
-            disabled={!texto.trim() || enviando}
-          >
-            {enviando ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons name="send" size={17} color="#fff" />
-            )}
-          </TouchableOpacity>
-        </View>
+      {texto.trim() ? (
+        <TouchableOpacity
+          style={styles.enviarButton}
+          onPress={enviarMensaje}
+          activeOpacity={0.85}
+          disabled={enviando}
+        >
+          {enviando ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="send" size={17} color="#fff" />
+          )}
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={styles.enviarButton}
+          onPress={iniciarGrabacion}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="mic" size={19} color="#fff" />
+        </TouchableOpacity>
+      )}
+    </>
+  )}
+</View>
       </KeyboardAvoidingView>
 
       {/* Menú de opciones del botón "+" */}
@@ -739,8 +1035,7 @@ export default function ChatTrabajador({ route, navigation }) {
       <Modal visible={mostrarOferta} transparent animationType="slide" onRequestClose={cerrarOferta}>
         <KeyboardAvoidingView
           style={styles.propOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
+behavior={Platform.OS === 'ios' ? 'padding' : 'height'}        >
           <TouchableWithoutFeedback onPress={cerrarOferta}>
             <View style={styles.propBackdrop} />
           </TouchableWithoutFeedback>
@@ -923,7 +1218,48 @@ const styles = StyleSheet.create({
     shadowColor: BLUE_DARK, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 3,
   },
   enviarButtonDisabled: { backgroundColor: '#B9C6DB', shadowOpacity: 0 },
+// ---- Burbuja de audio ----
+burbujaAudio: {
+  maxWidth: '74%',
+  borderRadius: 18,
+  paddingHorizontal: 12,
+  paddingVertical: 10,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+},
+audioPlayBtn: {
+  width: 30, height: 30, borderRadius: 15,
+  backgroundColor: 'rgba(0,0,0,0.08)',
+  justifyContent: 'center', alignItems: 'center',
+},
+audioOndaWrap: { flex: 1, height: 24, justifyContent: 'center', position: 'relative' },
+audioOndaFondo: { position: 'absolute', left: 0, right: 0, height: 3, borderRadius: 2 },
+audioOndaProgreso: { position: 'absolute', left: 0, height: 3, borderRadius: 2 },
 
+// ---- Grabación de audio ----
+grabandoRow: {
+  flex: 1,
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: BG,
+  borderRadius: 19,
+  paddingHorizontal: 14,
+  paddingVertical: 9,
+  gap: 10,
+},
+grabandoDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: DANGER },
+grabandoTexto: { color: '#1A202C', fontWeight: '700', fontSize: 14 },
+grabandoCancelar: {
+  width: 34, height: 34, borderRadius: 17,
+  backgroundColor: 'rgba(192,57,43,0.10)',
+  justifyContent: 'center', alignItems: 'center',
+},
+grabandoEnviar: {
+  width: 34, height: 34, borderRadius: 17,
+  backgroundColor: BLUE,
+  justifyContent: 'center', alignItems: 'center',
+},
   overlay: { flex: 1, backgroundColor: 'rgba(13,26,48,0.35)', justifyContent: 'flex-end' },
   menuOpciones: {
     backgroundColor: '#fff', marginHorizontal: 12, marginBottom: 84, borderRadius: 18, paddingVertical: 6,

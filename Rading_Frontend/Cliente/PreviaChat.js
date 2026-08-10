@@ -28,7 +28,32 @@ const normalizar = (str = '') =>
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
+const formatearTiempoAudioCorto = (segundos = 0) => {
+  const s = Math.max(0, Math.floor(segundos));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, '0')}`;
+};
 
+// Devuelve { icono, texto } listos para mostrar en la vista previa del chat
+const formatearPreviaMensaje = (item) => {
+  switch (item.tipoUltimoMensaje) {
+    case 'AUDIO':
+      return { icono: 'mic', texto: 'Audio' };   // 👈 sin duración
+    case 'IMAGEN':
+      return { icono: 'image', texto: 'Foto' };
+    case 'VIDEO':
+      return { icono: 'videocam', texto: 'Video' };
+    case 'ARCHIVO':
+      return { icono: 'document-attach', texto: 'Documento' };
+    case 'PROPUESTA':
+      return { icono: 'hammer', texto: 'Propuesta de servicio' };
+    case 'OFERTA_TRABAJADOR':
+      return { icono: 'pricetag', texto: 'Oferta de precio' };
+    default:
+      return { icono: null, texto: item.ultimoMensaje };
+  }
+};
 const obtenerIniciales = (nombre = '') =>
   nombre
     .split(' ')
@@ -41,14 +66,15 @@ const obtenerIniciales = (nombre = '') =>
 // a la forma que usa el render de esta pantalla.
 const mapearChat = (c, idUsuario) => ({
   id: String(c.chat_id),
-  idTrabajador: c.id_trabajador,
+  idCliente: c.id_cliente, // (o idTrabajador según el archivo)
   nombre: `${c.nombre ?? ''} ${c.apellido ?? ''}`.trim(),
-  servicio: c.servicio_nombre ?? '',
   foto: c.foto ?? null,
-  online: false, // TODO: reemplazar cuando haya presencia en tiempo real
-  trabajoActivo: c.trabajo_activo, // TODO: cruzar con Cliente-Trabajador si querés el tag "Activo"
+  online: false,
+  trabajoActivo: c.trabajo_activo,
   ultimoMensaje: c.ultimo_mensaje ?? 'Todavía no hay mensajes',
-  deQuien: c.ultimo_enviador_id === idUsuario ? 'cliente' : 'trabajador',
+  tipoUltimoMensaje: c.ultimo_tipo ?? null,       // 👈 agregar
+  duracionUltimoAudio: c.ultimo_duracion_audio,   // 👈 agregar
+  deQuien: c.ultimo_enviador_id === idUsuario ? 'cliente' : 'trabajador', // (o 'trabajador'/'cliente' según archivo)
   visto: Number(c.no_leidos) === 0,
   noLeidos: Number(c.no_leidos) || 0,
   hora: c.ultimo_created_at
@@ -72,8 +98,7 @@ export default function ChatsCliente({ route, navigation }) {
     }
     try {
       setError(null);
-      const res = await fetch(`${API_BASE_URL}/chat/cliente/${usuario.idCliente}`);
-      if (!res.ok) throw new Error('Respuesta no OK del servidor');
+const res = await fetch(`${API_BASE_URL}/chat/cliente/${usuario.idCliente}?idUsuario=${usuario.id}`);      if (!res.ok) throw new Error('Respuesta no OK del servidor');
       const data = await res.json();
       setChats(data.map((c) => mapearChat(c, usuario.id)));
     } catch (err) {
@@ -171,12 +196,27 @@ export default function ChatsCliente({ route, navigation }) {
                   style={{ marginRight: 3 }}
                 />
               )}
-              <Text
-                style={[styles.mensajeChat, esNoLeido && styles.textoNoLeido]}
-                numberOfLines={1}
-              >
-                {item.ultimoMensaje}
-              </Text>
+             {(() => {
+  const previa = formatearPreviaMensaje(item);
+  return (
+    <>
+      {previa.icono && (
+        <Ionicons
+          name={previa.icono}
+          size={13}
+          color={esNoLeido ? '#1A202C' : '#8A94A6'}
+          style={{ marginRight: 4 }}
+        />
+      )}
+      <Text
+        style={[styles.mensajeChat, esNoLeido && styles.textoNoLeido]}
+        numberOfLines={1}
+      >
+        {previa.texto}
+      </Text>
+    </>
+  );
+})()}
             </View>
 
             {item.noLeidos > 0 && (

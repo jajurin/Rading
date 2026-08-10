@@ -920,15 +920,39 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
         }
     }
 
-filtrarSolicitudes = async (estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta, precioMin, precioMax) => {
+/**
+ * Filtra solicitudes PENDIENTE. Cuando se pasa distanciaMax, la distancia
+ * se calcula EN VIVO (haversine) entre la ubicación actual del trabajador
+ * (idTrabajador) y la de cada solicitud (ct.lat/ct.lng) — igual que en
+ * buscarOfertasCercanas. Antes esto comparaba contra ct.distancia, una
+ * columna estática que no depende de quién está buscando, así que el
+ * filtro de distancia nunca reflejaba la posición real del trabajador.
+ */
+filtrarSolicitudes = async (idTrabajador, estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta, precioMin, precioMax) => {
     const client = new Client(config)
     try {
         await client.connect()
+
+        const usarDistancia = !!(distanciaMax && idTrabajador)
 
         let sql = `
             SELECT DISTINCT ct.id
             FROM "Cliente-Trabajador" ct
             INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
+        `
+
+        if (usarDistancia) {
+            sql += `
+                CROSS JOIN (
+                    SELECT ut.lat, ut.lng
+                    FROM "Trabajador" t
+                    INNER JOIN "Usuario" ut ON ut.id = t."IdPersona"
+                    WHERE t.id = $1
+                ) trab
+            `
+        }
+
+        sql += `
             WHERE ct.estado = 'PENDIENTE'
             AND ct."IdTrabajador" IS NULL
         `
@@ -936,15 +960,20 @@ filtrarSolicitudes = async (estrellas, servicio_id, fijo, emergencia, distanciaM
         const values = []
         let i = 1
 
+        if (usarDistancia) {
+            values.push(Number(idTrabajador))
+            i = 2
+        }
+
         if (estrellas) {
             sql += ` AND c.estrellas >= $${i++}`
             values.push(Number(estrellas))
         }
 
-      if (servicio_id) {
-    sql += ` AND ct.servicio_id = $${i++}`
-    values.push(Number(servicio_id))
-}
+        if (servicio_id) {
+            sql += ` AND ct.servicio_id = $${i++}`
+            values.push(Number(servicio_id))
+        }
 
         // fijo: 'true' = fijo, 'false' = subasta
         if (fijo !== undefined && fijo !== null && fijo !== '') {
@@ -957,29 +986,40 @@ filtrarSolicitudes = async (estrellas, servicio_id, fijo, emergencia, distanciaM
             values.push(emergencia === 'true')
         }
 
-        if (distanciaMax) {
-            sql += ` AND ct.distancia <= $${i++}`
+        if (usarDistancia) {
+            sql += `
+                AND trab.lat IS NOT NULL AND trab.lng IS NOT NULL
+                AND ct.lat IS NOT NULL AND ct.lng IS NOT NULL
+                AND (
+                    6371 * acos(
+                        LEAST(1, GREATEST(-1,
+                            cos(radians(trab.lat)) * cos(radians(ct.lat)) *
+                            cos(radians(ct.lng) - radians(trab.lng)) +
+                            sin(radians(trab.lat)) * sin(radians(ct.lat))
+                        ))
+                    )
+                ) <= $${i++}
+            `
             values.push(Number(distanciaMax))
         }
 
         // horario_requerido: filtrar por rango
-      if (horarioDesde) {
-    sql += ` AND ct.horario_requerido <= $${i++}`
-    values.push(horarioDesde)
-}
-if (horarioHasta) {
-    sql += ` AND ct.horario_finalizado <= $${i++}`
-    values.push(horarioHasta)
-}
-if (precioMin) {
-    sql += ` AND ct.precio >= $${i++}`
-    values.push(Number(precioMin))
-}
-
-if (precioMax) {
-    sql += ` AND ct.precio <= $${i++}`
-    values.push(Number(precioMax))
-}
+        if (horarioDesde) {
+            sql += ` AND ct.horario_requerido <= $${i++}`
+            values.push(horarioDesde)
+        }
+        if (horarioHasta) {
+            sql += ` AND ct.horario_finalizado <= $${i++}`
+            values.push(horarioHasta)
+        }
+        if (precioMin) {
+            sql += ` AND ct.precio >= $${i++}`
+            values.push(Number(precioMin))
+        }
+        if (precioMax) {
+            sql += ` AND ct.precio <= $${i++}`
+            values.push(Number(precioMax))
+        }
 
         const result = await client.query(sql, values)
         return result?.rows ?? []

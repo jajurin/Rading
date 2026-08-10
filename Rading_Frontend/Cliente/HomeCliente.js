@@ -117,7 +117,21 @@ export default function HomeCliente({ route, navigation }) {
   const [serviciosScrollX, setServiciosScrollX] = useState(0);
   const [serviciosContentWidth, setServiciosContentWidth] = useState(0);
   const [serviciosContainerWidth, setServiciosContainerWidth] = useState(0);
+const [tieneChatsSinLeer, setTieneChatsSinLeer] = useState(false);
 
+const chequearChatsSinLeer = useCallback(async () => {
+  if (!usuario?.idCliente || !usuario?.id) return;
+  try {
+    const resp = await fetch(
+      `${API_BASE_URL}/chat/cliente/${usuario.idCliente}?idUsuario=${usuario.id}`
+    );
+    if (!resp.ok) throw new Error('Respuesta no OK al chequear chats sin leer');
+    const chats = await resp.json();
+    setTieneChatsSinLeer(chats.some((c) => Number(c.no_leidos) > 0));
+  } catch (err) {
+    console.error('Error al chequear chats sin leer:', err);
+  }
+}, [usuario?.idCliente, usuario?.id]);
   const franja = useMemo(() => obtenerFranjaHoraria(), []);
 
   const cargarServicios = useCallback(async () => {
@@ -159,9 +173,10 @@ export default function HomeCliente({ route, navigation }) {
   }, [usuario?.idCliente]);
 
   useEffect(() => {
-    cargarServicios();
-    cargarRecientes();
-  }, [cargarServicios, cargarRecientes]);
+  cargarServicios();
+  cargarRecientes();
+  chequearChatsSinLeer();
+}, [cargarServicios, cargarRecientes, chequearChatsSinLeer]);
 
   const buscarServicio = (nombreServicio) => {
     buscadorRef.current?.buscarPorEspecialidad(nombreServicio);
@@ -381,7 +396,7 @@ export default function HomeCliente({ route, navigation }) {
         />
       )}
 
-      <BottomNavBar usuario={usuario} />
+      <BottomNavBar usuario={usuario} tieneChatsSinLeer={tieneChatsSinLeer} />
     </SafeAreaView>
   );
 }

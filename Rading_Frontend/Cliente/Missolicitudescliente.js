@@ -11,7 +11,7 @@ import {
 import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
+import BottomNavBar from './NavegadorCliente';
 // TODO: ajustá el path si tu estructura de carpetas es distinta.
 import API_URL from '../configS';
 
@@ -446,6 +446,8 @@ export default function MisSolicitudesCliente() {
           }
         />
       )}
+
+      <BottomNavBar usuario={usuario} pantallaActiva="busqueda" />
     </View>
   );
 }

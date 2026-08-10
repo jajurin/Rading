@@ -49,6 +49,7 @@ const mapearChat = (c, idUsuario) => ({
   online: false, // TODO: reemplazar cuando haya presencia en tiempo real
   trabajoActivo: c.trabajo_activo,
   ultimoMensaje: c.ultimo_mensaje ?? 'Todavía no hay mensajes',
+  tipoUltimoMensaje: c.ultimo_tipo ?? null, // 👈 agregado
   deQuien: c.ultimo_enviador_id === idUsuario ? 'trabajador' : 'cliente',
   visto: Number(c.no_leidos) === 0,
   noLeidos: Number(c.no_leidos) || 0,
@@ -56,6 +57,33 @@ const mapearChat = (c, idUsuario) => ({
     ? new Date(c.ultimo_created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
     : '',
 });
+
+const formatearTiempoAudioCorto = (segundos = 0) => {
+  const s = Math.max(0, Math.floor(segundos));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, '0')}`;
+};
+
+// Devuelve { icono, texto } listos para mostrar en la vista previa del chat
+const formatearPreviaMensaje = (item) => {
+  switch (item.tipoUltimoMensaje) {
+    case 'AUDIO':
+      return { icono: 'mic', texto: 'Audio' };
+    case 'IMAGEN':
+      return { icono: 'image', texto: 'Foto' };
+    case 'VIDEO':
+      return { icono: 'videocam', texto: 'Video' };
+    case 'ARCHIVO':
+      return { icono: 'document-attach', texto: 'Documento' };
+    case 'PROPUESTA':
+      return { icono: 'hammer', texto: 'Propuesta de servicio' };
+    case 'OFERTA_TRABAJADOR':
+      return { icono: 'pricetag', texto: 'Oferta de precio' };
+    default:
+      return { icono: null, texto: item.ultimoMensaje };
+  }
+};
 
 export default function PreviaChatTrabajador({ route, navigation }) {  const usuario = route?.params?.usuario;
 
@@ -72,8 +100,7 @@ export default function PreviaChatTrabajador({ route, navigation }) {  const usu
     }
     try {
       setError(null);
-      const res = await fetch(`${API_BASE_URL}/chat/trabajador/${usuario.idTrabajador}`);
-      if (!res.ok) throw new Error('Respuesta no OK del servidor');
+const res = await fetch(`${API_BASE_URL}/chat/trabajador/${usuario.idTrabajador}?idUsuario=${usuario.id}`);      if (!res.ok) throw new Error('Respuesta no OK del servidor');
       const data = await res.json();
       setChats(data.map((c) => mapearChat(c, usuario.id)));
     } catch (err) {
@@ -121,6 +148,7 @@ export default function PreviaChatTrabajador({ route, navigation }) {  const usu
 
   const renderFilaChat = (item) => {
     const esNoLeido = item.deQuien === 'cliente' && !item.visto;
+    const previa = formatearPreviaMensaje(item);
 
     return (
       <TouchableOpacity
@@ -169,11 +197,19 @@ export default function PreviaChatTrabajador({ route, navigation }) {  const usu
                   style={{ marginRight: 3 }}
                 />
               )}
+              {previa.icono && (
+                <Ionicons
+                  name={previa.icono}
+                  size={13}
+                  color={esNoLeido ? '#1A202C' : '#8A94A6'}
+                  style={{ marginRight: 4 }}
+                />
+              )}
               <Text
                 style={[styles.mensajeChat, esNoLeido && styles.textoNoLeido]}
                 numberOfLines={1}
               >
-                {item.ultimoMensaje}
+                {previa.texto}
               </Text>
             </View>
 

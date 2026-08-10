@@ -89,19 +89,19 @@ router.get("/resumen/:id", async (req, res) => {
     }
 })
 
-// GET /trabajador/buscarCliente?texto=&estrellas=&servicio_id=&fijo=&emergencia=&distanciaMax=&horarioDesde=&horarioHasta=
+// GET /trabajador/buscarCliente?texto=&estrellas=&servicio_id=&fijo=&emergencia=&distanciaMax=&horarioDesde=&horarioHasta=&idTrabajador=
 router.get("/buscarCliente", async (req, res) => {
     try {
         const {
             texto, estrellas, servicio_id, fijo, emergencia,
             distanciaMax, horarioDesde, horarioHasta,
-            precioMin, precioMax   // ← nuevo
+            precioMin, precioMax, idTrabajador
         } = req.query
 
         const resultado = await svc.buscarConFiltrosTr(
             texto, estrellas, servicio_id, fijo, emergencia,
             distanciaMax, horarioDesde, horarioHasta,
-            precioMin, precioMax   // ← nuevo
+            precioMin, precioMax, idTrabajador
         )
         res.status(200).json(resultado)
     } catch (error) {

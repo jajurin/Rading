@@ -122,20 +122,22 @@ cerrarSubastasVencidas = async () => {
         return await this.#repo.registrarTrabajador(trabajador)
     }
 
-    buscarConFiltrosTr = async (texto, estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta, precioMin, precioMax) => {
+    buscarConFiltrosTr = async (texto, estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta, precioMin, precioMax, idTrabajador) => {
     const hayTexto   = texto && texto.trim()
     const hayFiltros = estrellas || servicio_id || (fijo !== undefined && fijo !== '')
                     || emergencia || distanciaMax || horarioDesde || horarioHasta
-                    || precioMin || precioMax   // ← nuevo
+                    || precioMin || precioMax
 
     if (!hayTexto && !hayFiltros) return []
 
     let ids = null
 
     if (hayFiltros) {
+        // idTrabajador es necesario para poder calcular la distancia real
+        // (haversine) desde su ubicación cuando se filtra por distanciaMax.
         const filtrados = await this.#repo.filtrarSolicitudes(
-            estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta,
-            precioMin, precioMax   // ← nuevo
+            idTrabajador ?? null, estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta,
+            precioMin, precioMax
         )
         ids = filtrados.map(r => r.id)
         if (ids.length === 0) return []

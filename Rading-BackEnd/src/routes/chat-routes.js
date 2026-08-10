@@ -7,7 +7,6 @@ import ChatServices from "../services/chat-services.js"
 const router = Router()
 const svc = new ChatServices()
 
-// Carpeta donde van a quedar los archivos subidos
 const UPLOAD_DIR = path.join(process.cwd(), "uploads", "chat")
 fs.mkdirSync(UPLOAD_DIR, { recursive: true })
 
@@ -18,7 +17,7 @@ const storage = multer.diskStorage({
         cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`)
     }
 })
-// GET /chat/buscar/:idCliente/:idTrabajador
+
 router.get('/buscar/:idCliente/:idTrabajador', async (req, res) => {
   try {
     const { idCliente, idTrabajador } = req.params
@@ -29,12 +28,12 @@ router.get('/buscar/:idCliente/:idTrabajador', async (req, res) => {
     res.status(500).json({ message: 'Error al buscar el chat', error: err.message })
   }
 })
+
 const upload = multer({
     storage,
-    limits: { fileSize: 15 * 1024 * 1024 } // 15MB, ajustá a gusto
+    limits: { fileSize: 15 * 1024 * 1024 }
 })
 
-// GET /chat/abrir?idCliente=1&idTrabajador=2  -> devuelve (o crea) el chat_id
 router.get("/abrir", async (req, res) => {
     try {
         const { idCliente, idTrabajador } = req.query
@@ -46,10 +45,10 @@ router.get("/abrir", async (req, res) => {
     }
 })
 
-// GET /chat/cliente/:idCliente  -> lista de chats para la pantalla ChatsCliente
 router.get("/cliente/:idCliente", async (req, res) => {
     try {
-        const chats = await svc.obtenerChatsCliente(req.params.idCliente)
+        const { idUsuario } = req.query
+        const chats = await svc.obtenerChatsCliente(req.params.idCliente, idUsuario)
         res.status(200).json(chats)
     } catch (error) {
         console.error(error)
@@ -57,10 +56,10 @@ router.get("/cliente/:idCliente", async (req, res) => {
     }
 })
 
-// GET /chat/trabajador/:idTrabajador
 router.get("/trabajador/:idTrabajador", async (req, res) => {
     try {
-        const chats = await svc.obtenerChatsTrabajador(req.params.idTrabajador)
+        const { idUsuario } = req.query
+        const chats = await svc.obtenerChatsTrabajador(req.params.idTrabajador, idUsuario)
         res.status(200).json(chats)
     } catch (error) {
         console.error(error)
@@ -68,7 +67,6 @@ router.get("/trabajador/:idTrabajador", async (req, res) => {
     }
 })
 
-// GET /chat/:chatId/mensajes
 router.get("/:chatId/mensajes", async (req, res) => {
     try {
         const mensajes = await svc.obtenerMensajes(req.params.chatId)
@@ -79,7 +77,6 @@ router.get("/:chatId/mensajes", async (req, res) => {
     }
 })
 
-// POST /chat/mensaje  { chatId, enviadorId, contenido, tipo }
 router.post("/mensaje", async (req, res) => {
     try {
         const mensaje = await svc.enviarMensaje(req.body)
@@ -90,7 +87,24 @@ router.post("/mensaje", async (req, res) => {
     }
 })
 
-// PUT /chat/:chatId/leido  { userId }
+// PUT /chat/mensaje/:id  { contenido, userId }  -> editar un mensaje de tipo TEXTO propio
+router.put("/mensaje/:id", async (req, res) => {
+    try {
+        const { contenido, userId } = req.body
+        if (!contenido || !userId) {
+            return res.status(400).json({ message: "Faltan contenido o userId" })
+        }
+        const mensaje = await svc.editarMensaje(req.params.id, contenido, userId)
+        if (!mensaje) {
+            return res.status(404).json({ message: "Mensaje no encontrado o no editable" })
+        }
+        res.status(200).json(mensaje)
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: "Error al editar mensaje", error: error.message })
+    }
+})
+
 router.put("/:chatId/leido", async (req, res) => {
     try {
         const { userId } = req.body
@@ -108,11 +122,14 @@ router.post("/mensaje/archivo", upload.single("file"), async (req, res) => {
             return res.status(400).json({ message: "No se recibió ningún archivo" })
         }
 
-        const { chatId, idCliente, idTrabajador, enviadorId } = req.body
+        const { chatId, idCliente, idTrabajador, enviadorId, duracionAudio } = req.body
         const archivoUrl = `${req.protocol}://${req.get('host')}/uploads/chat/${req.file.filename}`
 
-        // IMAGEN si el mimetype empieza con "image/", si no ARCHIVO
-        const tipo = req.file.mimetype.startsWith('image/') ? 'IMAGEN' : 'ARCHIVO'
+        // IMAGEN / VIDEO / AUDIO / ARCHIVO según mimetype
+        let tipo = 'ARCHIVO'
+        if (req.file.mimetype.startsWith('image/')) tipo = 'IMAGEN'
+        else if (req.file.mimetype.startsWith('video/')) tipo = 'VIDEO'
+        else if (req.file.mimetype.startsWith('audio/')) tipo = 'AUDIO'
 
         const mensaje = await svc.enviarMensajeArchivo({
             chatId,
@@ -122,6 +139,7 @@ router.post("/mensaje/archivo", upload.single("file"), async (req, res) => {
             archivoUrl,
             archivoNombre: req.file.originalname,
             tipo,
+            duracionAudio: tipo === 'AUDIO' && duracionAudio ? Number(duracionAudio) : null,
         })
 
         res.status(201).json(mensaje)
