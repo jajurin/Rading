@@ -339,6 +339,11 @@ export default function DetalleOfertaTrabajador() {
   };
 
   const [mostrarModalOferta, setMostrarModalOferta] = useState(false);
+  // 👇 NUEVO: modal propio para confirmar la postulación en precio fijo.
+  // Antes esto usaba Alert.alert(), que es una API nativa y en Expo Web /
+  // react-native-web no muestra nada (falla en silencio). Usar un <Modal>
+  // en el árbol de RN hace que funcione igual en web, iOS y Android.
+  const [mostrarModalConfirmarFijo, setMostrarModalConfirmarFijo] = useState(false);
   const [ofertaPrecio, setOfertaPrecio] = useState('');
   const [ofertaCostoMin, setOfertaCostoMin] = useState('');
   const [ofertaCostoMax, setOfertaCostoMax] = useState('');
@@ -364,16 +369,10 @@ export default function DetalleOfertaTrabajador() {
       return;
     }
 
-    // Precio fijo: confirmación directa, sin modal — pero es una
-    // POSTULACIÓN, no una asignación. El cliente decide.
-    Alert.alert(
-      'Postularte a este trabajo',
-      `Vas a postularte para tomar este trabajo por $${Number(oferta.precio).toLocaleString('es-AR')}. El cliente va a decidir si te elige a vos.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Postularme', onPress: confirmarOfertaDirecta },
-      ]
-    );
+    // Precio fijo: confirmación con modal propio (no Alert.alert, que no
+    // se ve en Expo Web). Es una POSTULACIÓN, no una asignación directa;
+    // el cliente decide.
+    setMostrarModalConfirmarFijo(true);
   };
 
   const confirmarOfertaDirecta = async () => {
@@ -387,6 +386,7 @@ export default function DetalleOfertaTrabajador() {
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.message || 'No se pudo enviar la postulación.');
 
+      setMostrarModalConfirmarFijo(false);
       Alert.alert('¡Postulación enviada!', 'Te avisaremos si el cliente te elige para este trabajo.');
       navigation.goBack();
     } catch (e) {
@@ -692,6 +692,62 @@ export default function DetalleOfertaTrabajador() {
           </View>
         </View>
       </Modal>
+
+      {/* Modal: confirmar postulación en precio fijo (reemplaza Alert.alert) */}
+      <Modal
+        visible={mostrarModalConfirmarFijo}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !enviandoOferta && setMostrarModalConfirmarFijo(false)}
+      >
+        <View style={styles.modalOverlaySubasta}>
+          <TouchableOpacity
+            style={styles.modalBackdropTouchable}
+            activeOpacity={1}
+            onPress={() => !enviandoOferta && setMostrarModalConfirmarFijo(false)}
+          />
+          <View style={styles.modalCardSubasta}>
+            <View style={[styles.modalAccentBar, { backgroundColor: COLORS.fijo }]} />
+
+            <View style={styles.modalHeaderSubasta}>
+              <View style={{ flex: 1 }}>
+                <View style={[styles.modBadge, { backgroundColor: COLORS.fijoBg, borderColor: COLORS.fijoBorder, marginBottom: 8 }]}>
+                  <Icons.Etiqueta color={COLORS.fijo} size={12} />
+                  <Text style={[styles.modBadgeText, { color: COLORS.fijo }]}>PRECIO FIJO</Text>
+                </View>
+                <Text style={styles.modalTituloSubasta}>Postularte a este trabajo</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => !enviandoOferta && setMostrarModalConfirmarFijo(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Icons.Close />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubtituloSubasta}>
+              Vas a postularte para tomar este trabajo por ${Number(oferta?.precio).toLocaleString('es-AR')}.
+              El cliente va a decidir si te elige a vos.
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.modalEnviarBtn, { backgroundColor: COLORS.fijo }, enviandoOferta && styles.modalEnviarBtnDisabled]}
+              onPress={confirmarOfertaDirecta}
+              disabled={enviandoOferta}
+              activeOpacity={0.9}
+            >
+              {enviandoOferta ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Icons.Check size={16} />
+                  <Text style={styles.enviarBtnText}>Postularme</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -908,7 +964,7 @@ const styles = StyleSheet.create({
   retryBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
 
   // -----------------------------------------------------------------------
-  // Modal: ofertar en subasta
+  // Modal: ofertar en subasta / confirmar precio fijo
   // -----------------------------------------------------------------------
   modalOverlaySubasta: {
     flex: 1,

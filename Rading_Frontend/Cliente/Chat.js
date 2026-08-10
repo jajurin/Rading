@@ -24,6 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const BLUE       = '#1565D8';
 const BLUE_DARK  = '#0d47a8';
@@ -37,6 +38,9 @@ const DANGER     = '#C0392B';
 const API_BASE_URL = API_URL;
 
 const OPCION_OTRO = '__otro__';
+// Máximo de fotos que se pueden adjuntar a una propuesta enviada desde el chat
+// (mismo límite que CrearSolicitud.js, para mantener el mismo "contrato" de datos).
+const MAX_IMAGENES_PROPUESTA = 5;
 
 const obtenerIniciales = (nombre = '') =>
   nombre
@@ -48,6 +52,27 @@ const obtenerIniciales = (nombre = '') =>
 
 const esUrlImagen = (url = '') =>
   /\.(jpg|jpeg|png|gif|webp|jfif|bmp|heic|heif)(\?.*)?$/i.test(url);
+
+// ── Mismo cálculo de urgencia que en CrearSolicitud.js: se resuelve acá
+// (JS), no se le pide a nadie más que interprete la fecha elegida. ──
+function calcularCategoriaUrgencia(fechaLimite) {
+  if (!fechaLimite) return null;
+  const ahora = new Date();
+  const diffHoras = (fechaLimite.getTime() - ahora.getTime()) / (1000 * 60 * 60);
+
+  if (diffHoras <= 12) return 'Muy urgente, dentro de las próximas 12hs';
+  if (diffHoras <= 24) return 'Urgente, dentro de las próximas 24hs';
+  if (diffHoras <= 48) return 'Mañana o en las próximas 48hs';
+  if (diffHoras <= 24 * 7) return 'Dentro de esta semana';
+  return 'Sin apuro, más de una semana';
+}
+
+function formatearFechaHora(fecha) {
+  if (!fecha) return '';
+  const fechaStr = fecha.toLocaleDateString('es-AR');
+  const horaStr = fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  return `${fechaStr} ${horaStr}`;
+}
 
 const mapearMensaje = (m, idUsuario) => {
   let tipo = 'texto';
@@ -82,11 +107,60 @@ const mapearMensaje = (m, idUsuario) => {
     leido: !!m.leido,
     editado: !!m.edited_at,
     duracionAudio: m.duracion_audio,
+    // 👇 Mismos datos "estructurados" que se piden al crear una solicitud
+    // desde CrearSolicitud.js, para que una propuesta armada en el chat
+    // tenga el mismo nivel de detalle y se pueda mostrar igual.
+    emergencia: !!m.emergencia,
+    fechaRequerida: m.fecha_requerida ?? m.fechaRequerida ?? null,
+    horarioRequerido: m.horario_requerido ?? m.horarioRequerido ?? null,
+    direccion: m.direccion ?? null,
+    imagenes: m.imagenes ?? [],
     hora: m.created_at
       ? new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
       : '',
   };
 };
+
+// ── Selector tipo pastilla simple (Sí/No, Mi dirección/Otra, etc.) ──
+function Toggle2Opciones({ opciones, activo, onChange, colorActivo = BLUE_DARK }) {
+  return (
+    <View style={styles.toggle2Track}>
+      {opciones.map((opt, i) => {
+        const seleccionado = activo === i;
+        return (
+          <TouchableOpacity
+            key={opt}
+            style={[
+              styles.toggle2Btn,
+              seleccionado && { backgroundColor: colorActivo },
+            ]}
+            onPress={() => onChange(i)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.toggle2Text, seleccionado && styles.toggle2TextActivo]}>{opt}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+// ── Miniatura de una foto adjunta a la propuesta, con botón para sacarla ──
+function ImagenPropuestaThumb({ uri, onQuitar, deshabilitado }) {
+  return (
+    <View style={styles.propImagenThumbWrap}>
+      <Image source={{ uri }} style={styles.propImagenThumb} />
+      <TouchableOpacity
+        style={styles.propImagenThumbQuitar}
+        onPress={onQuitar}
+        disabled={deshabilitado}
+        hitSlop={6}
+      >
+        <Ionicons name="close" size={12} color="#fff" />
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 // ── Burbuja de audio (componente separado: necesita su propio estado/hooks) ──
 function formatearTiempoAudio(ms) {
@@ -229,6 +303,11 @@ export default function ChatCliente({ route, navigation }) {
   const [mostrarOpciones, setMostrarOpciones] = useState(false);
   const [subiendoArchivo, setSubiendoArchivo] = useState(false);
 
+  // ── Menú del header (⋮) y vaciar chat ───────────────────────────────
+  const [mostrarMenuHeader, setMostrarMenuHeader] = useState(false);
+  const [mostrarConfirmVaciar, setMostrarConfirmVaciar] = useState(false);
+  const [vaciandoChat, setVaciandoChat] = useState(false);
+
   // ── Grabación de audio ──────────────────────────────────────────────
   const [grabando, setGrabando] = useState(false);
   const [grabacion, setGrabacion] = useState(null);
@@ -256,6 +335,27 @@ export default function ChatCliente({ route, navigation }) {
   const [propRespuestas, setPropRespuestas] = useState({});
   const [propTextosOtro, setPropTextosOtro] = useState({});
   const [propSelectorAbierto, setPropSelectorAbierto] = useState(false);
+
+  // 👇 Los mismos datos que se piden en CrearSolicitud.js: emergencia,
+  // plazo/fecha límite, dirección del trabajo y fotos adjuntas. Así una
+  // propuesta armada desde el chat queda con la misma información que
+  // una solicitud creada desde la pantalla dedicada, y se puede mostrar
+  // con el mismo nivel de detalle (ver "Ver detalle" más abajo).
+  const [propEmergencia, setPropEmergencia] = useState(false);
+  const [propTienePlazo, setPropTienePlazo] = useState(false);
+  const [propFechaLimite, setPropFechaLimite] = useState(null); // Date | null
+  const [propMostrarPickerFecha, setPropMostrarPickerFecha] = useState(false);
+  const [propMostrarPickerHora, setPropMostrarPickerHora] = useState(false);
+
+  const [propUsarOtraDireccion, setPropUsarOtraDireccion] = useState(false);
+  const [propDireccion, setPropDireccion] = useState('');
+
+  const [propImagenes, setPropImagenes] = useState([]); // [{uri, fileName, mimeType}]
+  const [errorImagenesProp, setErrorImagenesProp] = useState(null);
+  const [subiendoImagenesProp, setSubiendoImagenesProp] = useState(false);
+
+  // ── Detalle de una propuesta ya enviada (tarjeta del chat) ──────────
+  const [servicioDetalle, setServicioDetalle] = useState(null);
 
   const propDescripcionValida = propDescripcion.trim().length >= 10;
   const propNecesitaAclaracion =
@@ -348,6 +448,28 @@ export default function ChatCliente({ route, navigation }) {
   useEffect(() => {
     setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 50);
   }, [mensajes.length]);
+
+  // ── Vaciar chat ──────────────────────────────────────────────────────
+  // Borra todos los mensajes de la conversación actual. Requiere confirmación
+  // explícita del usuario (modal aparte) porque es una acción irreversible.
+  // TODO: ajustá la ruta si tu endpoint real para vaciar el chat se llama
+  // distinto (acá asumo DELETE /chat/:chatId/vaciar).
+  const vaciarChat = async () => {
+    if (!chatId || vaciandoChat) return;
+    setVaciandoChat(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/chat/${chatId}/vaciar`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('No se pudo vaciar el chat');
+      setMensajes([]);
+      setMostrarConfirmVaciar(false);
+    } catch (err) {
+      console.error('Error al vaciar el chat:', err);
+      setError('No se pudo vaciar el chat. Probá de nuevo.');
+      setMostrarConfirmVaciar(false);
+    } finally {
+      setVaciandoChat(false);
+    }
+  };
 
   const enviarMensaje = async () => {
     const contenido = texto.trim();
@@ -623,11 +745,21 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
     setPropRespuestas({});
     setPropTextosOtro({});
     setPropSelectorAbierto(false);
+    // 👇 mismos campos que CrearSolicitud.js, reiniciados en cada apertura
+    setPropEmergencia(false);
+    setPropTienePlazo(false);
+    setPropFechaLimite(null);
+    setPropMostrarPickerFecha(false);
+    setPropMostrarPickerHora(false);
+    setPropUsarOtraDireccion(false);
+    setPropDireccion('');
+    setPropImagenes([]);
+    setErrorImagenesProp(null);
     setMostrarPropuesta(true);
   };
 
   const cerrarPropuesta = () => {
-    if (enviandoPropuesta || propAnalizando) return;
+    if (enviandoPropuesta || propAnalizando || subiendoImagenesProp) return;
     setMostrarPropuesta(false);
   };
 
@@ -648,6 +780,265 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
   const cambiarTextoOtroProp = useCallback((idx, txt) => {
     setPropTextosOtro((prev) => ({ ...prev, [idx]: txt }));
   }, []);
+
+  // 👇 Emergencia: igual que en CrearSolicitud.js, se elige ANTES de
+  // analizar y fuerza el plazo a "ahora mismo".
+  const onCambiarPropEmergencia = useCallback((esEmergencia) => {
+    setPropEmergencia(esEmergencia);
+    if (esEmergencia) {
+      setPropTienePlazo(true);
+      setPropFechaLimite(new Date());
+    }
+  }, []);
+
+  const onCambiarPropFecha = useCallback((event, fechaSeleccionada) => {
+    setPropMostrarPickerFecha(Platform.OS === 'ios');
+    if (event.type === 'dismissed' || !fechaSeleccionada) return;
+    setPropFechaLimite((prev) => {
+      const base = prev ? new Date(prev) : new Date();
+      base.setFullYear(fechaSeleccionada.getFullYear(), fechaSeleccionada.getMonth(), fechaSeleccionada.getDate());
+      return base;
+    });
+  }, []);
+
+  const onCambiarPropHora = useCallback((event, horaSeleccionada) => {
+    setPropMostrarPickerHora(Platform.OS === 'ios');
+    if (event.type === 'dismissed' || !horaSeleccionada) return;
+    setPropFechaLimite((prev) => {
+      const base = prev ? new Date(prev) : new Date();
+      base.setHours(horaSeleccionada.getHours(), horaSeleccionada.getMinutes(), 0, 0);
+      return base;
+    });
+  }, []);
+
+  // ── Fotos de la propuesta (mismo patrón que CrearSolicitud.js) ──────
+  const agregarImagenesPropuestaGaleria = async () => {
+    setErrorImagenesProp(null);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      setErrorImagenesProp('Necesitamos permiso para acceder a tus fotos.');
+      return;
+    }
+    const resultado = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_IMAGENES_PROPUESTA,
+    });
+    if (!resultado.canceled && resultado.assets?.length) {
+      setPropImagenes((prev) => [...prev, ...resultado.assets].slice(0, MAX_IMAGENES_PROPUESTA));
+    }
+  };
+
+  const tomarFotoPropuesta = async () => {
+    setErrorImagenesProp(null);
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      setErrorImagenesProp('Necesitamos permiso para usar la cámara.');
+      return;
+    }
+    const resultado = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+    if (!resultado.canceled && resultado.assets?.length) {
+      setPropImagenes((prev) => [...prev, resultado.assets[0]].slice(0, MAX_IMAGENES_PROPUESTA));
+    }
+  };
+
+  const quitarImagenPropuesta = (idx) => {
+    setPropImagenes((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  // Sube las fotos DESPUÉS de crear el mensaje de propuesta, ya con su id
+  // real, y devuelve las URLs subidas (para reflejarlas en el chat sin
+  // tener que recargar todo). TODO: ajustá el endpoint si el tuyo se llama
+  // distinto (acá asumo POST /chat/mensaje/propuesta-imagen con
+  // {file, mensajeId, orden}).
+  const subirImagenesPropuesta = async (idMensaje) => {
+    if (propImagenes.length === 0) return [];
+    setSubiendoImagenesProp(true);
+    const urlsSubidas = [];
+    try {
+      for (let i = 0; i < propImagenes.length; i++) {
+        const img = propImagenes[i];
+        const formData = new FormData();
+
+        if (Platform.OS === 'web') {
+          const respuestaBlob = await fetch(img.uri);
+          const blob = await respuestaBlob.blob();
+          formData.append('file', blob, img.fileName || `foto_${i}.jpg`);
+        } else {
+          formData.append('file', {
+            uri: img.uri,
+            name: img.fileName || `foto_${i}.jpg`,
+            type: img.mimeType || 'image/jpeg',
+          });
+        }
+        formData.append('mensajeId', idMensaje);
+        formData.append('orden', String(i));
+
+        try {
+          const resp = await fetch(`${API_BASE_URL}/chat/mensaje/propuesta-imagen`, {
+            method: 'POST',
+            body: formData,
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data?.url) urlsSubidas.push(data.url);
+          } else {
+            console.error(`No se pudo subir la imagen ${i + 1} de la propuesta`);
+          }
+        } catch (e) {
+          console.error('Error al subir una imagen de la propuesta:', e);
+        }
+      }
+    } finally {
+      setSubiendoImagenesProp(false);
+    }
+    return urlsSubidas;
+  };
+
+  const enviarPropuesta = async () => {
+    if (enviandoPropuesta || propAnalizando || propNecesitaAclaracion) return;
+
+    const servicio = propServicio.trim();
+    const precioNum = Number(propPrecio);
+
+    if (!servicio) {
+      setErrorPropuesta('Contá qué servicio le vas a proponer.');
+      return;
+    }
+    if (!propPrecio || isNaN(precioNum) || precioNum <= 0) {
+      setErrorPropuesta('Ingresá un precio válido.');
+      return;
+    }
+    if (propUsarOtraDireccion && !propDireccion.trim()) {
+      setErrorPropuesta('Ingresá la dirección del trabajo, o volvé a usar tu dirección predeterminada.');
+      return;
+    }
+    if (!usuario?.id || (!chatId && (!usuario?.idCliente || !contacto?.idTrabajador))) {
+      setErrorPropuesta('Faltan datos para enviar la propuesta.');
+      return;
+    }
+
+    // 👇 Mismos datos "estructurados" que manda CrearSolicitud.js al backend:
+    // emergencia, fecha/hora del plazo y dirección del trabajo.
+    const datosExtra = {
+      emergencia: propEmergencia,
+      fechaRequerida: propTienePlazo && propFechaLimite
+        ? propFechaLimite.toISOString().slice(0, 10)
+        : null,
+      horarioRequerido: propTienePlazo && propFechaLimite
+        ? propFechaLimite.toTimeString().slice(0, 5)
+        : null,
+      direccion: propUsarOtraDireccion
+        ? propDireccion.trim()
+        : (usuario?.direccion ?? null),
+    };
+
+    const contenido = propDescripcion.trim() || `Propuesta de servicio: ${servicio}`;
+    const idTemp = `local-${Date.now()}`;
+    const nuevoLocal = {
+      id: idTemp,
+      tipo: 'servicio',
+      autor: 'cliente',
+      texto: contenido,
+      servicio,
+      precio: precioNum,
+      estado: 'Pendiente',
+      ...datosExtra,
+      imagenes: [],
+      hora: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    setMensajes((prev) => [...prev, nuevoLocal]);
+    setEnviandoPropuesta(true);
+    setErrorPropuesta(null);
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 60);
+
+    try {
+      const body = chatId
+        ? {
+            chatId,
+            enviadorId: usuario.id,
+            contenido,
+            tipo: 'PROPUESTA',
+            servicio_nombre: servicio,
+            servicioId: propServicioId ?? undefined,
+            precio: precioNum,
+            ...datosExtra,
+          }
+        : {
+            idCliente: usuario.idCliente,
+            idTrabajador: contacto.idTrabajador,
+            enviadorId: usuario.id,
+            contenido,
+            tipo: 'PROPUESTA',
+            servicio_nombre: servicio,
+            servicioId: propServicioId ?? undefined,
+            precio: precioNum,
+            ...datosExtra,
+          };
+
+      const res = await fetch(`${API_BASE_URL}/chat/mensaje`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('Respuesta no OK del servidor');
+      const guardado = await res.json();
+
+      if (!chatId && guardado.chat_id) {
+        setChatId(guardado.chat_id);
+      }
+
+      const idCreado = String(guardado.id);
+      setMensajes((prev) =>
+        prev.map((m) =>
+          m.id === idTemp
+            ? {
+                ...m,
+                id: idCreado,
+                hora: mapearMensaje(guardado, usuario.id).hora,
+                estado: guardado.ESTADO_OFERTA ?? 'Pendiente',
+              }
+            : m
+        )
+      );
+
+      // 👇 Las fotos se suben recién ahora, con el id real del mensaje ya
+      // creado (mismo criterio que subirImagenes en CrearSolicitud.js: la
+      // solicitud/propuesta ya existe, las fotos son un plus asociado).
+      if (propImagenes.length > 0) {
+        const urls = await subirImagenesPropuesta(idCreado);
+        setMensajes((prev) =>
+          prev.map((m) => (m.id === idCreado ? { ...m, imagenes: urls } : m))
+        );
+      }
+
+      setMostrarPropuesta(false);
+      setPropServicio('');
+      setPropPrecio('');
+      setPropDescripcion('');
+      setPropAnalisis(null);
+      setPropServicioId(null);
+      setPropContexto('');
+      setPropRespuestas({});
+      setPropTextosOtro({});
+      setPropEmergencia(false);
+      setPropTienePlazo(false);
+      setPropFechaLimite(null);
+      setPropUsarOtraDireccion(false);
+      setPropDireccion('');
+      setPropImagenes([]);
+    } catch (err) {
+      console.error('Error al enviar propuesta:', err);
+      setMensajes((prev) =>
+        prev.map((m) => (m.id === idTemp ? { ...m, fallo: true } : m))
+      );
+      setErrorPropuesta('No se pudo enviar la propuesta. Probá de nuevo.');
+    } finally {
+      setEnviandoPropuesta(false);
+    }
+  };
 
   const analizarPropuestaConIA = useCallback(async (descripcionExtra = '') => {
     if (!propDescripcionValida && !descripcionExtra) return;
@@ -677,6 +1068,9 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
       if (data.descripcionMejorada) setPropDescripcion(data.descripcionMejorada);
       if (data.precioSugerido != null) setPropPrecio(String(data.precioSugerido));
       setPropContexto(textoFinal);
+      // 👇 igual que en CrearSolicitud.js: no se le "baja" la emergencia
+      // al cliente si ya la había marcado a mano.
+      setPropEmergencia((prev) => prev || !!data.emergencia);
     } catch (err) {
       setPropErrorIA(err.message || 'Ocurrió un error analizando la propuesta');
     } finally {
@@ -696,109 +1090,9 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
     analizarPropuestaConIA(txt);
   }, [propPreguntasActuales, propRespuestas, propTextosOtro, analizarPropuestaConIA]);
 
-  const enviarPropuesta = async () => {
-    if (enviandoPropuesta || propAnalizando || propNecesitaAclaracion) return;
-
-    const servicio = propServicio.trim();
-    const precioNum = Number(propPrecio);
-
-    if (!servicio) {
-      setErrorPropuesta('Contá qué servicio le vas a proponer.');
-      return;
-    }
-    if (!propPrecio || isNaN(precioNum) || precioNum <= 0) {
-      setErrorPropuesta('Ingresá un precio válido.');
-      return;
-    }
-    if (!usuario?.id || (!chatId && (!usuario?.idCliente || !contacto?.idTrabajador))) {
-      setErrorPropuesta('Faltan datos para enviar la propuesta.');
-      return;
-    }
-
-    const contenido = propDescripcion.trim() || `Propuesta de servicio: ${servicio}`;
-    const idTemp = `local-${Date.now()}`;
-    const nuevoLocal = {
-      id: idTemp,
-      tipo: 'servicio',
-      autor: 'cliente',
-      texto: contenido,
-      servicio,
-      precio: precioNum,
-      estado: 'Pendiente',
-      hora: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setMensajes((prev) => [...prev, nuevoLocal]);
-    setEnviandoPropuesta(true);
-    setErrorPropuesta(null);
-    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 60);
-
-    try {
-      const body = chatId
-        ? {
-            chatId,
-            enviadorId: usuario.id,
-            contenido,
-            tipo: 'PROPUESTA',
-            servicio_nombre: servicio,
-            servicioId: propServicioId ?? undefined,
-            precio: precioNum,
-          }
-        : {
-            idCliente: usuario.idCliente,
-            idTrabajador: contacto.idTrabajador,
-            enviadorId: usuario.id,
-            contenido,
-            tipo: 'PROPUESTA',
-            servicio_nombre: servicio,
-            servicioId: propServicioId ?? undefined,
-            precio: precioNum,
-          };
-
-      const res = await fetch(`${API_BASE_URL}/chat/mensaje`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error('Respuesta no OK del servidor');
-      const guardado = await res.json();
-
-      if (!chatId && guardado.chat_id) {
-        setChatId(guardado.chat_id);
-      }
-
-      setMensajes((prev) =>
-        prev.map((m) =>
-          m.id === idTemp
-            ? {
-                ...m,
-                id: String(guardado.id),
-                hora: mapearMensaje(guardado, usuario.id).hora,
-                estado: guardado.ESTADO_OFERTA ?? 'Pendiente',
-              }
-            : m
-        )
-      );
-
-      setMostrarPropuesta(false);
-      setPropServicio('');
-      setPropPrecio('');
-      setPropDescripcion('');
-      setPropAnalisis(null);
-      setPropServicioId(null);
-      setPropContexto('');
-      setPropRespuestas({});
-      setPropTextosOtro({});
-    } catch (err) {
-      console.error('Error al enviar propuesta:', err);
-      setMensajes((prev) =>
-        prev.map((m) => (m.id === idTemp ? { ...m, fallo: true } : m))
-      );
-      setErrorPropuesta('No se pudo enviar la propuesta. Probá de nuevo.');
-    } finally {
-      setEnviandoPropuesta(false);
-    }
-  };
+  // ── Detalle de una propuesta ya enviada (tarjeta "Ver detalle") ─────
+  const abrirDetalleServicio = (item) => setServicioDetalle(item);
+  const cerrarDetalleServicio = () => setServicioDetalle(null);
 
   // ── Render ────────────────────────────────────────────────────────
 
@@ -952,9 +1246,17 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
       >
         {!esCliente && <AvatarMini contacto={contacto} />}
         <View style={[styles.tarjetaServicio, item.fallo && styles.burbujaFallo]}>
-          <View style={styles.tarjetaServicioBadge}>
-            <Ionicons name="hammer" size={12} color={BLUE_DARK} />
-            <Text style={styles.tarjetaServicioBadgeText}>{item.estado ?? 'Propuesta'}</Text>
+          <View style={styles.tarjetaServicioBadgeRow}>
+            <View style={styles.tarjetaServicioBadge}>
+              <Ionicons name="hammer" size={12} color={BLUE_DARK} />
+              <Text style={styles.tarjetaServicioBadgeText}>{item.estado ?? 'Propuesta'}</Text>
+            </View>
+            {item.emergencia && (
+              <View style={styles.tarjetaEmergenciaBadge}>
+                <Ionicons name="alert-circle" size={11} color="#fff" />
+                <Text style={styles.tarjetaEmergenciaBadgeText}>Emergencia</Text>
+              </View>
+            )}
           </View>
 
           <Text style={styles.tarjetaServicioLabel}>Servicio</Text>
@@ -972,7 +1274,11 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
           <Text style={styles.tarjetaServicioLabel}>Precio estimado</Text>
           <Text style={styles.tarjetaServicioPrecio}>${Number(item.precio).toLocaleString('es-AR')}</Text>
 
-          <TouchableOpacity style={styles.tarjetaServicioBoton} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={styles.tarjetaServicioBoton}
+            activeOpacity={0.85}
+            onPress={() => abrirDetalleServicio(item)}
+          >
             <Text style={styles.tarjetaServicioBotonText}>Ver detalle</Text>
             <Ionicons name="arrow-forward" size={15} color="#fff" />
           </TouchableOpacity>
@@ -1029,7 +1335,11 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
           </Text>
         </View>
 
-        <TouchableOpacity style={styles.headerIconButton} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.headerIconButton}
+          activeOpacity={0.7}
+          onPress={() => setMostrarMenuHeader(true)}
+        >
           <Ionicons name="ellipsis-vertical" size={18} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -1235,6 +1545,77 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
         </TouchableWithoutFeedback>
       </Modal>
 
+      {/* Menú del header (⋮): por ahora solo "Vaciar chat" */}
+      <Modal
+        visible={mostrarMenuHeader}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMostrarMenuHeader(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setMostrarMenuHeader(false)}>
+          <View style={styles.overlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.menuOpciones, { marginTop: 60, marginBottom: 0, alignSelf: 'flex-end' }]}>
+                <TouchableOpacity
+                  style={styles.opcionItem}
+                  activeOpacity={0.75}
+                  onPress={() => {
+                    setMostrarMenuHeader(false);
+                    setMostrarConfirmVaciar(true);
+                  }}
+                  disabled={!chatId || mensajes.length === 0}
+                >
+                  <View style={[styles.opcionIconoWrap, { backgroundColor: 'rgba(192,57,43,0.10)' }]}>
+                    <Ionicons name="trash" size={18} color={DANGER} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.opcionTitulo, { color: DANGER }]}>Vaciar chat</Text>
+                    <Text style={styles.opcionSubtitulo}>Borra todos los mensajes</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Modal: confirmar vaciar chat */}
+      <Modal
+        visible={mostrarConfirmVaciar}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !vaciandoChat && setMostrarConfirmVaciar(false)}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.editarCard}>
+            <Text style={styles.propTitulo}>Vaciar chat</Text>
+            <Text style={styles.confirmVaciarTexto}>
+              Se van a borrar todos los mensajes de esta conversación. Esta acción no se puede deshacer.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <TouchableOpacity
+                onPress={() => setMostrarConfirmVaciar(false)}
+                style={[styles.reintentarBtn, { flex: 1, backgroundColor: '#E9EDF5' }]}
+                disabled={vaciandoChat}
+              >
+                <Text style={[styles.reintentarBtnText, { color: '#5B6478' }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={vaciarChat}
+                style={[styles.reintentarBtn, { flex: 1, backgroundColor: DANGER }]}
+                disabled={vaciandoChat}
+              >
+                {vaciandoChat ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.reintentarBtnText}>Vaciar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Modal: editar mensaje */}
       <Modal
         visible={!!editandoMensaje}
@@ -1283,7 +1664,9 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Overlay: armar y enviar una propuesta (con IA) */}
+      {/* Overlay: armar y enviar una propuesta (con IA) — mismos campos
+          que CrearSolicitud.js: descripción, fotos, emergencia, plazo,
+          servicio + precio (sugeridos por IA) y dirección del trabajo. */}
       <Modal
         visible={mostrarPropuesta}
         transparent
@@ -1336,6 +1719,110 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
                 }}
                 editable={!enviandoPropuesta && !propAnalizando}
               />
+
+              {/* Fotos (opcional) — mismo patrón que CrearSolicitud.js */}
+              <Text style={styles.propLabel}>Fotos (opcional)</Text>
+              <Text style={styles.propHelperText}>
+                Ayudan a que {contacto?.nombre ?? 'el trabajador'} entienda mejor el problema.
+              </Text>
+              <View style={styles.propImagenesRow}>
+                {propImagenes.map((img, idx) => (
+                  <ImagenPropuestaThumb
+                    key={img.assetId ?? img.uri ?? idx}
+                    uri={img.uri}
+                    onQuitar={() => quitarImagenPropuesta(idx)}
+                    deshabilitado={subiendoImagenesProp}
+                  />
+                ))}
+                {propImagenes.length < MAX_IMAGENES_PROPUESTA && (
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <TouchableOpacity
+                      style={styles.propImagenAgregarBtn}
+                      onPress={agregarImagenesPropuestaGaleria}
+                      disabled={subiendoImagenesProp}
+                    >
+                      <Ionicons name="images" size={18} color={BLUE_DARK} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.propImagenAgregarBtn}
+                      onPress={tomarFotoPropuesta}
+                      disabled={subiendoImagenesProp}
+                    >
+                      <Ionicons name="camera" size={18} color={BLUE_DARK} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+              {errorImagenesProp && <Text style={styles.propError}>{errorImagenesProp}</Text>}
+
+              {/* Emergencia — igual que CrearSolicitud.js */}
+              <Text style={styles.propLabel}>¿Es una emergencia?</Text>
+              <Text style={styles.propHelperText}>
+                Pérdida de agua activa, corte de luz total, olor a gas, riesgo estructural, etc.
+              </Text>
+              <Toggle2Opciones
+                opciones={['No', 'Sí, es urgente']}
+                activo={propEmergencia ? 1 : 0}
+                onChange={(i) => onCambiarPropEmergencia(i === 1)}
+                colorActivo={DANGER}
+              />
+
+              {propEmergencia ? (
+                <View style={styles.propEmergenciaAviso}>
+                  <Ionicons name="alert-circle" size={16} color={DANGER} style={{ marginRight: 8 }} />
+                  <Text style={styles.propEmergenciaAvisoTexto}>
+                    Como marcaste que es una emergencia, el plazo se toma como "hoy mismo".
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.propLabel}>¿Tenés un plazo o fecha límite?</Text>
+                  <Toggle2Opciones
+                    opciones={['No, sin apuro', 'Sí, elegir fecha']}
+                    activo={propTienePlazo ? 1 : 0}
+                    onChange={(i) => {
+                      const activar = i === 1;
+                      setPropTienePlazo(activar);
+                      if (activar && !propFechaLimite) setPropFechaLimite(new Date());
+                    }}
+                  />
+
+                  {propTienePlazo && (
+                    <View style={styles.plazoRowProp}>
+                      <TouchableOpacity style={styles.plazoBoxProp} onPress={() => setPropMostrarPickerFecha(true)}>
+                        <Text style={styles.plazoBoxLabelProp}>Fecha</Text>
+                        <Text style={styles.plazoBoxValueProp}>
+                          {propFechaLimite ? propFechaLimite.toLocaleDateString('es-AR') : 'Elegir'}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.plazoBoxProp} onPress={() => setPropMostrarPickerHora(true)}>
+                        <Text style={styles.plazoBoxLabelProp}>Hora</Text>
+                        <Text style={styles.plazoBoxValueProp}>
+                          {propFechaLimite ? propFechaLimite.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : 'Elegir'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {propTienePlazo && propMostrarPickerFecha && (
+                    <DateTimePicker
+                      value={propFechaLimite || new Date()}
+                      mode="date"
+                      minimumDate={new Date()}
+                      display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                      onChange={onCambiarPropFecha}
+                    />
+                  )}
+                  {propTienePlazo && propMostrarPickerHora && (
+                    <DateTimePicker
+                      value={propFechaLimite || new Date()}
+                      mode="time"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={onCambiarPropHora}
+                    />
+                  )}
+                </>
+              )}
 
               <TouchableOpacity
                 style={[
@@ -1511,6 +1998,36 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
                 />
               </View>
 
+              {/* Dirección del trabajo — igual que CrearSolicitud.js */}
+              <Text style={styles.propLabel}>Dirección del trabajo</Text>
+              <Toggle2Opciones
+                opciones={['Mi dirección', 'Otra dirección']}
+                activo={propUsarOtraDireccion ? 1 : 0}
+                onChange={(i) => {
+                  const usarOtra = i === 1;
+                  setPropUsarOtraDireccion(usarOtra);
+                  if (!usarOtra) setPropDireccion('');
+                  if (errorPropuesta) setErrorPropuesta(null);
+                }}
+              />
+              {!propUsarOtraDireccion ? (
+                <View style={styles.propDireccionActualBox}>
+                  <Ionicons name="location" size={16} color={BLUE} style={{ marginRight: 8 }} />
+                  <Text style={styles.propDireccionActualTexto} numberOfLines={2}>
+                    {usuario?.direccion || 'No tenés una dirección cargada en tu perfil'}
+                  </Text>
+                </View>
+              ) : (
+                <TextInput
+                  style={[styles.propInput, { marginTop: 8 }]}
+                  placeholder="Av. Siempre Viva 123"
+                  placeholderTextColor="#9AA5B5"
+                  value={propDireccion}
+                  onChangeText={(t) => { setPropDireccion(t); if (errorPropuesta) setErrorPropuesta(null); }}
+                  editable={!enviandoPropuesta}
+                />
+              )}
+
               {(propServicio.trim() || propPrecio) && !propNecesitaAclaracion && (
                 <View style={styles.propPreviewWrap}>
                   <Text style={styles.propPreviewLabel}>Vista previa</Text>
@@ -1557,6 +2074,96 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Modal: detalle completo de una propuesta ya enviada (botón "Ver
+          detalle" de la tarjeta). Muestra los mismos datos que se cargan
+          al crear la propuesta: servicio, precio, descripción, emergencia,
+          plazo, dirección y fotos. */}
+      <Modal
+        visible={!!servicioDetalle}
+        transparent
+        animationType="slide"
+        onRequestClose={cerrarDetalleServicio}
+      >
+        <View style={styles.propOverlay}>
+          <TouchableWithoutFeedback onPress={cerrarDetalleServicio}>
+            <View style={styles.propBackdrop} />
+          </TouchableWithoutFeedback>
+
+          <View style={styles.propCard}>
+            <View style={styles.propHandle} />
+            <View style={styles.propHeaderRow}>
+              <View style={styles.propHeaderIconWrap}>
+                <Ionicons name="hammer" size={16} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.propTitulo}>Detalle de la propuesta</Text>
+                <Text style={styles.propSubtitulo}>
+                  {servicioDetalle?.estado ?? 'Pendiente'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={cerrarDetalleServicio} hitSlop={10} style={styles.propCerrarBtn}>
+                <Ionicons name="close" size={16} color="#5B6478" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.propScroll} showsVerticalScrollIndicator={false}>
+              {servicioDetalle?.emergencia && (
+                <View style={[styles.propEmergenciaAviso, { marginTop: 4 }]}>
+                  <Ionicons name="alert-circle" size={16} color={DANGER} style={{ marginRight: 8 }} />
+                  <Text style={styles.propEmergenciaAvisoTexto}>Esta propuesta es una emergencia.</Text>
+                </View>
+              )}
+
+              <Text style={styles.propLabel}>Servicio</Text>
+              <Text style={styles.detalleValor}>{servicioDetalle?.servicio ?? contacto?.servicio}</Text>
+
+              {!!servicioDetalle?.texto && (
+                <>
+                  <Text style={styles.propLabel}>Descripción</Text>
+                  <Text style={styles.detalleTexto}>{servicioDetalle.texto}</Text>
+                </>
+              )}
+
+              <Text style={styles.propLabel}>Precio estimado</Text>
+              <Text style={styles.detalleValorDestacado}>
+                ${servicioDetalle?.precio ? Number(servicioDetalle.precio).toLocaleString('es-AR') : '0'}
+              </Text>
+
+              {(servicioDetalle?.fechaRequerida || servicioDetalle?.horarioRequerido) && (
+                <>
+                  <Text style={styles.propLabel}>Plazo</Text>
+                  <Text style={styles.detalleTexto}>
+                    {servicioDetalle?.emergencia
+                      ? 'Hoy mismo (emergencia)'
+                      : `${servicioDetalle?.fechaRequerida ?? ''} ${servicioDetalle?.horarioRequerido ?? ''}`.trim()}
+                  </Text>
+                </>
+              )}
+
+              <Text style={styles.propLabel}>Dirección del trabajo</Text>
+              <Text style={styles.detalleTexto}>
+                {servicioDetalle?.direccion || 'No especificada'}
+              </Text>
+
+              {servicioDetalle?.imagenes?.length > 0 && (
+                <>
+                  <Text style={styles.propLabel}>Fotos</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
+                    {servicioDetalle.imagenes.map((url, idx) => (
+                      <Image
+                        key={url ?? idx}
+                        source={{ uri: url }}
+                        style={styles.detalleImagen}
+                      />
+                    ))}
+                  </ScrollView>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
 
     </SafeAreaView>
@@ -1631,6 +2238,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   reintentarBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  confirmVaciarTexto: { color: '#5B6478', fontSize: 13, marginTop: 8, lineHeight: 18 },
 
   listaContent: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 18, flexGrow: 1 },
   diaDividerWrap: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
@@ -1750,6 +2358,7 @@ audioOndaProgreso: { position: 'absolute', left: 0, height: 3, borderRadius: 2 }
     shadowRadius: 12,
     elevation: 3,
   },
+  tarjetaServicioBadgeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
   tarjetaServicioBadge: {
     flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
     backgroundColor: 'rgba(21,101,216,0.08)',
@@ -1757,6 +2366,13 @@ audioOndaProgreso: { position: 'absolute', left: 0, height: 3, borderRadius: 2 }
     borderRadius: 12, marginBottom: 10, gap: 5,
   },
   tarjetaServicioBadgeText: { color: BLUE_DARK, fontSize: 10, fontWeight: '700' },
+  tarjetaEmergenciaBadge: {
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 4,
+    backgroundColor: DANGER,
+    paddingHorizontal: 9, paddingVertical: 4,
+    borderRadius: 12, marginBottom: 10,
+  },
+  tarjetaEmergenciaBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   tarjetaServicioLabel: { color: '#8A94A6', fontSize: 11, fontWeight: '600', marginTop: 4 },
   tarjetaServicioValor: { color: '#1A202C', fontSize: 16, fontWeight: '800', marginTop: 2 },
   tarjetaServicioDetalle: { color: '#4A5568', fontSize: 12.5, lineHeight: 18, marginTop: 2 },
@@ -1835,7 +2451,7 @@ audioOndaProgreso: { position: 'absolute', left: 0, height: 3, borderRadius: 2 }
     justifyContent: 'center', alignItems: 'center',
   },
 
-  // ---- Menú de opciones (archivo / propuesta) ----
+  // ---- Menú de opciones (archivo / propuesta / header) ----
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(13,26,48,0.35)',
@@ -1868,7 +2484,7 @@ audioOndaProgreso: { position: 'absolute', left: 0, height: 3, borderRadius: 2 }
   opcionSubtitulo: { color: '#8A94A6', fontSize: 11.5, marginTop: 1 },
   opcionDivider: { height: 1, backgroundColor: 'rgba(21,101,216,0.08)', marginLeft: 14 + 38 + 12 },
 
-  // ---- Modal: editar mensaje ----
+  // ---- Modal: editar mensaje / confirmar vaciar ----
   editarCard: {
     backgroundColor: '#fff',
     borderRadius: 20,
@@ -1877,6 +2493,26 @@ audioOndaProgreso: { position: 'absolute', left: 0, height: 3, borderRadius: 2 }
     alignSelf: 'center',
     width: '86%',
   },
+
+  // ---- Toggle simple de 2 opciones (emergencia / dirección) ----
+  toggle2Track: {
+    flexDirection: 'row',
+    backgroundColor: BG,
+    borderWidth: 1,
+    borderColor: 'rgba(21,101,216,0.10)',
+    borderRadius: 14,
+    padding: 3,
+    marginTop: 4,
+  },
+  toggle2Btn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggle2Text: { fontSize: 13, fontWeight: '700', color: '#5B6478' },
+  toggle2TextActivo: { color: '#fff' },
 
   // ---- Overlay: crear/enviar propuesta ----
   propOverlay: { flex: 1, justifyContent: 'flex-end' },
@@ -1920,6 +2556,7 @@ audioOndaProgreso: { position: 'absolute', left: 0, height: 3, borderRadius: 2 }
   },
   propScroll: { flexGrow: 0 },
   propLabel: { fontSize: 13, fontWeight: '700', color: '#1A202C', marginTop: 14, marginBottom: 6 },
+  propHelperText: { fontSize: 12, color: '#8A94A6', marginBottom: 8, lineHeight: 16 },
   propInput: {
     backgroundColor: BG,
     borderWidth: 1,
@@ -2056,4 +2693,54 @@ audioOndaProgreso: { position: 'absolute', left: 0, height: 3, borderRadius: 2 }
   propDropdownItemTextActivo: { color: BLUE, fontWeight: '800' },
   propRangoTexto: { fontSize: 12, color: '#8A94A6', marginTop: 6 },
   propNotaTexto: { fontSize: 12, color: ACCENT, marginTop: 4, lineHeight: 16, fontWeight: '600' },
+
+  // ---- Fotos de la propuesta ----
+  propImagenesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center' },
+  propImagenThumbWrap: { position: 'relative' },
+  propImagenThumb: { width: 60, height: 60, borderRadius: 12, backgroundColor: BG },
+  propImagenThumbQuitar: {
+    position: 'absolute', top: -6, right: -6,
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: DANGER,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: '#fff',
+  },
+  propImagenAgregarBtn: {
+    width: 60, height: 60, borderRadius: 12,
+    borderWidth: 1.5, borderColor: BLUE, borderStyle: 'dashed',
+    backgroundColor: 'rgba(21,101,216,0.06)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  // ---- Emergencia / plazo dentro de la propuesta ----
+  propEmergenciaAviso: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FBEAE8',
+    borderWidth: 1, borderColor: 'rgba(192,57,43,0.35)',
+    borderRadius: 14, padding: 12,
+  },
+  propEmergenciaAvisoTexto: { flex: 1, fontSize: 12.5, color: DANGER, lineHeight: 17, fontWeight: '600' },
+  plazoRowProp: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  plazoBoxProp: {
+    flex: 1, backgroundColor: BG, borderWidth: 1, borderColor: 'rgba(21,101,216,0.10)',
+    borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
+  },
+  plazoBoxLabelProp: { fontSize: 10.5, color: '#8A94A6', fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
+  plazoBoxValueProp: { fontSize: 14, color: '#1A202C', fontWeight: '700', marginTop: 4 },
+
+  // ---- Dirección dentro de la propuesta ----
+  propDireccionActualBox: {
+    marginTop: 8, flexDirection: 'row', alignItems: 'center',
+    backgroundColor: BG, borderWidth: 1, borderColor: 'rgba(21,101,216,0.10)',
+    borderRadius: 14, padding: 12,
+  },
+  propDireccionActualTexto: { flex: 1, fontSize: 13, color: '#1A202C', fontWeight: '600', lineHeight: 18 },
+
+  // ---- Modal de detalle de una propuesta ya enviada ----
+  detalleValor: { fontSize: 16, color: '#1A202C', fontWeight: '800' },
+  detalleValorDestacado: { fontSize: 20, color: BLUE_DARK, fontWeight: '800' },
+  detalleTexto: { fontSize: 13.5, color: '#4A5568', lineHeight: 19 },
+  detalleImagen: { width: 100, height: 100, borderRadius: 12, marginRight: 10, backgroundColor: BG },
 });
