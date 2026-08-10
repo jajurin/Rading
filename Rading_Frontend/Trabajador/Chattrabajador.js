@@ -74,6 +74,12 @@ const mapearMensaje = (m, idUsuario) => {
   estado: m.ESTADO_OFERTA,
   leido: !!m.leido,
   duracionAudio: m.duracion_audio,   // 👈 agregar
+  // 👇 id del trabajo/oferta (Cliente-Trabajador) al que corresponde esta
+  // propuesta del cliente. Viene de m.trabajo_id (columna real en
+  // "Mensajes", agregada al SELECT de obtenerMensajes en el backend).
+  // Se usa para navegar a DetalleOfertaTrabajador y poder ver el detalle
+  // completo + postularse (precio fijo) u ofertar (subasta) desde el chat.
+  idTrabajo: m.trabajo_id ?? null,
   hora: m.created_at
     ? new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
     : '',
@@ -603,6 +609,20 @@ Object.entries(extraForm).forEach(([k, v]) => formData.append(k, String(v))); //
     }
   };
 
+  // 👇 NUEVO: navega a la pantalla de detalle de la oferta (ya existente,
+  // DetalleOfertaTrabajador.js), reusando todo su flujo de "Postularme"
+  // (precio fijo) / "Ofertar" (subasta) en vez de duplicarlo acá.
+  const irADetalleOferta = (item) => {
+    if (!item.idTrabajo) {
+      setError('No pudimos encontrar el detalle de esta propuesta.');
+      return;
+    }
+    navigation.navigate('DetalleOfertaTrabajador', {
+      ofertaId: item.idTrabajo,
+      trabajadorId: usuario?.idTrabajador,
+    });
+  };
+
   const renderBurbujaTexto = (item) => {
     const esTrabajador = item.autor === 'trabajador';
     return (
@@ -767,8 +787,9 @@ const renderBurbujaVideo = (item) => {
     );
   };
 
-  // Propuesta que mandó el CLIENTE: acá el trabajador solo la lee (por
-  // ahora sin acciones de aceptar/rechazar — se puede sumar después).
+  // Propuesta que mandó el CLIENTE: el trabajador puede leerla y, si tiene
+  // el id del trabajo asociado, ir al detalle completo para postularse
+  // (precio fijo) u ofertar (subasta) en DetalleOfertaTrabajador.js.
   const renderTarjetaPropuestaCliente = (item) => {
     return (
       <View style={[styles.filaMensaje, { justifyContent: 'flex-start' }]}>
@@ -791,6 +812,17 @@ const renderBurbujaVideo = (item) => {
 
           <Text style={[styles.tarjetaOfertaLabel, { marginTop: 10 }]}>Precio propuesto</Text>
           <Text style={styles.tarjetaOfertaPrecio}>${Number(item.precio).toLocaleString('es-AR')}</Text>
+
+          {/* 👇 NUEVO: ver detalle completo (fotos, ubicación, emergencia,
+              plazo, cliente) y postularse desde ahí. */}
+          <TouchableOpacity
+            style={styles.tarjetaServicioBoton}
+            activeOpacity={0.85}
+            onPress={() => irADetalleOferta(item)}
+          >
+            <Text style={styles.tarjetaServicioBotonText}>Ver detalle y postularme</Text>
+            <Ionicons name="arrow-forward" size={15} color="#fff" />
+          </TouchableOpacity>
 
           <Text style={[styles.horaClienteTexto, { marginTop: 8 }]}>{item.hora}</Text>
         </View>
@@ -1206,6 +1238,14 @@ const styles = StyleSheet.create({
   tarjetaOfertaValor: { color: '#1A202C', fontSize: 16, fontWeight: '800', marginTop: 2 },
   tarjetaOfertaNota: { color: '#4A5568', fontSize: 12.5, lineHeight: 18, marginTop: 2 },
   tarjetaOfertaPrecio: { color: BLUE_DARK, fontSize: 20, fontWeight: '800', marginTop: 2 },
+
+  // ---- Botón "Ver detalle y postularme" (mismo estilo que en ChatCliente) ----
+  tarjetaServicioBoton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: BLUE, borderRadius: 14,
+    paddingVertical: 10, marginTop: 14, gap: 6,
+  },
+  tarjetaServicioBotonText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 
   inputBar: {
     flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 12, paddingVertical: 10,

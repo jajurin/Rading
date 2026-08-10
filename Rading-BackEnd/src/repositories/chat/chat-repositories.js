@@ -150,7 +150,7 @@ export default class chatRepository {
 
     // Mensajes de un chat, con precio/servicio/estado de la propuesta
     // vinculada (si el mensaje es tipo PROPUESTA y tiene trabajo_id).
-   obtenerMensajes = async (chatId) => {
+  obtenerMensajes = async (chatId) => {
     const client = new Client(config)
     try {
         await client.connect()
@@ -164,6 +164,7 @@ export default class chatRepository {
                 m.created_at,
                 m.edited_at,
                 m.duracion_audio,
+                m.trabajo_id,
                 m.precio_ofertado,
                 m.nota_oferta,
                 ct.precio,
@@ -187,6 +188,7 @@ export default class chatRepository {
     } finally {
         await client.end()
     }
+
 }
 // ── Agregar dentro de la clase, junto a los demás métodos ──
 
