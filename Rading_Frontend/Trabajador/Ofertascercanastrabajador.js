@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // backend (el api.js / config.js que ya tenés). Debe exportar algo tipo:
 //   export const API_URL = 'http://192.168.x.x:3000'
 import API_URL from '../configS';
+import BottomNavBarTrabajador from './Navegadortrabajador';
 // -------------------------------------------------------------------------
 // Config
 // -------------------------------------------------------------------------
@@ -369,6 +370,11 @@ export default function OfertasCercanasTrabajador() {
     return `Dentro de ${radioKm} km · ${cantidad} disponible${cantidad === 1 ? '' : 's'}`;
   }, [loading, error, ofertasFiltradas.length, radioKm]);
 
+  // Alto aproximado de la barra flotante (52 de altura interna + su
+  // padding vertical + el inset inferior del safe area + un colchón),
+  // para que la lista y los estados vacíos no queden tapados por atrás.
+  const navBarClearance = 52 + 12 + Math.max(insets.bottom, 10) + 18;
+
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -434,11 +440,11 @@ export default function OfertasCercanasTrabajador() {
       )}
 
       {loading ? (
-        <View style={styles.centerState}>
+        <View style={[styles.centerState, { paddingBottom: navBarClearance }]}>
           <ActivityIndicator size="large" color={COLORS.blue} />
         </View>
       ) : error ? (
-        <View style={styles.centerState}>
+        <View style={[styles.centerState, { paddingBottom: navBarClearance }]}>
           <Icons.Radar color={COLORS.textFaint} size={44} />
           <Text style={styles.emptyTitle}>No pudimos cargar las ofertas</Text>
           <Text style={styles.emptySubtitle}>{error}</Text>
@@ -447,7 +453,7 @@ export default function OfertasCercanasTrabajador() {
           </TouchableOpacity>
         </View>
       ) : ofertas.length === 0 ? (
-        <View style={styles.centerState}>
+        <View style={[styles.centerState, { paddingBottom: navBarClearance }]}>
           <Icons.Radar color={COLORS.textFaint} size={44} />
           <Text style={styles.emptyTitle}>Sin ofertas por ahora</Text>
           <Text style={styles.emptySubtitle}>
@@ -458,7 +464,7 @@ export default function OfertasCercanasTrabajador() {
           </TouchableOpacity>
         </View>
       ) : ofertasFiltradas.length === 0 ? (
-        <View style={styles.centerState}>
+        <View style={[styles.centerState, { paddingBottom: navBarClearance }]}>
           <Icons.Radar color={COLORS.textFaint} size={44} />
           <Text style={styles.emptyTitle}>
             {filtroModalidad === 'FIJO' ? 'Sin trabajos a precio fijo' : 'Sin subastas por ahora'}
@@ -469,7 +475,7 @@ export default function OfertasCercanasTrabajador() {
         <FlatList
           data={ofertasFiltradas}
           keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: navBarClearance }]}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
           renderItem={({ item }) => <OfertaCard item={item} onVerDetalles={handleVerDetalles} />}
           refreshControl={
@@ -477,6 +483,11 @@ export default function OfertasCercanasTrabajador() {
           }
         />
       )}
+
+      <BottomNavBarTrabajador
+        usuario={usuario}
+        pantallaActiva="fab"
+      />
     </View>
   );
 }

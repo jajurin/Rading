@@ -668,7 +668,7 @@ export default function HomeTrabajador({ route, navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor={NAVY} />
-      <Header />
+     <Header usuario={usuario} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}

@@ -197,7 +197,7 @@ const chequearChatsSinLeer = useCallback(async () => {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor={NAVY} />
-      <Header />
+      <Header usuario={usuario} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
