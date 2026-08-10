@@ -8,6 +8,7 @@ import ChatsCliente from './Cliente/PreviaChat';
 import BottomNavBarTrabajador from './Trabajador/Navegadortrabajador';
 import Login from './Login';
 import Registrarse from './Registrarse';
+import PerfilTrabajador from './Trabajador/PerfilTrabajador';
 import TipoUsuario from './TipoUsuario';
 import RegistrarseCliente from './Cliente/RegistrarseCliente';
 import RegistrarseTrabajador from './Trabajador/RegistrarseTrabajdor';
@@ -40,6 +41,7 @@ export default function App() {
     <SafeAreaProvider>
       <NavigationContainer>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="PerfilTrabajador" component={PerfilTrabajador} />
           <Stack.Screen name="Login" component={Login} />
           <Stack.Screen name="MasOfertas" component={MasOfertasScreen} />
           <Stack.Screen name="HomeTrabajador" component={HomeTrabajador} />
