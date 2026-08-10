@@ -257,6 +257,7 @@ mostrarTrabajosActivos = async (idTrabajador) => {
                 ct.horario_requerido,
                 ct.horario_finalizado,
                 ct.trabajo_iniciado_en,
+                ct.direccion,
                 CASE
                     WHEN ct.trabajo_iniciado_en IS NOT NULL
                     THEN EXTRACT(EPOCH FROM (now() - ct.trabajo_iniciado_en)) / 60
