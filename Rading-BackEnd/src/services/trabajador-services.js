@@ -16,75 +16,59 @@ export default class TrabajadorServices {
         return estado
     }
 
-    confirmarLlegada = async (idTrabajo, rol) => {
-        if (!idTrabajo || !ROLES.includes(rol)) {
-            throw new Error('Faltan idTrabajo o rol (CLIENTE | TRABAJADOR)')
-        }
-        const resultado = await this.#repo.confirmarLlegada(idTrabajo, rol)
+  generarCodigoLlegada = async (idTrabajo) => {
+    if (!idTrabajo) throw new Error('Falta idTrabajo')
+    return await this.#repo.generarCodigoLlegada(idTrabajo)
+}
 
-        // El aviso por chat es "best effort": si falla, no rompe la
-        // confirmación en sí (misma filosofía que aceptarOferta).
+confirmarLlegada = async (idTrabajo, codigo) => {
+    if (!idTrabajo || !codigo) throw new Error('Faltan idTrabajo o codigo')
+    const resultado = await this.#repo.confirmarLlegada(idTrabajo, codigo)
+
+    if (resultado.trabajoIniciadoAhora) {
         try {
             const estado = await this.#repo.obtenerEstado(idTrabajo)
             const chatId = await this.#chatRepo.buscarOCrearChat(estado.idCliente, estado.idTrabajador)
-            const enviadorId = rol === 'CLIENTE' ? estado.idUsuarioCliente : estado.idUsuarioTrabajador
-            const quien = rol === 'CLIENTE' ? 'El cliente' : 'El trabajador'
-
             await this.#chatRepo.enviarMensaje({
                 chatId,
-                enviadorId,
-                contenido: `${quien} confirmó su llegada al domicilio.`,
+                enviadorId: estado.idUsuarioTrabajador,
+                contenido: `El trabajador ingresó el código correctamente. ¡Trabajo iniciado!`,
                 tipo: 'TEXTO',
             })
-
-            if (resultado.trabajoIniciadoAhora) {
-                await this.#chatRepo.enviarMensaje({
-                    chatId,
-                    enviadorId,
-                    contenido: `¡Trabajo iniciado! Ambos confirmaron la llegada.`,
-                    tipo: 'TEXTO',
-                })
-            }
         } catch (err) {
             console.error(`No se pudo notificar confirmarLlegada del trabajo ${idTrabajo}:`, err)
         }
-
-        return resultado
     }
 
-    confirmarFin = async (idTrabajo, rol) => {
-        if (!idTrabajo || !ROLES.includes(rol)) {
-            throw new Error('Faltan idTrabajo o rol (CLIENTE | TRABAJADOR)')
-        }
-        const resultado = await this.#repo.confirmarFin(idTrabajo, rol)
+    return resultado
+}
 
+generarCodigoFin = async (idTrabajo) => {
+    if (!idTrabajo) throw new Error('Falta idTrabajo')
+    return await this.#repo.generarCodigoFin(idTrabajo)
+}
+
+confirmarFin = async (idTrabajo, codigo) => {
+    if (!idTrabajo || !codigo) throw new Error('Faltan idTrabajo o codigo')
+    const resultado = await this.#repo.confirmarFin(idTrabajo, codigo)
+
+    if (resultado.trabajoTerminadoAhora) {
         try {
             const estado = await this.#repo.obtenerEstado(idTrabajo)
             const chatId = await this.#chatRepo.buscarOCrearChat(estado.idCliente, estado.idTrabajador)
-            const enviadorId = rol === 'CLIENTE' ? estado.idUsuarioCliente : estado.idUsuarioTrabajador
-            const quien = rol === 'CLIENTE' ? 'El cliente' : 'El trabajador'
-
             await this.#chatRepo.enviarMensaje({
                 chatId,
-                enviadorId,
-                contenido: `${quien} confirmó que el trabajo finalizó.`,
+                enviadorId: estado.idUsuarioTrabajador,
+                contenido: `El trabajador ingresó el código correctamente. ¡Trabajo finalizado!`,
                 tipo: 'TEXTO',
             })
-
-            if (resultado.trabajoTerminadoAhora) {
-                await this.#chatRepo.enviarMensaje({
-                    chatId,
-                    enviadorId,
-                    contenido: `¡Trabajo finalizado! Ambos confirmaron el cierre.`,
-                    tipo: 'TEXTO',
-                })
-            }
         } catch (err) {
             console.error(`No se pudo notificar confirmarFin del trabajo ${idTrabajo}:`, err)
         }
-
-        return resultado
     }
+
+    return resultado
+}
     editarOferta = async (idOferta, idTrabajador, datos) => {
     if (!idOferta || !idTrabajador || datos?.precio == null) {
         throw new Error('Faltan idOferta, idTrabajador o precio')

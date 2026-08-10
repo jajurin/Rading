@@ -3,12 +3,16 @@ import usuarioRepository from '../general/usuario-repositories.js'
 import pkg from 'pg'
 const { Client } = pkg
 const DURACION_SUBASTA_HORAS = 2
+  const MAX_INTENTOS = 5
+const CODIGO_VALIDEZ_MIN = 15
+const generarCodigoNumerico = () => String(Math.floor(1000 + Math.random() * 9000)) // 4 dígitos
 export default class trabajadorRepository {
  #usuarioRepo = new usuarioRepository()
     /**
      * Busca clientes por nombre/apellido (texto libre).
      * Si se pasan ids, filtra solo entre esos ids (usado tras aplicar filtros).
      */
+    
     buscarCliente = async (texto, ids = []) => {
     const client = new Client(config)
     let result
@@ -52,6 +56,7 @@ export default class trabajadorRepository {
 
     return result?.rows ?? []
 }
+
 enviarOferta = async (idTrabajo, idTrabajador, { precio, costoExtraMin = null, costoExtraMax = null, mensaje = null }) => {
     const client = new Client(config)
     try {
@@ -804,122 +809,236 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
     // no pisa la fecha original (COALESCE). Bloquea la fila con FOR UPDATE
     // para que dos confirmaciones simultáneas no pisen el chequeo de
     // "¿ya confirmaron ambos?".
-    confirmarLlegada = async (idTrabajo, rol) => {
-        const client = new Client(config)
-        const columna = rol === 'CLIENTE' ? 'llegada_cliente_at' : 'llegada_trabajador_at'
-        try {
-            await client.connect()
-            await client.query('BEGIN')
 
-            const filaResult = await client.query(
-                `SELECT id, estado, "IdCliente" AS "idCliente", "IdTrabajador" AS "idTrabajador"
-                 FROM "Cliente-Trabajador"
-                 WHERE id = $1
-                 FOR UPDATE`,
-                [idTrabajo]
-            )
-            const fila = filaResult.rows[0]
-            if (!fila) throw new Error('El trabajo no existe')
-            if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
 
-            await client.query(
-                `UPDATE "Cliente-Trabajador" SET ${columna} = COALESCE(${columna}, now()) WHERE id = $1`,
-                [idTrabajo]
-            )
 
-            const actualizado = await client.query(
-                `SELECT llegada_cliente_at, llegada_trabajador_at, trabajo_iniciado_en
-                 FROM "Cliente-Trabajador" WHERE id = $1`,
-                [idTrabajo]
-            )
-            const { llegada_cliente_at, llegada_trabajador_at, trabajo_iniciado_en } = actualizado.rows[0]
 
-            let iniciadoAhora = false
-            if (llegada_cliente_at && llegada_trabajador_at && !trabajo_iniciado_en) {
-                await client.query(
-                    `UPDATE "Cliente-Trabajador" SET trabajo_iniciado_en = now() WHERE id = $1`,
-                    [idTrabajo]
-                )
-                iniciadoAhora = true
-            }
+// ── Llegada ──────────────────────────────────────────────
 
-            await client.query('COMMIT')
+generarCodigoLlegada = async (idTrabajo) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        await client.query('BEGIN')
 
-            return {
-                idTrabajo,
-                idCliente: fila.idCliente,
-                idTrabajador: fila.idTrabajador,
-                ambasLlegadasConfirmadas: !!(llegada_cliente_at && llegada_trabajador_at),
-                trabajoIniciadoAhora: iniciadoAhora,
-            }
-        } catch (err) {
-            await client.query('ROLLBACK')
-            console.error('Error en confirmarLlegada:', err)
-            throw err
-        } finally {
-            await client.end()
+        const filaResult = await client.query(
+            `SELECT id, estado, llegada_trabajador_at
+             FROM "Cliente-Trabajador"
+             WHERE id = $1
+             FOR UPDATE`,
+            [idTrabajo]
+        )
+        const fila = filaResult.rows[0]
+        if (!fila) throw new Error('El trabajo no existe')
+        if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
+        if (fila.llegada_trabajador_at) throw new Error('La llegada ya fue confirmada')
+
+        const codigo = generarCodigoNumerico()
+
+        const actualizado = await client.query(
+            `UPDATE "Cliente-Trabajador"
+             SET codigo_llegada = $2,
+                 codigo_llegada_generado_en = now(),
+                 codigo_llegada_intentos = 0,
+                 llegada_cliente_at = now()
+             WHERE id = $1
+             RETURNING codigo_llegada, codigo_llegada_generado_en`,
+            [idTrabajo, codigo]
+        )
+
+        await client.query('COMMIT')
+        return {
+            idTrabajo,
+            codigo: actualizado.rows[0].codigo_llegada,
+            generadoEn: actualizado.rows[0].codigo_llegada_generado_en,
+            validezMinutos: CODIGO_VALIDEZ_MIN,
         }
+    } catch (err) {
+        try { await client.query('ROLLBACK') } catch (_) {}
+        console.error('Error en generarCodigoLlegada:', err)
+        throw err
+    } finally {
+        await client.end()
     }
+}
 
-    confirmarFin = async (idTrabajo, rol) => {
-        const client = new Client(config)
-        const columna = rol === 'CLIENTE' ? 'fin_cliente_at' : 'fin_trabajador_at'
-        try {
-            await client.connect()
-            await client.query('BEGIN')
+confirmarLlegada = async (idTrabajo, codigo) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        await client.query('BEGIN')
 
-            const filaResult = await client.query(
-                `SELECT id, estado, trabajo_iniciado_en,
-                        "IdCliente" AS "idCliente", "IdTrabajador" AS "idTrabajador"
-                 FROM "Cliente-Trabajador"
-                 WHERE id = $1
-                 FOR UPDATE`,
-                [idTrabajo]
-            )
-            const fila = filaResult.rows[0]
-            if (!fila) throw new Error('El trabajo no existe')
-            if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
-            if (!fila.trabajo_iniciado_en) throw new Error('Todavía no se confirmó el inicio del trabajo')
+        const filaResult = await client.query(
+            `SELECT id, estado, "IdCliente" AS "idCliente", "IdTrabajador" AS "idTrabajador",
+                    codigo_llegada, codigo_llegada_generado_en, codigo_llegada_intentos,
+                    llegada_trabajador_at
+             FROM "Cliente-Trabajador"
+             WHERE id = $1
+             FOR UPDATE`,
+            [idTrabajo]
+        )
+        const fila = filaResult.rows[0]
+        if (!fila) throw new Error('El trabajo no existe')
+        if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
 
-            await client.query(
-                `UPDATE "Cliente-Trabajador" SET ${columna} = COALESCE(${columna}, now()) WHERE id = $1`,
-                [idTrabajo]
-            )
-
-            const actualizado = await client.query(
-                `SELECT fin_cliente_at, fin_trabajador_at FROM "Cliente-Trabajador" WHERE id = $1`,
-                [idTrabajo]
-            )
-            const { fin_cliente_at, fin_trabajador_at } = actualizado.rows[0]
-
-            let terminadoAhora = false
-            if (fin_cliente_at && fin_trabajador_at) {
-                await client.query(
-                    `UPDATE "Cliente-Trabajador"
-                     SET estado = 'TERMINADO', fecha_acabado = CURRENT_DATE
-                     WHERE id = $1 AND estado = 'EN PROCESO'`,
-                    [idTrabajo]
-                )
-                terminadoAhora = true
-            }
-
+        if (fila.llegada_trabajador_at) {
             await client.query('COMMIT')
-
-            return {
-                idTrabajo,
-                idCliente: fila.idCliente,
-                idTrabajador: fila.idTrabajador,
-                ambosFinesConfirmados: !!(fin_cliente_at && fin_trabajador_at),
-                trabajoTerminadoAhora: terminadoAhora,
-            }
-        } catch (err) {
-            await client.query('ROLLBACK')
-            console.error('Error en confirmarFin:', err)
-            throw err
-        } finally {
-            await client.end()
+            return { idTrabajo, idCliente: fila.idCliente, idTrabajador: fila.idTrabajador, trabajoIniciadoAhora: false, yaConfirmado: true }
         }
+
+        if (!fila.codigo_llegada) {
+            throw new Error('Todavía no se generó un código. Pedile al cliente que lo genere.')
+        }
+        if (fila.codigo_llegada_intentos >= MAX_INTENTOS) {
+            throw new Error('Superaste el máximo de intentos. Pedile al cliente un código nuevo.')
+        }
+
+        const generadoEn = new Date(fila.codigo_llegada_generado_en)
+        const expirado = (Date.now() - generadoEn.getTime()) > CODIGO_VALIDEZ_MIN * 60 * 1000
+        if (expirado) throw new Error('El código expiró. Pedile al cliente que genere uno nuevo.')
+
+        if (String(codigo).trim() !== String(fila.codigo_llegada).trim()) {
+            await client.query(
+                `UPDATE "Cliente-Trabajador" SET codigo_llegada_intentos = codigo_llegada_intentos + 1 WHERE id = $1`,
+                [idTrabajo]
+            )
+            await client.query('COMMIT')
+            const intentosRestantes = MAX_INTENTOS - (fila.codigo_llegada_intentos + 1)
+            throw new Error(`Código incorrecto. Te quedan ${Math.max(0, intentosRestantes)} intentos.`)
+        }
+
+        await client.query(
+            `UPDATE "Cliente-Trabajador"
+             SET llegada_trabajador_at = now(),
+                 trabajo_iniciado_en = COALESCE(trabajo_iniciado_en, now())
+             WHERE id = $1`,
+            [idTrabajo]
+        )
+
+        await client.query('COMMIT')
+        return { idTrabajo, idCliente: fila.idCliente, idTrabajador: fila.idTrabajador, trabajoIniciadoAhora: true }
+    } catch (err) {
+        try { await client.query('ROLLBACK') } catch (_) {}
+        console.error('Error en confirmarLlegada:', err)
+        throw err
+    } finally {
+        await client.end()
     }
+}
+
+// ── Fin de trabajo ───────────────────────────────────────
+
+generarCodigoFin = async (idTrabajo) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        await client.query('BEGIN')
+
+        const filaResult = await client.query(
+            `SELECT id, estado, trabajo_iniciado_en, fin_trabajador_at
+             FROM "Cliente-Trabajador"
+             WHERE id = $1
+             FOR UPDATE`,
+            [idTrabajo]
+        )
+        const fila = filaResult.rows[0]
+        if (!fila) throw new Error('El trabajo no existe')
+        if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
+        if (!fila.trabajo_iniciado_en) throw new Error('Todavía no se confirmó el inicio del trabajo')
+        if (fila.fin_trabajador_at) throw new Error('El fin del trabajo ya fue confirmado')
+
+        const codigo = generarCodigoNumerico()
+
+        const actualizado = await client.query(
+            `UPDATE "Cliente-Trabajador"
+             SET codigo_fin = $2,
+                 codigo_fin_generado_en = now(),
+                 codigo_fin_intentos = 0,
+                 fin_cliente_at = now()
+             WHERE id = $1
+             RETURNING codigo_fin, codigo_fin_generado_en`,
+            [idTrabajo, codigo]
+        )
+
+        await client.query('COMMIT')
+        return {
+            idTrabajo,
+            codigo: actualizado.rows[0].codigo_fin,
+            generadoEn: actualizado.rows[0].codigo_fin_generado_en,
+            validezMinutos: CODIGO_VALIDEZ_MIN,
+        }
+    } catch (err) {
+        try { await client.query('ROLLBACK') } catch (_) {}
+        console.error('Error en generarCodigoFin:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
+
+confirmarFin = async (idTrabajo, codigo) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        await client.query('BEGIN')
+
+        const filaResult = await client.query(
+            `SELECT id, estado, trabajo_iniciado_en,
+                    "IdCliente" AS "idCliente", "IdTrabajador" AS "idTrabajador",
+                    codigo_fin, codigo_fin_generado_en, codigo_fin_intentos, fin_trabajador_at
+             FROM "Cliente-Trabajador"
+             WHERE id = $1
+             FOR UPDATE`,
+            [idTrabajo]
+        )
+        const fila = filaResult.rows[0]
+        if (!fila) throw new Error('El trabajo no existe')
+        if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
+        if (!fila.trabajo_iniciado_en) throw new Error('Todavía no se confirmó el inicio del trabajo')
+
+        if (fila.fin_trabajador_at) {
+            await client.query('COMMIT')
+            return { idTrabajo, idCliente: fila.idCliente, idTrabajador: fila.idTrabajador, trabajoTerminadoAhora: false, yaConfirmado: true }
+        }
+
+        if (!fila.codigo_fin) throw new Error('Todavía no se generó un código. Pedile al cliente que lo genere.')
+        if (fila.codigo_fin_intentos >= MAX_INTENTOS) {
+            throw new Error('Superaste el máximo de intentos. Pedile al cliente un código nuevo.')
+        }
+
+        const generadoEn = new Date(fila.codigo_fin_generado_en)
+        const expirado = (Date.now() - generadoEn.getTime()) > CODIGO_VALIDEZ_MIN * 60 * 1000
+        if (expirado) throw new Error('El código expiró. Pedile al cliente que genere uno nuevo.')
+
+        if (String(codigo).trim() !== String(fila.codigo_fin).trim()) {
+            await client.query(
+                `UPDATE "Cliente-Trabajador" SET codigo_fin_intentos = codigo_fin_intentos + 1 WHERE id = $1`,
+                [idTrabajo]
+            )
+            await client.query('COMMIT')
+            const intentosRestantes = MAX_INTENTOS - (fila.codigo_fin_intentos + 1)
+            throw new Error(`Código incorrecto. Te quedan ${Math.max(0, intentosRestantes)} intentos.`)
+        }
+
+        await client.query(
+            `UPDATE "Cliente-Trabajador"
+             SET fin_trabajador_at = now(),
+                 estado = 'TERMINADO',
+                 fecha_acabado = CURRENT_DATE
+             WHERE id = $1 AND estado = 'EN PROCESO'`,
+            [idTrabajo]
+        )
+
+        await client.query('COMMIT')
+        return { idTrabajo, idCliente: fila.idCliente, idTrabajador: fila.idTrabajador, trabajoTerminadoAhora: true }
+    } catch (err) {
+        try { await client.query('ROLLBACK') } catch (_) {}
+        console.error('Error en confirmarFin:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
 
 /**
  * Filtra solicitudes PENDIENTE. Cuando se pasa distanciaMax, la distancia

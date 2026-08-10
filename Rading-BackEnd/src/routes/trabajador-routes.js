@@ -20,10 +20,10 @@ router.get('/:idTrabajo/estado', async (req, res) => {
     }
 })
 
-// POST /trabajo/:idTrabajo/confirmar-llegada  { rol: 'CLIENTE' | 'TRABAJADOR' }
-router.post('/:idTrabajo/confirmar-llegada', async (req, res) => {
+// POST /trabajo/:idTrabajo/generar-codigo-llegada   (lo llama el cliente)
+router.post('/:idTrabajo/generar-codigo-llegada', async (req, res) => {
     try {
-        const resultado = await svc.confirmarLlegada(req.params.idTrabajo, req.body.rol)
+        const resultado = await svc.generarCodigoLlegada(req.params.idTrabajo)
         res.status(200).json(resultado)
     } catch (error) {
         console.error(error)
@@ -31,10 +31,32 @@ router.post('/:idTrabajo/confirmar-llegada', async (req, res) => {
     }
 })
 
-// POST /trabajo/:idTrabajo/confirmar-fin  { rol: 'CLIENTE' | 'TRABAJADOR' }
+// POST /trabajo/:idTrabajo/confirmar-llegada  { codigo }   (lo llama el trabajador)
+router.post('/:idTrabajo/confirmar-llegada', async (req, res) => {
+    try {
+        const resultado = await svc.confirmarLlegada(req.params.idTrabajo, req.body.codigo)
+        res.status(200).json(resultado)
+    } catch (error) {
+        console.error(error)
+        res.status(400).json({ message: error.message })
+    }
+})
+
+// POST /trabajo/:idTrabajo/generar-codigo-fin   (lo llama el cliente)
+router.post('/:idTrabajo/generar-codigo-fin', async (req, res) => {
+    try {
+        const resultado = await svc.generarCodigoFin(req.params.idTrabajo)
+        res.status(200).json(resultado)
+    } catch (error) {
+        console.error(error)
+        res.status(400).json({ message: error.message })
+    }
+})
+
+// POST /trabajo/:idTrabajo/confirmar-fin  { codigo }   (lo llama el trabajador)
 router.post('/:idTrabajo/confirmar-fin', async (req, res) => {
     try {
-        const resultado = await svc.confirmarFin(req.params.idTrabajo, req.body.rol)
+        const resultado = await svc.confirmarFin(req.params.idTrabajo, req.body.codigo)
         res.status(200).json(resultado)
     } catch (error) {
         console.error(error)

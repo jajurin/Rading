@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   Animated,
@@ -19,6 +20,7 @@ export default function ConfirmarLlegadaTr({
   onClose = () => {},
 }) {
   const [status, setStatus] = useState("idle");
+  const [codigoInput, setCodigoInput] = useState("");
   const [errorMsg, setErrorMsg] = useState(null);
   const [visible, setVisible] = useState(true);
   const pollRef = useRef(null);
@@ -73,6 +75,7 @@ export default function ConfirmarLlegadaTr({
   });
 
   const goToSuccess = (data) => {
+    stopPolling();
     setStatus("success");
     onConfirm(data);
     setTimeout(() => {
@@ -87,41 +90,43 @@ export default function ConfirmarLlegadaTr({
         const res = await fetch(`${API_URL}/trabajo/${idTrabajo}/estado`);
         if (!res.ok) return;
         const estado = await res.json();
-        if (estado.trabajo_iniciado_en) {
-          stopPolling();
-          goToSuccess(estado);
-        }
+        if (estado.llegada_trabajador_at || estado.trabajo_iniciado_en) {
+  goToSuccess(estado);
+}
       } catch (e) {
         console.error("Error consultando estado (trabajador-llegada):", e);
       }
     }, 4000);
   };
 
-  const handleConfirm = async () => {
-    if (status !== "idle" && status !== "error") return;
-    setStatus("loading");
-    setErrorMsg(null);
-    try {
-      const res = await fetch(`${API_URL}/trabajo/${idTrabajo}/confirmar-llegada`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rol: "TRABAJADOR" }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "No se pudo confirmar la llegada");
+ const handleConfirm = async () => {
+  if (status !== "idle" && status !== "error") return;
 
-      if (data.ambasLlegadasConfirmadas || data.trabajoIniciadoAhora) {
-        goToSuccess(data);
-      } else {
-        setStatus("waiting");
-        startPolling();
-      }
-    } catch (err) {
-      console.error("Error al confirmar llegada (trabajador):", err);
-      setErrorMsg(err.message || "Ocurrió un error. Probá de nuevo.");
-      setStatus("error");
-    }
-  };
+  const codigoLimpio = codigoInput.trim();
+  if (!codigoLimpio) {
+    setErrorMsg("Ingresá el código de 4 dígitos que te dio el cliente");
+    setStatus("error");
+    return;
+  }
+
+  setStatus("loading");
+  setErrorMsg(null);
+  try {
+    const res = await fetch(`${API_URL}/trabajo/${idTrabajo}/confirmar-codigo-llegada`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ codigo: codigoLimpio }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "No se pudo confirmar la llegada");
+
+    goToSuccess(data);
+  } catch (err) {
+    console.error("Error al confirmar llegada (trabajador):", err);
+    setErrorMsg(err.message || "Ocurrió un error. Probá de nuevo.");
+    setStatus("error");
+  }
+};
 
   const animateClose = () => {
     setStatus("closing");
@@ -182,11 +187,8 @@ export default function ConfirmarLlegadaTr({
             <Animated.View style={[styles.waitingWrap, { transform: [{ scale: popAnim }] }]}>
               <Animated.View style={[styles.waitingSpinner, { transform: [{ rotate: spin }] }]} />
             </Animated.View>
-            <Text style={styles.waitingTitle}>Esperando a {clientName}</Text>
-            <Text style={styles.waitingSub}>
-              Ya confirmaste tu llegada. El trabajo arranca en cuanto {clientName}{" "}
-              confirme también.
-            </Text>
+            <Text style={styles.waitingTitle}>Confirmando...</Text>
+            <Text style={styles.waitingSub}>Un segundo, estamos registrando tu llegada.</Text>
           </View>
         ) : (
           <>
@@ -202,7 +204,7 @@ export default function ConfirmarLlegadaTr({
 
             <Text style={styles.title}>Confirmar llegada</Text>
             <Text style={styles.sub}>
-              Marcá que llegaste al domicilio para que el cliente lo sepa.
+              Pedile a {clientName} el código de 4 dígitos y escribilo acá.
             </Text>
 
             <View style={styles.rows}>
@@ -210,15 +212,21 @@ export default function ConfirmarLlegadaTr({
                 <Text style={styles.rowLabel}>Servicio</Text>
                 <Text style={styles.rowValue}>{service}</Text>
               </View>
-              <View style={styles.row}>
-                <Text style={styles.rowLabel}>Cliente</Text>
-                <Text style={styles.rowValue}>{clientName}</Text>
-              </View>
               <View style={[styles.row, styles.rowLast]}>
                 <Text style={styles.rowLabel}>Dirección</Text>
                 <Text style={styles.rowValue}>{address}</Text>
               </View>
             </View>
+
+            <TextInput
+              style={styles.codeInput}
+              placeholder="Código de 4 dígitos"
+              placeholderTextColor="#8a90a8"
+              keyboardType="number-pad"
+              maxLength={4}
+              value={codigoInput}
+              onChangeText={setCodigoInput}
+            />
 
             {status === "error" && (
               <View style={styles.errorBox}>
@@ -293,7 +301,7 @@ const styles = StyleSheet.create({
   },
   title: { textAlign: "center", color: BLUE, fontSize: 21, fontWeight: "800", marginBottom: 4 },
   sub: { textAlign: "center", color: "#8a90a8", fontSize: 13.5, marginBottom: 20, lineHeight: 19 },
-  rows: { backgroundColor: "#f6f8ff", borderRadius: 18, paddingHorizontal: 16, marginBottom: 22 },
+  rows: { backgroundColor: "#f6f8ff", borderRadius: 18, paddingHorizontal: 16, marginBottom: 16 },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -305,6 +313,18 @@ const styles = StyleSheet.create({
   rowLast: { borderBottomWidth: 0 },
   rowLabel: { color: "#8a90a8", fontSize: 13, fontWeight: "600" },
   rowValue: { color: "#16193f", fontSize: 13.5, fontWeight: "700", textAlign: "right", maxWidth: "60%" },
+  codeInput: {
+    backgroundColor: "#f6f8ff",
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    fontSize: 20,
+    fontWeight: "800",
+    textAlign: "center",
+    letterSpacing: 6,
+    color: "#16193f",
+    marginBottom: 14,
+  },
   errorBox: { backgroundColor: "#fdeceb", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 14 },
   errorText: { color: "#c0392b", fontSize: 12.5, fontWeight: "600", textAlign: "center" },
   btn: {
