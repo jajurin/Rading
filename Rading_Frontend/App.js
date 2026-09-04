@@ -34,13 +34,21 @@ import ConfirmarTrabajoCl from './Cliente/ConfirmarTrabajoCl';
 import ConfirmarTrabajoTr from './Trabajador/ConfirmarTrabajoTr';
 import MisOfertasTrabajador from './Trabajador/Misofertastrabajador';
 import MisSolicitudesCliente from './Cliente/Missolicitudescliente';
+import CalificarClienteTrabajador from './Trabajador/Calificarclientetrabajador';
+import CancelarTrabajoCl from './Trabajador/cancelarTrabajo';
 const Stack = createStackNavigator();
 
 export default function App() {
   return (
     <SafeAreaProvider>
       <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="CancelarTrabajoCl">
+           <Stack.Screen name="CancelarTrabajoCl" component={CancelarTrabajoCl} />
+           <Stack.Screen name="PerfilScreen" component={PerfilScreen} />
+                                  <Stack.Screen name="trabajadorclasifcar" component={ClasificarTrabajador} />
+                                  <Stack.Screen name="clasifcarcliente" component={CalificarClienteTrabajador} />
+
+
               <Stack.Screen name="PerfilTrabajador" component={PerfilTrabajador} />
           <Stack.Screen name="Login" component={Login} />
           <Stack.Screen name="MasOfertas" component={MasOfertasScreen} />
@@ -58,7 +66,7 @@ export default function App() {
 <Stack.Screen name="PreviaChatTrabajador" component={PreviaChatTrabajador} />
           <Stack.Screen name="RecibirOfertasScreen" component={RecibirOfertasScreen} />
           <Stack.Screen name="ClasificarTrabajador" component={ClasificarTrabajador} />
-          <Stack.Screen name="PerfilScreen" component={PerfilScreen} />
+         
           <Stack.Screen name="CrearSolicitud" component={CrearSolicitud} />
           <Stack.Screen name="RecienteClientes" component={RecientesClientes} />
 <Stack.Screen name="OfertasCercanasTrabajador" component={OfertasCercanasTrabajador} />
