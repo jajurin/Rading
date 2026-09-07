@@ -42,7 +42,8 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="CancelarTrabajoCl">
+        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
+               <Stack.Screen name="Login" component={Login} />
            <Stack.Screen name="CancelarTrabajoCl" component={CancelarTrabajoCl} />
            <Stack.Screen name="PerfilScreen" component={PerfilScreen} />
                                   <Stack.Screen name="trabajadorclasifcar" component={ClasificarTrabajador} />
@@ -50,7 +51,7 @@ export default function App() {
 
 
               <Stack.Screen name="PerfilTrabajador" component={PerfilTrabajador} />
-          <Stack.Screen name="Login" component={Login} />
+     
           <Stack.Screen name="MasOfertas" component={MasOfertasScreen} />
           <Stack.Screen name="HomeTrabajador" component={HomeTrabajador} />
           <Stack.Screen name="HomeCliente" component={HomeCliente} />
