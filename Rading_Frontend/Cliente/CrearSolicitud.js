@@ -10,6 +10,7 @@ import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import axios from "axios";
+import { useForm, Controller } from "react-hook-form";
 import Header from "../Header";
 import BottomNavBar from "./NavegadorCliente";
 import API_URL from "../configS";
@@ -241,7 +242,22 @@ function ImagenAdjuntaThumb({ uri, onQuitar, deshabilitado }) {
 /* ── Pantalla principal ──────────────────────────────────────────────── */
 export default function CrearSolicitud({ route, navigation }) {
   const usuario = route?.params?.usuario;
-  const [descripcionOriginal, setDescripcionOriginal] = useState("");
+
+  // 👇 react-hook-form SOLO para el campo de descripción (el único texto
+  // libre con validación real de esta pantalla: obligatorio + mínimo 10
+  // caracteres). "descripcionOriginal" se sigue leyendo exactamente igual
+  // que antes en todo el resto del archivo (construirTextoBase,
+  // analizarConIA, enviarSolicitud, etc.) — watch() devuelve el valor
+  // actual del campo, así que no hace falta tocar esa lógica.
+  const {
+    control: controlDescripcion,
+    watch: watchDescripcion,
+    formState: { errors: erroresDescripcion },
+  } = useForm({
+    defaultValues: { descripcion: "" },
+    mode: "onChange",
+  });
+  const descripcionOriginal = watchDescripcion("descripcion") || "";
 
   // 👇 Plazo/fecha límite: dato ESTRUCTURADO (Date real), no texto libre,
   // porque se guarda como atributo de la solicitud (horario_requerido /
@@ -753,19 +769,38 @@ export default function CrearSolicitud({ route, navigation }) {
             <Text style={styles.helperText}>
               Contá el problema con tus palabras. La IA va a sugerirte el servicio y un precio estimado.
             </Text>
-            <TextInput
-              style={styles.textArea}
-              multiline
-              numberOfLines={4}
-              placeholder="Ej: el grifo de mi cocina pierde agua desde ayer..."
-              placeholderTextColor={COLORS.inkFaint}
-              value={descripcionOriginal}
-              onChangeText={(t) => {
-                setDescripcionOriginal(t);
-                invalidarAnalisisPrevio();
+            {/* 👇 Único campo de esta pantalla envuelto en react-hook-form.
+                "rules" reemplaza al chequeo manual de longitud mínima; el
+                resto del flujo (invalidarAnalisisPrevio, análisis con IA,
+                envío) sigue funcionando exactamente igual que antes, porque
+                descripcionOriginal se lee con watch() más arriba. */}
+            <Controller
+              control={controlDescripcion}
+              name="descripcion"
+              rules={{
+                required: "Contá qué necesitás.",
+                minLength: { value: 10, message: "Contá un poco más (mínimo 10 caracteres)." },
               }}
-              editable={!analizando}
+              render={({ field: { onChange, onBlur, value } }) => (
+                <TextInput
+                  style={styles.textArea}
+                  multiline
+                  numberOfLines={4}
+                  placeholder="Ej: el grifo de mi cocina pierde agua desde ayer..."
+                  placeholderTextColor={COLORS.inkFaint}
+                  value={value}
+                  onChangeText={(t) => {
+                    onChange(t);
+                    invalidarAnalisisPrevio();
+                  }}
+                  onBlur={onBlur}
+                  editable={!analizando}
+                />
+              )}
             />
+            {erroresDescripcion.descripcion && (
+              <Text style={styles.errorText}>{erroresDescripcion.descripcion.message}</Text>
+            )}
 
             {/* 👇 Fotos: se pueden adjuntar antes o después de analizar, no
                 afectan el análisis de la IA (que trabaja solo con texto). */}
@@ -890,9 +925,6 @@ export default function CrearSolicitud({ route, navigation }) {
               }
             </Pressable>
 
-            {!descripcionValida && descripcionOriginal.length > 0 && (
-              <Text style={styles.errorText}>Contá un poco más (mínimo 10 caracteres).</Text>
-            )}
             {errorIA && <Text style={styles.errorText}>{errorIA}</Text>}
           </View>
 
@@ -1416,4 +1448,4 @@ const styles = StyleSheet.create({
   },
   submitButtonDisabled: { backgroundColor: "#AEBBD6", shadowOpacity: 0, elevation: 0 },
   submitButtonText: { color: "#fff", fontWeight: "800", fontSize: 15.5, letterSpacing: 0.2 },
-});
+}); 

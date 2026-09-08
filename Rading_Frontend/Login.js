@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import { useForm, Controller } from 'react-hook-form';
 import API_URL from './configS';
 
 // ─── Paleta ────────────────────────────────────────────────────────────
@@ -26,7 +27,7 @@ const COLORS = {
 };
 
 // ─── Ícono de input con foco animado ───────────────────────────────────
-function CampoInput({ icono, placeholder, value, onChangeText, secureTextEntry, verBtn, keyboardType, autoCapitalize = 'none' }) {
+function CampoInput({ icono, placeholder, value, onChangeText, onBlur, secureTextEntry, verBtn, keyboardType, autoCapitalize = 'none', error }) {
   const [enfocado, setEnfocado] = useState(false);
   const borderAnim = useRef(new Animated.Value(0)).current;
 
@@ -34,48 +35,64 @@ function CampoInput({ icono, placeholder, value, onChangeText, secureTextEntry, 
     setEnfocado(true);
     Animated.timing(borderAnim, { toValue: 1, duration: 160, useNativeDriver: false }).start();
   };
-  const onBlur = () => {
+  const handleBlur = () => {
     setEnfocado(false);
     Animated.timing(borderAnim, { toValue: 0, duration: 160, useNativeDriver: false }).start();
+    // 👇 le avisamos a react-hook-form que el campo perdió el foco
+    // (lo necesita para modos de validación tipo "onBlur"/"onTouched").
+    if (onBlur) onBlur();
   };
 
   const borderColor = borderAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [COLORS.border, COLORS.blueSoft],
+    outputRange: [error ? COLORS.danger : COLORS.border, error ? COLORS.danger : COLORS.blueSoft],
   });
 
   return (
-    <Animated.View style={[styles.inputWrapper, { borderColor }]}>
-      <Ionicons name={icono} size={18} color={enfocado ? COLORS.blueSoft : COLORS.textMuted} />
-      <TextInput
-        style={styles.input}
-        placeholder={placeholder}
-        placeholderTextColor="#A9B4C7"
-        autoCapitalize={autoCapitalize}
-        keyboardType={keyboardType}
-        secureTextEntry={secureTextEntry}
-        value={value}
-        onChangeText={onChangeText}
-        onFocus={onFocus}
-        onBlur={onBlur}
-      />
-      {verBtn}
-    </Animated.View>
+    <View style={{ width: '100%', marginBottom: 14 }}>
+      <Animated.View style={[styles.inputWrapper, { borderColor }]}>
+        <Ionicons name={icono} size={18} color={enfocado ? COLORS.blueSoft : COLORS.textMuted} />
+        <TextInput
+          style={styles.input}
+          placeholder={placeholder}
+          placeholderTextColor="#A9B4C7"
+          autoCapitalize={autoCapitalize}
+          keyboardType={keyboardType}
+          secureTextEntry={secureTextEntry}
+          value={value}
+          onChangeText={onChangeText}
+          onFocus={onFocus}
+          onBlur={handleBlur}
+        />
+        {verBtn}
+      </Animated.View>
+      {/* 👇 mensaje de error de react-hook-form, debajo de cada campo */}
+      {error && <Text style={styles.fieldError}>{error}</Text>}
+    </View>
   );
 }
 
 export default function Login({ navigation }) {
-  const [identificador, setIdentificador] = useState('');
-  const [contrasena, setContrasena] = useState('');
   const [loading, setLoading] = useState(false);
   const [verContrasena, setVerContrasena] = useState(false);
 
-  const handleLogin = async () => {
-    if (!identificador.trim() || !contrasena.trim()) {
-      Alert.alert('Campos requeridos', 'Ingresá tu DNI o correo y tu contraseña.');
-      return;
-    }
+  // 👇 react-hook-form: control conecta cada Controller, handleSubmit valida
+  // todo antes de llamar a onSubmit, y errors trae el mensaje ya armado de
+  // cada campo. Reemplaza a los dos useState (identificador/contrasena) y
+  // al chequeo manual con Alert.alert que había antes.
+  const {
+    control,
+    handleSubmit,
+    formState: { errors },
+  } = useForm({
+    defaultValues: { identificador: '', contrasena: '' },
+    mode: 'onSubmit',
+  });
 
+  // 👇 Misma lógica de siempre: recibe los datos YA validados por RHF
+  // (identificador y contrasena garantizados no vacíos) y hace exactamente
+  // el mismo fetch, con el mismo manejo de respuesta y navegación.
+  const onSubmit = async ({ identificador, contrasena }) => {
     setLoading(true);
     try {
       const response = await fetch(`${API_URL}/usuario/login`, {
@@ -163,28 +180,53 @@ export default function Login({ navigation }) {
             <View style={styles.dividerLine} />
           </View>
 
-          <CampoInput
-            icono="person-outline"
-            placeholder="DNI o correo electrónico"
-            value={identificador}
-            onChangeText={setIdentificador}
+          {/* 👇 Cada campo va envuelto en un Controller: "name" conecta con
+              el objeto del formulario, "rules" reemplaza a la validación
+              manual que había antes (el Alert.alert de campos requeridos). */}
+          <Controller
+            control={control}
+            name="identificador"
+            rules={{
+              required: 'Ingresá tu DNI o correo.',
+            }}
+            render={({ field: { onChange, onBlur, value } }) => (
+              <CampoInput
+                icono="person-outline"
+                placeholder="DNI o correo electrónico"
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                error={errors.identificador?.message}
+              />
+            )}
           />
 
-          <CampoInput
-            icono="lock-closed-outline"
-            placeholder="Contraseña"
-            value={contrasena}
-            onChangeText={setContrasena}
-            secureTextEntry={!verContrasena}
-            verBtn={
-              <TouchableOpacity onPress={() => setVerContrasena(!verContrasena)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons
-                  name={verContrasena ? 'eye-off-outline' : 'eye-outline'}
-                  size={18}
-                  color={COLORS.textMuted}
-                />
-              </TouchableOpacity>
-            }
+          <Controller
+            control={control}
+            name="contrasena"
+            rules={{
+              required: 'Ingresá tu contraseña.',
+            }}
+            render={({ field: { onChange, onBlur, value } }) => (
+              <CampoInput
+                icono="lock-closed-outline"
+                placeholder="Contraseña"
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                secureTextEntry={!verContrasena}
+                error={errors.contrasena?.message}
+                verBtn={
+                  <TouchableOpacity onPress={() => setVerContrasena(!verContrasena)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons
+                      name={verContrasena ? 'eye-off-outline' : 'eye-outline'}
+                      size={18}
+                      color={COLORS.textMuted}
+                    />
+                  </TouchableOpacity>
+                }
+              />
+            )}
           />
 
           <TouchableOpacity style={styles.linkRowRight}>
@@ -194,7 +236,7 @@ export default function Login({ navigation }) {
           <TouchableOpacity
             style={[styles.loginButton, loading && { opacity: 0.75 }]}
             activeOpacity={0.9}
-            onPress={handleLogin}
+            onPress={handleSubmit(onSubmit)}
             disabled={loading}
           >
             {loading ? (
@@ -307,7 +349,6 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: 16,
     paddingHorizontal: 16,
-    marginBottom: 14,
     borderWidth: 1.4,
   },
   input: {
@@ -315,6 +356,13 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     color: COLORS.ink,
     paddingVertical: Platform.OS === 'ios' ? 13 : 11,
+  },
+  fieldError: {
+    color: COLORS.danger,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+    marginLeft: 4,
   },
 
   linkRowRight: { alignSelf: 'flex-end', marginBottom: 22 },

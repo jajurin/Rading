@@ -42,7 +42,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
+        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="CrearSolicitud">
                <Stack.Screen name="Login" component={Login} />
            <Stack.Screen name="CancelarTrabajoCl" component={CancelarTrabajoCl} />
            <Stack.Screen name="PerfilScreen" component={PerfilScreen} />
