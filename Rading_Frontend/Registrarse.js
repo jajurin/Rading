@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useForm, Controller } from 'react-hook-form';
 import API_URL from './configS';
 import axios from 'axios';
 
@@ -17,7 +18,7 @@ const MUTED     = '#8A94A6';
 const DANGER    = '#E53E3E';
 const OK        = '#2F9E5B';
 
-// ─── InputField reutilizable ───────────────────────────────────────────────
+// ─── InputField reutilizable (sin cambios) ─────────────────────────────────
 function InputField({
   label, placeholder, secureTextEntry, keyboardType, value, onChangeText,
   error, editable = true, icon, rightSlot,
@@ -90,7 +91,7 @@ const inputStyles = StyleSheet.create({
   errorText: { color: DANGER, fontSize: 11.5, fontWeight: '500' },
 });
 
-// ─── Encabezado de sección ──────────────────────────────────────────────
+// ─── Encabezado de sección (sin cambios) ───────────────────────────────────
 function SectionHeader({ icon, title, subtitle }) {
   return (
     <View style={styles.sectionHeader}>
@@ -107,14 +108,26 @@ function SectionHeader({ icon, title, subtitle }) {
 
 // ─── Pantalla principal ────────────────────────────────────────────────────
 export default function Registrarse({ route, navigation }) {
-  // ── Form
-  const [form, setForm] = useState({
-    nombre: '', apellido: '', dni: '', fechaNac: '',
-    email: '', telefono: '', direccion: '',
-    lat: null, lng: null,
-    contrasena: '', repetirContrasena: '',
+  // ── react-hook-form: reemplaza el useState(form) + useState(errores) manual
+  const {
+    control,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors },
+  } = useForm({
+    defaultValues: {
+      nombre: '', apellido: '', dni: '', fechaNac: '',
+      email: '', telefono: '', direccion: '',
+      contrasena: '', repetirContrasena: '',
+    },
+    mode: 'onSubmit',
   });
-  const [errores, setErrores] = useState({});
+
+  // lat/lng no se validan como campo de formulario, siguen como estado aparte
+  const [lat, setLat] = useState(null);
+  const [lng, setLng] = useState(null);
+
   const [verPass, setVerPass] = useState(false);
   const [verPass2, setVerPass2] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -132,17 +145,10 @@ export default function Registrarse({ route, navigation }) {
   const [mesTemp, setMesTemp] = useState('');
   const [anioTemp, setAnioTemp] = useState('');
 
-  // ── Helpers
-  const set = (campo) => (valor) => {
-    setForm(prev => ({ ...prev, [campo]: valor }));
-    setErrores(prev => ({ ...prev, [campo]: null }));
-  };
-
-  const validarDNI     = (dni)   => { const s = dni.replace(/\D/g, ''); return s.length >= 7 && s.length <= 8; };
-  const validarEmail   = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const validarTelefono= (tel)   => { const s = tel.replace(/\D/g, ''); return s.length >= 10 && s.length <= 13; };
-  const validarNombre  = (txt)   => txt.trim().length >= 2;
-  const calcularEdad   = (f)     => {
+  // ── Helpers de validación (mismas reglas de antes, usadas dentro de `rules`)
+  const validarDNI      = (dni) => { const s = dni.replace(/\D/g, ''); return s.length >= 7 && s.length <= 8; };
+  const validarTelefono = (tel) => { const s = tel.replace(/\D/g, ''); return s.length >= 10 && s.length <= 13; };
+  const calcularEdad    = (f)   => {
     const hoy = new Date(); const nac = new Date(f);
     let edad = hoy.getFullYear() - nac.getFullYear();
     const m = hoy.getMonth() - nac.getMonth();
@@ -158,16 +164,17 @@ export default function Registrarse({ route, navigation }) {
     }
     const fechaStr = `${anio}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
     if (isNaN(new Date(fechaStr).getTime())) { alert('Fecha inválida'); return; }
-    setForm(prev => ({ ...prev, fechaNac: fechaStr }));
-    setErrores(prev => ({ ...prev, fechaNac: null }));
+    // antes: setForm(...). ahora: setValue de react-hook-form, con validación disparada
+    setValue('fechaNac', fechaStr, { shouldValidate: true });
     setMostrarPickerModal(false);
   };
 
-  // ── Dirección autocomplete
-  const buscarDireccion = (texto) => {
-    set('direccion')(texto);
+  // ── Dirección autocomplete (misma lógica, ahora recibe el onChange del Controller)
+  const buscarDireccion = (texto, onChange) => {
+    onChange(texto);
     setDireccionValidada(false);
-    setForm(prev => ({ ...prev, lat: null, lng: null }));
+    setLat(null);
+    setLng(null);
     if (texto.length < 4) { setSugerencias([]); return; }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
@@ -188,54 +195,32 @@ export default function Registrarse({ route, navigation }) {
   };
 
   const elegirDireccion = (item) => {
-    setForm(prev => ({
-      ...prev,
-      direccion: item.display_name,
-      lat: parseFloat(item.lat),
-      lng: parseFloat(item.lon),
-    }));
-    setErrores(prev => ({ ...prev, direccion: null }));
+    setValue('direccion', item.display_name, { shouldValidate: true });
+    setLat(parseFloat(item.lat));
+    setLng(parseFloat(item.lon));
     setSugerencias([]);
     setMostrarSugerencias(false);
     setDireccionValidada(true);
   };
 
-  // ── Validación final
-  const validarFormulario = () => {
-    const e = {};
-    if (!validarNombre(form.nombre))   e.nombre   = 'Ingresá un nombre válido';
-    if (!validarNombre(form.apellido)) e.apellido = 'Ingresá un apellido válido';
-    if (!validarDNI(form.dni))         e.dni      = 'El DNI debe tener 7 u 8 dígitos';
-    if (!form.fechaNac)                e.fechaNac = 'Seleccioná tu fecha de nacimiento';
-    else if (calcularEdad(form.fechaNac) < 18) e.fechaNac = 'Debés tener al menos 18 años';
-    if (!validarEmail(form.email))     e.email    = 'Ingresá un correo válido (ej: usuario@mail.com)';
-    if (!validarTelefono(form.telefono)) e.telefono = 'Ingresá un teléfono válido (mínimo 10 dígitos)';
-    if (!direccionValidada)            e.direccion = 'Seleccioná una dirección de la lista';
-    if (form.contrasena.length < 8)   e.contrasena = 'La contraseña debe tener al menos 8 caracteres';
-    if (form.contrasena !== form.repetirContrasena) e.repetirContrasena = 'Las contraseñas no coinciden';
-    setErrores(e);
-    return Object.keys(e).length === 0;
-  };
-
-  // ── Submit
-  const handleContinuar = async () => {
-    if (!validarFormulario()) return;
+  // ── Submit: handleSubmit de RHF ya corrió todas las `rules` antes de llegar acá
+  const onSubmit = async (data) => {
     setEnviando(true);
     try {
       const response = await fetch(`${API_URL}/usuario/registrar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          nombre: form.nombre.trim(), apellido: form.apellido.trim(),
-          email: form.email.trim(), direccion: form.direccion.trim(),
-          lat: form.lat, lng: form.lng,
-          contrasena: form.contrasena, telefono: form.telefono.trim(),
-          fechaNac: form.fechaNac, dni: form.dni.replace(/\D/g, ''),
+          nombre: data.nombre.trim(), apellido: data.apellido.trim(),
+          email: data.email.trim(), direccion: data.direccion.trim(),
+          lat, lng,
+          contrasena: data.contrasena, telefono: data.telefono.trim(),
+          fechaNac: data.fechaNac, dni: data.dni.replace(/\D/g, ''),
         }),
       });
-      const data = await response.json();
-      if (!response.ok) { alert(data.message || 'Error al registrar'); return; }
-      navigation.navigate('TipoUsuario', { idUsuario: data.idUsuario, email: form.email });
+      const respData = await response.json();
+      if (!response.ok) { alert(respData.message || 'Error al registrar'); return; }
+      navigation.navigate('TipoUsuario', { idUsuario: respData.idUsuario, email: data.email });
     } catch (error) {
       alert('No se pudo conectar al servidor');
       console.error(error);
@@ -265,37 +250,86 @@ export default function Registrarse({ route, navigation }) {
 
           <View style={styles.row}>
             <View style={{ flex: 1, marginRight: 10 }}>
-              <InputField label="Nombre" placeholder="Juan" icon="person-outline" value={form.nombre} onChangeText={set('nombre')} error={errores.nombre} />
+              <Controller
+                control={control}
+                name="nombre"
+                rules={{
+                  required: 'Ingresá un nombre válido',
+                  validate: (v) => v.trim().length >= 2 || 'Ingresá un nombre válido',
+                }}
+                render={({ field: { value, onChange } }) => (
+                  <InputField
+                    label="Nombre" placeholder="Juan" icon="person-outline"
+                    value={value} onChangeText={onChange} error={errors.nombre?.message}
+                  />
+                )}
+              />
             </View>
             <View style={{ flex: 1 }}>
-              <InputField label="Apellido" placeholder="García" icon="person-outline" value={form.apellido} onChangeText={set('apellido')} error={errores.apellido} />
+              <Controller
+                control={control}
+                name="apellido"
+                rules={{
+                  required: 'Ingresá un apellido válido',
+                  validate: (v) => v.trim().length >= 2 || 'Ingresá un apellido válido',
+                }}
+                render={({ field: { value, onChange } }) => (
+                  <InputField
+                    label="Apellido" placeholder="García" icon="person-outline"
+                    value={value} onChangeText={onChange} error={errors.apellido?.message}
+                  />
+                )}
+              />
             </View>
           </View>
 
-          <InputField label="DNI / Documento" placeholder="00000000" icon="card-outline" keyboardType="numeric" value={form.dni} onChangeText={set('dni')} error={errores.dni} />
+          <Controller
+            control={control}
+            name="dni"
+            rules={{
+              required: 'El DNI debe tener 7 u 8 dígitos',
+              validate: (v) => validarDNI(v) || 'El DNI debe tener 7 u 8 dígitos',
+            }}
+            render={({ field: { value, onChange } }) => (
+              <InputField
+                label="DNI / Documento" placeholder="00000000" icon="card-outline" keyboardType="numeric"
+                value={value} onChangeText={onChange} error={errors.dni?.message}
+              />
+            )}
+          />
 
-          {/* Fecha de nacimiento */}
-          <View style={inputStyles.wrapper}>
-            <Text style={inputStyles.label}>Fecha de nacimiento</Text>
-            <TouchableOpacity
-              onPress={() => setMostrarPickerModal(true)}
-              style={[inputStyles.box, errores.fechaNac && inputStyles.boxError]}
-            >
-              <Ionicons name="calendar-outline" size={17} color={errores.fechaNac ? DANGER : MUTED} style={{ marginRight: 10 }} />
-              <Text style={[{ flex: 1, fontSize: 14.5, paddingVertical: 8 }, form.fechaNac ? { color: INK } : { color: '#A6AEBD' }]}>
-                {form.fechaNac || 'Seleccioná tu fecha'}
-              </Text>
-              <Ionicons name="chevron-forward" size={16} color="#C7D2E3" />
-            </TouchableOpacity>
-            {errores.fechaNac ? (
-              <View style={inputStyles.errorRow}>
-                <Ionicons name="alert-circle" size={12} color={DANGER} />
-                <Text style={inputStyles.errorText}>{errores.fechaNac}</Text>
+          {/* Fecha de nacimiento — campo custom, se controla con Controller igual */}
+          <Controller
+            control={control}
+            name="fechaNac"
+            rules={{
+              required: 'Seleccioná tu fecha de nacimiento',
+              validate: (v) => (v && calcularEdad(v) >= 18) || 'Debés tener al menos 18 años',
+            }}
+            render={({ field: { value } }) => (
+              <View style={inputStyles.wrapper}>
+                <Text style={inputStyles.label}>Fecha de nacimiento</Text>
+                <TouchableOpacity
+                  onPress={() => setMostrarPickerModal(true)}
+                  style={[inputStyles.box, errors.fechaNac && inputStyles.boxError]}
+                >
+                  <Ionicons name="calendar-outline" size={17} color={errors.fechaNac ? DANGER : MUTED} style={{ marginRight: 10 }} />
+                  <Text style={[{ flex: 1, fontSize: 14.5, paddingVertical: 8 }, value ? { color: INK } : { color: '#A6AEBD' }]}>
+                    {value || 'Seleccioná tu fecha'}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={16} color="#C7D2E3" />
+                </TouchableOpacity>
+                {errors.fechaNac ? (
+                  <View style={inputStyles.errorRow}>
+                    <Ionicons name="alert-circle" size={12} color={DANGER} />
+                    <Text style={inputStyles.errorText}>{errors.fechaNac.message}</Text>
+                  </View>
+                ) : null}
               </View>
-            ) : null}
-          </View>
+            )}
+          />
 
-          {/* Modal fecha */}
+          {/* Modal fecha (sin cambios) */}
           <Modal visible={mostrarPickerModal} transparent animationType="fade">
             <View style={styles.modalOverlay}>
               <View style={styles.modalCard}>
@@ -332,81 +366,142 @@ export default function Registrarse({ route, navigation }) {
           {/* ── CONTACTO ── */}
           <SectionHeader icon="call" title="Contacto" subtitle="Cómo te encontramos" />
 
-          <InputField label="Correo electrónico" placeholder="correo@ejemplo.com" icon="mail-outline" keyboardType="email-address" value={form.email} onChangeText={set('email')} error={errores.email} />
-          <InputField label="Número de teléfono" placeholder="+54 9 11 0000-0000" icon="call-outline" keyboardType="phone-pad" value={form.telefono} onChangeText={set('telefono')} error={errores.telefono} />
-
-          {/* Dirección con autocomplete */}
-          <View style={inputStyles.wrapper}>
-            <Text style={inputStyles.label}>Dirección</Text>
-            <View style={[inputStyles.box, errores.direccion && inputStyles.boxError]}>
-              <Ionicons name="location-outline" size={17} color={errores.direccion ? DANGER : MUTED} style={{ marginRight: 10 }} />
-              <TextInput
-                placeholder="Av. Siempre Viva 123"
-                placeholderTextColor="#A6AEBD"
-                style={inputStyles.input}
-                value={form.direccion}
-                onChangeText={buscarDireccion}
-                autoCapitalize="none"
+          <Controller
+            control={control}
+            name="email"
+            rules={{
+              required: 'Ingresá un correo válido (ej: usuario@mail.com)',
+              pattern: {
+                value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+                message: 'Ingresá un correo válido (ej: usuario@mail.com)',
+              },
+            }}
+            render={({ field: { value, onChange } }) => (
+              <InputField
+                label="Correo electrónico" placeholder="correo@ejemplo.com" icon="mail-outline" keyboardType="email-address"
+                value={value} onChangeText={onChange} error={errors.email?.message}
               />
-              {direccionValidada && <Ionicons name="checkmark-circle" size={18} color={OK} />}
-            </View>
-            {errores.direccion ? (
-              <View style={inputStyles.errorRow}>
-                <Ionicons name="alert-circle" size={12} color={DANGER} />
-                <Text style={inputStyles.errorText}>{errores.direccion}</Text>
-              </View>
-            ) : null}
+            )}
+          />
 
-            {mostrarSugerencias && sugerencias.length > 0 && (
-              <View style={styles.sugerenciasContainer}>
-                {sugerencias.map((item, idx) => (
-                  <TouchableOpacity
-                    key={item.place_id}
-                    style={[styles.sugerenciaItem, idx === sugerencias.length - 1 && { borderBottomWidth: 0 }]}
-                    onPress={() => elegirDireccion(item)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="location" size={14} color={BLUE} style={{ marginRight: 8, marginTop: 2 }} />
-                    <Text style={styles.sugerenciaTexto} numberOfLines={2}>{item.display_name}</Text>
-                  </TouchableOpacity>
-                ))}
+          <Controller
+            control={control}
+            name="telefono"
+            rules={{
+              required: 'Ingresá un teléfono válido (mínimo 10 dígitos)',
+              validate: (v) => validarTelefono(v) || 'Ingresá un teléfono válido (mínimo 10 dígitos)',
+            }}
+            render={({ field: { value, onChange } }) => (
+              <InputField
+                label="Número de teléfono" placeholder="+54 9 11 0000-0000" icon="call-outline" keyboardType="phone-pad"
+                value={value} onChangeText={onChange} error={errors.telefono?.message}
+              />
+            )}
+          />
+
+          {/* Dirección con autocomplete — mismo mecanismo de siempre, ahora controlado por RHF */}
+          <Controller
+            control={control}
+            name="direccion"
+            rules={{
+              required: 'Seleccioná una dirección de la lista',
+              validate: () => direccionValidada || 'Seleccioná una dirección de la lista',
+            }}
+            render={({ field: { value, onChange } }) => (
+              <View style={inputStyles.wrapper}>
+                <Text style={inputStyles.label}>Dirección</Text>
+                <View style={[inputStyles.box, errors.direccion && inputStyles.boxError]}>
+                  <Ionicons name="location-outline" size={17} color={errors.direccion ? DANGER : MUTED} style={{ marginRight: 10 }} />
+                  <TextInput
+                    placeholder="Av. Siempre Viva 123"
+                    placeholderTextColor="#A6AEBD"
+                    style={inputStyles.input}
+                    value={value}
+                    onChangeText={(texto) => buscarDireccion(texto, onChange)}
+                    autoCapitalize="none"
+                  />
+                  {direccionValidada && <Ionicons name="checkmark-circle" size={18} color={OK} />}
+                </View>
+                {errors.direccion ? (
+                  <View style={inputStyles.errorRow}>
+                    <Ionicons name="alert-circle" size={12} color={DANGER} />
+                    <Text style={inputStyles.errorText}>{errors.direccion.message}</Text>
+                  </View>
+                ) : null}
+
+                {mostrarSugerencias && sugerencias.length > 0 && (
+                  <View style={styles.sugerenciasContainer}>
+                    {sugerencias.map((item, idx) => (
+                      <TouchableOpacity
+                        key={item.place_id}
+                        style={[styles.sugerenciaItem, idx === sugerencias.length - 1 && { borderBottomWidth: 0 }]}
+                        onPress={() => elegirDireccion(item)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="location" size={14} color={BLUE} style={{ marginRight: 8, marginTop: 2 }} />
+                        <Text style={styles.sugerenciaTexto} numberOfLines={2}>{item.display_name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
               </View>
             )}
-          </View>
+          />
 
           {/* ── SEGURIDAD ── */}
           <SectionHeader icon="lock-closed" title="Seguridad" subtitle="Protegé tu cuenta" />
 
-          <InputField
-            label="Contraseña"
-            placeholder="Mínimo 8 caracteres"
-            icon="key-outline"
-            secureTextEntry={!verPass}
-            value={form.contrasena}
-            onChangeText={set('contrasena')}
-            error={errores.contrasena}
-            rightSlot={
-              <TouchableOpacity onPress={() => setVerPass(v => !v)} hitSlop={8}>
-                <Text style={styles.verTexto}>{verPass ? 'Ocultar' : 'Ver'}</Text>
-              </TouchableOpacity>
-            }
-          />
-          <InputField
-            label="Repetir contraseña"
-            placeholder="Confirmá tu clave"
-            icon="key-outline"
-            secureTextEntry={!verPass2}
-            value={form.repetirContrasena}
-            onChangeText={set('repetirContrasena')}
-            error={errores.repetirContrasena}
-            rightSlot={
-              <TouchableOpacity onPress={() => setVerPass2(v => !v)} hitSlop={8}>
-                <Text style={styles.verTexto}>{verPass2 ? 'Ocultar' : 'Ver'}</Text>
-              </TouchableOpacity>
-            }
+          <Controller
+            control={control}
+            name="contrasena"
+            rules={{
+              required: 'La contraseña debe tener al menos 8 caracteres',
+              minLength: { value: 8, message: 'La contraseña debe tener al menos 8 caracteres' },
+            }}
+            render={({ field: { value, onChange } }) => (
+              <InputField
+                label="Contraseña"
+                placeholder="Mínimo 8 caracteres"
+                icon="key-outline"
+                secureTextEntry={!verPass}
+                value={value}
+                onChangeText={onChange}
+                error={errors.contrasena?.message}
+                rightSlot={
+                  <TouchableOpacity onPress={() => setVerPass(v => !v)} hitSlop={8}>
+                    <Text style={styles.verTexto}>{verPass ? 'Ocultar' : 'Ver'}</Text>
+                  </TouchableOpacity>
+                }
+              />
+            )}
           />
 
-          {/* Términos */}
+          <Controller
+            control={control}
+            name="repetirContrasena"
+            rules={{
+              required: 'Las contraseñas no coinciden',
+              validate: (v) => v === watch('contrasena') || 'Las contraseñas no coinciden',
+            }}
+            render={({ field: { value, onChange } }) => (
+              <InputField
+                label="Repetir contraseña"
+                placeholder="Confirmá tu clave"
+                icon="key-outline"
+                secureTextEntry={!verPass2}
+                value={value}
+                onChangeText={onChange}
+                error={errors.repetirContrasena?.message}
+                rightSlot={
+                  <TouchableOpacity onPress={() => setVerPass2(v => !v)} hitSlop={8}>
+                    <Text style={styles.verTexto}>{verPass2 ? 'Ocultar' : 'Ver'}</Text>
+                  </TouchableOpacity>
+                }
+              />
+            )}
+          />
+
+          {/* Términos (sin cambios) */}
           <View style={styles.termsContainer}>
             <Ionicons name="shield-checkmark-outline" size={13} color={MUTED} style={{ marginRight: 5 }} />
             <Text style={styles.termsText}>Al registrarte aceptás nuestros </Text>
@@ -421,8 +516,8 @@ export default function Registrarse({ route, navigation }) {
             </View>
           </View>
 
-          {/* Botón continuar */}
-          <TouchableOpacity activeOpacity={0.88} onPress={handleContinuar} disabled={enviando}>
+          {/* Botón continuar — ahora dispara handleSubmit(onSubmit) de RHF */}
+          <TouchableOpacity activeOpacity={0.88} onPress={handleSubmit(onSubmit)} disabled={enviando}>
             <LinearGradient
               colors={[BLUE, BLUE_DARK]}
               start={{ x: 0, y: 0 }}
