@@ -1,11 +1,14 @@
 import solicitudRepository from "../../repositories/cliente/solicitud-repositories.js";
 import { analizarSolicitud } from "./solicitudIA-service.js"; // ✅ Importa la nueva función
+import NotificacionServices from "../notificacion-services.js";
 
 export default class SolicitudServices {
     #repo
+    #notifSvc
 
     constructor() {
         this.#repo = new solicitudRepository()
+        this.#notifSvc = new NotificacionServices()
     }
 
     analizar = async (descripcionOriginal) => {
@@ -55,7 +58,21 @@ export default class SolicitudServices {
             throw new Error("precio inválido")
         }
 
-        return await this.#repo.crearSolicitud(solicitud)
+        const resultado = await this.#repo.crearSolicitud(solicitud)
+
+        try {
+            await this.#notifSvc.notificarSolicitudNueva({
+                idTrabajo: resultado.id,
+                servicioId: solicitud.servicioId,
+                precio: solicitud.precio,
+                fijo: solicitud.fijo,
+                emergencia: solicitud.emergencia,
+            })
+        } catch (err) {
+            console.error(`No se pudo notificar la nueva solicitud ${resultado.id}:`, err)
+        }
+
+        return resultado
     }
 
     // 👇 NUEVO: guarda una foto ya subida a disco (o al storage que uses)

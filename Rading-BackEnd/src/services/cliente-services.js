@@ -1,14 +1,17 @@
 import clienteRepository from "../repositories/cliente/cliente-repositories.js";
 import chatRepository from '../repositories/chat/chat-repositories.js'
+import NotificacionServices from './notificacion-services.js'
 import Cliente from '../entities/cliente.js'
 
 export default class ClienteServices {
     #repo
     #chatRepo
+    #notifSvc
 
     constructor() {
         this.#repo = new clienteRepository()
         this.#chatRepo = new chatRepository()
+        this.#notifSvc = new NotificacionServices()
     }
 
     mostrarCategorias = async () => {
@@ -32,7 +35,20 @@ export default class ClienteServices {
         if (!body.estrellas || !body.razon) {
             throw new Error('Faltan estrellas o razon')
         }
-        return await this.#repo.crearReseñaCliente(body)
+        const resultado = await this.#repo.crearReseñaCliente(body)
+
+        try {
+            await this.#notifSvc.notificarReseña({
+                idTrabajo: body.idTrabajo,
+                idTrabajador: body.idTrabajador,
+                idCliente: body.idCliente,
+                estrellas: body.estrellas,
+            })
+        } catch (err) {
+            console.error('No se pudo notificar la reseña nueva:', err)
+        }
+
+        return resultado
     }
 
     buscarOfertasPorTrabajo = async (idTrabajo) => {
@@ -57,6 +73,22 @@ export default class ClienteServices {
         })
     } catch (err) {
         console.error(`No se pudo notificar la aceptación de oferta ${idOferta}:`, err)
+    }
+
+    try {
+        await this.#notifSvc.notificarOfertaAceptada({
+            idTrabajo: resultado.idTrabajo,
+            idTrabajador: resultado.idTrabajador,
+            precioFinal: resultado.precioFinal,
+        })
+        for (const r of resultado.ofertasRechazadas ?? []) {
+            await this.#notifSvc.notificarOfertaRechazada({
+                idTrabajo: resultado.idTrabajo,
+                idTrabajador: r.idTrabajador,
+            })
+        }
+    } catch (err) {
+        console.error(`No se pudieron crear notificaciones de la oferta ${idOferta}:`, err)
     }
 
     return resultado

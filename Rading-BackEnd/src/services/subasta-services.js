@@ -1,9 +1,11 @@
 import trabajadorRepository from '../repositories/trabajador/trabajador-repositories.js'
 import chatRepository from '../repositories/chat/chat-repositories.js'
+import NotificacionServices from './notificacion-services.js'
 
 export default class SubastaServices {
     #trabajadorRepo = new trabajadorRepository()
     #chatRepo = new chatRepository()
+    #notifSvc = new NotificacionServices()
 
     // Corre periódicamente (cron). NO asigna el trabajo automáticamente:
     // solo detecta subastas vencidas, identifica quién iba primero por
@@ -26,6 +28,12 @@ export default class SubastaServices {
                 })
             } catch (err) {
                 console.error(`No se pudo avisar el cierre de subasta ${v.idTrabajo}:`, err)
+            }
+
+            try {
+                await this.#notifSvc.notificarCierreSubasta(v)
+            } catch (err) {
+                console.error(`No se pudo notificar el cierre de subasta ${v.idTrabajo}:`, err)
             }
         }
 

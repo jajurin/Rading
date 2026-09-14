@@ -1,20 +1,29 @@
 import trabajoRepository from '../repositories/trabajo/trabajo-repositories.js'
 import chatRepository from '../repositories/chat/chat-repositories.js'
+import NotificacionServices from './notificacion-services.js'
 
 const ROLES = ['CLIENTE', 'TRABAJADOR']
 
 export default class TrabajoServices {
     #repo
     #chatRepo
+    #notifSvc
 
     constructor() {
         this.#repo = new trabajoRepository()
         this.#chatRepo = new chatRepository()
+        this.#notifSvc = new NotificacionServices()
     }
 
     generarCodigoLlegada = async (idTrabajo) => {
         if (!idTrabajo) throw new Error('Falta idTrabajo')
-        return await this.#repo.generarCodigoLlegada(idTrabajo)
+        const resultado = await this.#repo.generarCodigoLlegada(idTrabajo)
+        try {
+            await this.#notifSvc.notificarCodigo({ idTrabajo, tipo: 'CODIGO_LLEGADA', codigo: resultado.codigo })
+        } catch (err) {
+            console.error(`No se pudo notificar el código de llegada del trabajo ${idTrabajo}:`, err)
+        }
+        return resultado
     }
 
     confirmarLlegadaConCodigo = async (idTrabajo, codigo) => {
@@ -51,6 +60,8 @@ export default class TrabajoServices {
                 contenido: `El trabajador ingresó el código correctamente. ¡Trabajo finalizado!`,
                 tipo: 'TEXTO',
             })
+
+            await this.#notifSvc.notificarTrabajoFinalizado({ idTrabajo })
         } catch (err) {
             console.error(`No se pudo notificar confirmarFinConCodigo del trabajo ${idTrabajo}:`, err)
         }
@@ -100,7 +111,13 @@ export default class TrabajoServices {
     }
 generarCodigoFin = async (idTrabajo) => {
     if (!idTrabajo) throw new Error('Falta idTrabajo')
-    return await this.#repo.generarCodigoFin(idTrabajo)
+    const resultado = await this.#repo.generarCodigoFin(idTrabajo)
+    try {
+        await this.#notifSvc.notificarCodigo({ idTrabajo, tipo: 'CODIGO_FIN', codigo: resultado.codigo })
+    } catch (err) {
+        console.error(`No se pudo notificar el código de fin del trabajo ${idTrabajo}:`, err)
+    }
+    return resultado
 }
     confirmarFin = async (idTrabajo, rol) => {
         if (!idTrabajo || !ROLES.includes(rol)) {
@@ -128,6 +145,8 @@ generarCodigoFin = async (idTrabajo) => {
                     contenido: `¡Trabajo finalizado! Ambos confirmaron el cierre.`,
                     tipo: 'TEXTO',
                 })
+
+                await this.#notifSvc.notificarTrabajoFinalizado({ idTrabajo })
             }
         } catch (err) {
             console.error(`No se pudo notificar confirmarFin del trabajo ${idTrabajo}:`, err)

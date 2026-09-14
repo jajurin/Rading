@@ -4,6 +4,7 @@ import BottomNavBar from './NavegadorCliente';
 import TrabajoActivoWidget from './Trabajoactivowidget';
 import BuscadorTrabajadorWidget from './Buscadortrabajadorwidget';
 import API_BASE_URL from '../configS';
+import { listarNotificaciones, marcarNotificacionLeida, mapearParaHeader } from '../Notificaciones';
 import {
   View,
   Text,
@@ -118,6 +119,30 @@ export default function HomeCliente({ route, navigation }) {
   const [serviciosContentWidth, setServiciosContentWidth] = useState(0);
   const [serviciosContainerWidth, setServiciosContainerWidth] = useState(0);
 const [tieneChatsSinLeer, setTieneChatsSinLeer] = useState(false);
+const [notificaciones, setNotificaciones] = useState([]);
+
+const cargarNotificaciones = useCallback(async () => {
+  if (!usuario?.id) {
+    setNotificaciones([]);
+    return;
+  }
+  try {
+    const filas = await listarNotificaciones(usuario.id);
+    setNotificaciones(filas.map(mapearParaHeader));
+  } catch (err) {
+    console.error('Error al cargar notificaciones:', err.message);
+  }
+}, [usuario?.id]);
+
+const marcarLeidaEnHeader = async (item) => {
+  if (!usuario?.id) return;
+  try {
+    await marcarNotificacionLeida(item.id, usuario.id);
+    await cargarNotificaciones();
+  } catch (err) {
+    console.error('Error al marcar notificación leída:', err.message);
+  }
+};
 
 const chequearChatsSinLeer = useCallback(async () => {
   if (!usuario?.idCliente || !usuario?.id) return;
@@ -176,7 +201,8 @@ const chequearChatsSinLeer = useCallback(async () => {
   cargarServicios();
   cargarRecientes();
   chequearChatsSinLeer();
-}, [cargarServicios, cargarRecientes, chequearChatsSinLeer]);
+  cargarNotificaciones();
+}, [cargarServicios, cargarRecientes, chequearChatsSinLeer, cargarNotificaciones]);
 
   const buscarServicio = (nombreServicio) => {
     buscadorRef.current?.buscarPorEspecialidad(nombreServicio);
@@ -197,7 +223,12 @@ const chequearChatsSinLeer = useCallback(async () => {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor={NAVY} />
-      <Header usuario={usuario} />
+      <Header
+        usuario={usuario}
+        notificaciones={notificaciones}
+        onNotificaciones={cargarNotificaciones}
+        onVerNotificacion={marcarLeidaEnHeader}
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}

@@ -669,6 +669,16 @@ aceptarOferta = async (idOferta) => {
             throw new Error('Esta solicitud ya fue asignada a otro trabajador')
         }
 
+        // Captura (dentro de la transacción) las ofertas que quedan RECHAZADA
+        // ahora, para poder avisarles a los postulantes que no ganaron.
+        const rechazadas = await client.query(
+            `SELECT o."idTrabajador", t."IdPersona" AS "idUsuarioTrabajador"
+             FROM "Oferta" o
+             INNER JOIN "Trabajador" t ON t.id = o."idTrabajador"
+             WHERE o."idTrabajo" = $1 AND o."ESTADO_OFERTA" = 'PENDIENTE' AND o.id <> $2`,
+            [oferta.idTrabajo, idOferta]
+        )
+
         await client.query(
             `UPDATE "Oferta" SET "ESTADO_OFERTA" = 'RECHAZADA' WHERE "idTrabajo" = $1 AND id <> $2`,
             [oferta.idTrabajo, idOferta]
@@ -683,6 +693,10 @@ aceptarOferta = async (idOferta) => {
             idUsuarioTrabajador: oferta.idUsuarioTrabajador,
             idUsuarioCliente: oferta.idUsuarioCliente,
             precioFinal,
+            ofertasRechazadas: rechazadas.rows.map(r => ({
+                idTrabajador: r.idTrabajador,
+                idUsuarioTrabajador: r.idUsuarioTrabajador,
+            })),
         }
 
     } catch (err) {

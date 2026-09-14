@@ -101,10 +101,10 @@ export default function Login({ navigation }) {
         body: JSON.stringify({ identificador, contrasena }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
 
       if (!response.ok) {
-        Alert.alert('Error', data.message || 'Error al iniciar sesión');
+        Alert.alert('Error', data?.message || `Error del servidor (HTTP ${response.status})`);
         return;
       }
 

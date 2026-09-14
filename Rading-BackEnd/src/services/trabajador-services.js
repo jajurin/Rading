@@ -1,14 +1,17 @@
 import trabajadorRepository from "../repositories/trabajador/trabajador-repositories.js";
 import Trabajador from '../entities/trabajador.js'
 import chatRepository from "../repositories/chat/chat-repositories.js";
+import NotificacionServices from "./notificacion-services.js";
 
 const ROLES = ['CLIENTE', 'TRABAJADOR']
 export default class TrabajadorServices {
     #repo
       #chatRepo
+      #notifSvc
     constructor() {
         this.#repo = new trabajadorRepository()
         this.#chatRepo = new chatRepository()
+        this.#notifSvc = new NotificacionServices()
     }
   obtenerEstado = async (idTrabajo) => {
         const estado = await this.#repo.obtenerEstado(idTrabajo)
@@ -18,7 +21,13 @@ export default class TrabajadorServices {
 
   generarCodigoLlegada = async (idTrabajo) => {
     if (!idTrabajo) throw new Error('Falta idTrabajo')
-    return await this.#repo.generarCodigoLlegada(idTrabajo)
+    const resultado = await this.#repo.generarCodigoLlegada(idTrabajo)
+    try {
+        await this.#notifSvc.notificarCodigo({ idTrabajo, tipo: 'CODIGO_LLEGADA', codigo: resultado.codigo })
+    } catch (err) {
+        console.error(`No se pudo notificar el código de llegada del trabajo ${idTrabajo}:`, err)
+    }
+    return resultado
 }
 
 confirmarLlegada = async (idTrabajo, codigo) => {
@@ -45,7 +54,13 @@ confirmarLlegada = async (idTrabajo, codigo) => {
 
 generarCodigoFin = async (idTrabajo) => {
     if (!idTrabajo) throw new Error('Falta idTrabajo')
-    return await this.#repo.generarCodigoFin(idTrabajo)
+    const resultado = await this.#repo.generarCodigoFin(idTrabajo)
+    try {
+        await this.#notifSvc.notificarCodigo({ idTrabajo, tipo: 'CODIGO_FIN', codigo: resultado.codigo })
+    } catch (err) {
+        console.error(`No se pudo notificar el código de fin del trabajo ${idTrabajo}:`, err)
+    }
+    return resultado
 }
 
 confirmarFin = async (idTrabajo, codigo) => {
@@ -62,6 +77,8 @@ confirmarFin = async (idTrabajo, codigo) => {
                 contenido: `El trabajador ingresó el código correctamente. ¡Trabajo finalizado!`,
                 tipo: 'TEXTO',
             })
+
+            await this.#notifSvc.notificarTrabajoFinalizado({ idTrabajo })
         } catch (err) {
             console.error(`No se pudo notificar confirmarFin del trabajo ${idTrabajo}:`, err)
         }
@@ -88,7 +105,19 @@ enviarOferta = async (idTrabajo, idTrabajador, datos) => {
     if (!idTrabajo || !idTrabajador || datos?.precio == null) {
         throw new Error('Faltan idTrabajo, idTrabajador o precio')
     }
-    return await this.#repo.enviarOferta(idTrabajo, idTrabajador, datos)
+    const resultado = await this.#repo.enviarOferta(idTrabajo, idTrabajador, datos)
+
+    try {
+        await this.#notifSvc.notificarOfertaNueva({
+            idTrabajo,
+            idTrabajador,
+            precio: datos.precio,
+        })
+    } catch (err) {
+        console.error(`No se pudo notificar la oferta nueva del trabajo ${idTrabajo}:`, err)
+    }
+
+    return resultado
 }
 
 cerrarSubastasVencidas = async () => {

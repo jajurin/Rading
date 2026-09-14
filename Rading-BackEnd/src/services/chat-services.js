@@ -1,10 +1,13 @@
 import chatRepository from '../repositories/chat/chat-repositories.js'
+import NotificacionServices from './notificacion-services.js'
 
 export default class ChatServices {
     #repo
+    #notifSvc
 
     constructor() {
         this.#repo = new chatRepository()
+        this.#notifSvc = new NotificacionServices()
     }
 
     obtenerOCrearChat = async (idCliente, idTrabajador) => {
@@ -48,6 +51,18 @@ export default class ChatServices {
         return await this.#repo.enviarMensaje({
             chatId, idCliente, idTrabajador, enviadorId, contenido, tipo,
             servicioId, precio, precioOfertado, notaOferta,
+        }).then(async (mensaje) => {
+            try {
+                await this.#notifSvc.notificarMensaje({
+                    chatId: mensaje.chat_id ?? chatId,
+                    enviadorId,
+                    contenido,
+                    tipo,
+                })
+            } catch (err) {
+                console.error('No se pudo notificar el mensaje nuevo:', err)
+            }
+            return mensaje
         })
     }
 
@@ -60,6 +75,18 @@ export default class ChatServices {
         }
         return await this.#repo.enviarMensajeArchivo({
             chatId, idCliente, idTrabajador, enviadorId, archivoUrl, archivoNombre, tipo, duracionAudio,
+        }).then(async (mensaje) => {
+            try {
+                await this.#notifSvc.notificarMensaje({
+                    chatId: mensaje.chat_id ?? chatId,
+                    enviadorId,
+                    contenido: archivoNombre ?? archivoUrl,
+                    tipo,
+                })
+            } catch (err) {
+                console.error('No se pudo notificar el archivo enviado:', err)
+            }
+            return mensaje
         })
     }
 

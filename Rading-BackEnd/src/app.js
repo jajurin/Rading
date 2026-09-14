@@ -7,6 +7,7 @@ import verificacionRoutes from "./routes/verificacion-routes.js"
 import solicitudRouter from "./routes/solicitud-routes.js"
 import chatRoutes from './routes/chat-routes.js'
 import trabajoRoutes from './routes/trabajo-routes.js'
+import notificacionRoutes from "./routes/notificacion-routes.js"
 import path from "path"
 
 const app = express();
@@ -19,5 +20,6 @@ app.use("/usuario", usuarioRoutes);
 app.use("/verificacion", verificacionRoutes)
 app.use('/chat', chatRoutes)
 app.use('/trabajo', trabajoRoutes)
+app.use('/notificacion', notificacionRoutes)
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')))
 export default app;

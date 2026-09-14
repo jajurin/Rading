@@ -36,14 +36,16 @@ import MisOfertasTrabajador from './Trabajador/Misofertastrabajador';
 import MisSolicitudesCliente from './Cliente/Missolicitudescliente';
 import CalificarClienteTrabajador from './Trabajador/Calificarclientetrabajador';
 import CancelarTrabajoCl from './Trabajador/cancelarTrabajo';
+import Notificaciones from './Notificaciones';
 const Stack = createStackNavigator();
 
 export default function App() {
   return (
     <SafeAreaProvider>
       <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="CrearSolicitud">
+        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
                <Stack.Screen name="Login" component={Login} />
+           <Stack.Screen name="Notificaciones" component={Notificaciones} />
            <Stack.Screen name="CancelarTrabajoCl" component={CancelarTrabajoCl} />
            <Stack.Screen name="PerfilScreen" component={PerfilScreen} />
                                   <Stack.Screen name="trabajadorclasifcar" component={ClasificarTrabajador} />

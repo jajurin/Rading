@@ -23,6 +23,7 @@ import TrabajoActivoTrabajador from './TrabajoActivoTrabajador';
 import TrabajoActivoOverlayTrabajador from './TrabajoActivoOverlayTrabajador';
 import Search from './Search';
 import API_URL from '../configS';
+import { listarNotificaciones, marcarNotificacionLeida, mapearParaHeader } from '../Notificaciones';
 
 // ── Paleta ─────────────────────────────────────────────────────────────────
 const NAVY         = '#0F1B4C';
@@ -527,6 +528,31 @@ export default function HomeTrabajador({ route, navigation }) {
   const [tieneChatsSinLeer, setTieneChatsSinLeer] = useState(false);
   const [showTrabajoActivo, setShowTrabajoActivo] = useState(false);
 
+  const [notificaciones, setNotificaciones] = useState([]);
+
+  const cargarNotificaciones = useCallback(async () => {
+    if (!usuario?.id) {
+      setNotificaciones([]);
+      return;
+    }
+    try {
+      const filas = await listarNotificaciones(usuario.id);
+      setNotificaciones(filas.map(mapearParaHeader));
+    } catch (err) {
+      console.error('Error al cargar notificaciones:', err.message);
+    }
+  }, [usuario?.id]);
+
+  const marcarLeidaEnHeader = async (item) => {
+    if (!usuario?.id) return;
+    try {
+      await marcarNotificacionLeida(item.id, usuario.id);
+      await cargarNotificaciones();
+    } catch (err) {
+      console.error('Error al marcar notificación leída:', err.message);
+    }
+  };
+
   // ── Búsqueda + filtros, ahora embebidos en la Home ──────────────────────
   const [lastTexto, setLastTexto] = useState('');
   const [resultados, setResultados] = useState([]);
@@ -591,7 +617,8 @@ export default function HomeTrabajador({ route, navigation }) {
   useEffect(() => {
     cargarResumen();
     chequearChatsSinLeer();
-  }, [cargarResumen, chequearChatsSinLeer]);
+    cargarNotificaciones();
+  }, [cargarResumen, chequearChatsSinLeer, cargarNotificaciones]);
 
   const toggleDisponibilidad = async (valor) => {
     setDisponible(valor);
@@ -668,7 +695,12 @@ export default function HomeTrabajador({ route, navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor={NAVY} />
-     <Header usuario={usuario} />
+     <Header
+        usuario={usuario}
+        notificaciones={notificaciones}
+        onNotificaciones={cargarNotificaciones}
+        onVerNotificacion={marcarLeidaEnHeader}
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}

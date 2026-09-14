@@ -18,6 +18,12 @@ import { useNavigation } from '@react-navigation/native';
 import API_URL from './configS';
 import Logoicon from './assets/Logoicon.png';
 import AjustesOverlay from './AjustesOverlay';
+import {
+  listarNotificaciones,
+  mapearParaHeader,
+  marcarTodasLasLeidas,
+  navegarDesdeNotificacion,
+} from './Notificaciones';
 
 /* Mismos tokens que el resto de la app */
 const INDIGO = '#3D4EEA';
@@ -85,6 +91,26 @@ export default function Header({
 
   const [panelVisible, setPanelVisible] = useState(false);
   const [ajustesVisible, setAjustesVisible] = useState(false);
+  const [notificacionesInternas, setNotificacionesInternas] = useState(null);
+
+  const cargarNotificacionesInternas = useCallback(async () => {
+    if (!usuario?.id) {
+      setNotificacionesInternas([]);
+      return;
+    }
+    try {
+      const filas = await listarNotificaciones(usuario.id);
+      setNotificacionesInternas(filas.map(mapearParaHeader));
+    } catch (err) {
+      console.error('[Header] Error trayendo notificaciones:', err.message);
+      setNotificacionesInternas([]);
+    }
+  }, [usuario?.id]);
+
+  // Si la pantalla no pasa notificaciones por prop, el Header las pide solo.
+  useEffect(() => {
+    if (!notificaciones) cargarNotificacionesInternas();
+  }, [notificaciones, cargarNotificacionesInternas]);
 
   const fetchDireccion = useCallback(async () => {
     if (!usuario?.email) return;
@@ -121,43 +147,27 @@ export default function Header({
 
   const irAHome = () => {
     onLogo?.();
-    navigation.navigate('HomeCliente', { usuario });
+    const destino = usuario?.tipo === 'trabajador' ? 'HomeTrabajador' : 'HomeCliente';
+    navigation.navigate(destino, { usuario });
   };
 
-  /* Lista de ejemplo si el padre no pasa notificaciones reales todavía */
-  const notificacionesData =
-    notificaciones ?? [
-      {
-        id: '1',
-        nombre: 'Paola Laurita',
-        rol: 'Electricista',
-        mensaje: 'Ya llegué a la dirección, ¿me confirmás el acceso?',
-        hora: '10:24',
-        leida: false,
-      },
-      {
-        id: '2',
-        nombre: 'Marcos Gómez',
-        rol: 'Plomero',
-        mensaje: 'Terminé el trabajo, quedó todo probado y funcionando.',
-        hora: 'Ayer',
-        leida: false,
-      },
-      {
-        id: '3',
-        nombre: 'Toileta Laura',
-        rol: 'Gasista',
-        mensaje: 'Te dejé la cotización actualizada del servicio.',
-        hora: 'Lun',
-        leida: true,
-      },
-    ];
+  /* Lista real si el padre la pasa; si no, la que trae el Header solo.
+     No hay más datos de ejemplo: si no hay notificaciones, se muestra vacío. */
+  const notificacionesData = notificaciones ?? notificacionesInternas ?? [];
 
   const noLeidas = notificacionesData.filter((n) => !n.leida).length;
 
+  // Al abrir el panel las pendientes se descartan (BADGE): se marcan todas
+  // como leídas y se refresca la lista que muestra el panel.
   const abrirPanel = () => {
     setPanelVisible(true);
-    onNotificaciones?.();
+    if (usuario?.id) {
+      marcarTodasLasLeidas(usuario.id).catch((err) =>
+        console.error('[Header] No se pudieron marcar como leídas:', err.message)
+      );
+      if (notificaciones) onNotificaciones?.();
+      else cargarNotificacionesInternas();
+    }
   };
 
   const cerrarPanel = () => setPanelVisible(false);
@@ -165,6 +175,16 @@ export default function Header({
   const handleItemPress = (item) => {
     onVerNotificacion?.(item);
     cerrarPanel();
+    if (usuario?.id) {
+      navegarDesdeNotificacion(item, usuario, navigation).catch((err) =>
+        console.error('[Header] No se pudo navegar desde la notificación:', err.message)
+      );
+    }
+  };
+
+  const verTodas = () => {
+    cerrarPanel();
+    navigation.navigate('Notificaciones', { usuario });
   };
 
   const abrirAjustes = () => {
@@ -326,6 +346,15 @@ export default function Header({
                   ))}
                 </ScrollView>
               )}
+
+              <TouchableOpacity
+                style={styles.panelFooter}
+                activeOpacity={0.7}
+                onPress={verTodas}
+              >
+                <Text style={styles.panelFooterText}>Ver todas</Text>
+                <Ionicons name="arrow-forward" size={15} color={INDIGO} />
+              </TouchableOpacity>
             </View>
           </Pressable>
         </Pressable>
@@ -604,5 +633,19 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     color: 'rgba(10,18,48,0.4)',
     fontWeight: '600',
+  },
+  panelFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 11,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(10,18,48,0.08)',
+  },
+  panelFooterText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: INDIGO,
   },
 });
