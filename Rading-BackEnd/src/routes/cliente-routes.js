@@ -64,6 +64,31 @@ router.get("/buscarTrabajador", async (req, res) => {
     }
 })
 
+// GET /cliente/perfil/:id
+router.get("/perfil/:id", async (req, res) => {
+    try {
+        const perfil = await svc.obtenerPerfil(req.params.id)
+        if (!perfil) {
+            return res.status(404).json({ message: "Cliente no encontrado" })
+        }
+        res.status(200).json(perfil)
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: error.message || "Error al obtener el perfil" })
+    }
+})
+
+// PATCH /cliente/perfil/:id
+router.patch("/perfil/:id", async (req, res) => {
+    try {
+        const resultado = await svc.actualizarPerfil(req.params.id, req.body)
+        res.status(200).json(resultado)
+    } catch (error) {
+        console.error(error)
+        res.status(400).json({ message: error.message || "Error al actualizar el perfil" })
+    }
+})
+
 // GET /cliente/trabajosActivos/:id
 router.get("/trabajosActivos/:id", async (req, res) => {
     try {

@@ -84,6 +84,37 @@ router.post("/registrar", async (req, res) => {
     }
 })
 
+// GET /trabajador/perfil/:id
+router.get("/perfil/:id", async (req, res) => {
+    if (!idValido(req.params.id)) {
+        return res.status(400).json({ message: "id de trabajador inválido" })
+    }
+    try {
+        const perfil = await svc.obtenerPerfil(req.params.id)
+        if (!perfil) {
+            return res.status(404).json({ message: "Trabajador no encontrado" })
+        }
+        res.status(200).json(perfil)
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: error.message || "Error al obtener el perfil" })
+    }
+})
+
+// PATCH /trabajador/perfil/:id
+router.patch("/perfil/:id", async (req, res) => {
+    if (!idValido(req.params.id)) {
+        return res.status(400).json({ message: "id de trabajador inválido" })
+    }
+    try {
+        const resultado = await svc.actualizarPerfil(req.params.id, req.body)
+        res.status(200).json(resultado)
+    } catch (error) {
+        console.error(error)
+        res.status(400).json({ message: error.message || "Error al actualizar el perfil" })
+    }
+})
+
 router.get("/trabajosActivos/:id", async (req, res) => {
     if (!idValido(req.params.id)) {
         return res.status(400).json({ message: "id de trabajador inválido" })

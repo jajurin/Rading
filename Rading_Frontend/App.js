@@ -37,6 +37,7 @@ import MisSolicitudesCliente from './Cliente/Missolicitudescliente';
 import CalificarClienteTrabajador from './Trabajador/Calificarclientetrabajador';
 import CancelarTrabajoCl from './Trabajador/cancelarTrabajo';
 import Notificaciones from './Notificaciones';
+import EditarDatosPersonales from './EditarDatosPersonales';
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -46,6 +47,7 @@ export default function App() {
         <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
                <Stack.Screen name="Login" component={Login} />
            <Stack.Screen name="Notificaciones" component={Notificaciones} />
+           <Stack.Screen name="EditarDatosPersonales" component={EditarDatosPersonales} />
            <Stack.Screen name="CancelarTrabajoCl" component={CancelarTrabajoCl} />
            <Stack.Screen name="PerfilScreen" component={PerfilScreen} />
                                   <Stack.Screen name="trabajadorclasifcar" component={ClasificarTrabajador} />

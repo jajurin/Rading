@@ -172,4 +172,12 @@ buscarOfertasCercanas = async (idTrabajador, radioKm) => {
     obtenerResumenDiario = async (idTrabajador) => {
         return await this.#repo.obtenerResumenDiario(idTrabajador)
     }
+
+    obtenerPerfil = async (idTrabajador) => {
+        return await this.#repo.obtenerPerfil(idTrabajador)
+    }
+
+    actualizarPerfil = async (idTrabajador, body) => {
+        return await this.#repo.actualizarPerfil(idTrabajador, body)
+    }
 }

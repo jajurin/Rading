@@ -1150,4 +1150,248 @@ filtrarSolicitudes = async (idTrabajador, estrellas, servicio_id, fijo, emergenc
         await client.end()
     }
 }
+
+/**
+ * Perfil completo de un trabajador: datos de Usuario + Trabajador +
+ * servicios + reseñas recibidas + métricas derivadas.
+ * Requiere las columnas nuevas (tarifaDesde, portada, etc.) — si alguna
+ * no existe todavía, el error de Postgres lo deja bien claro.
+ */
+obtenerPerfil = async (idTrabajador) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+
+        const sqlTrabajador = `
+            SELECT
+                t.id,
+                t."IdPersona",
+                u.nombre,
+                u.apellido,
+                u.email,
+                u.direccion,
+                u.telefono,
+                u.lat,
+                u.lng,
+                t.descripcion,
+                t."zonaTrabajo",
+                t."DispComienzo",
+                t."DispFinal",
+                t.foto,
+                t.estrellas,
+                t."reseñasRec",
+                t.portada,
+                t."tarifaDesde",
+                t."tiempoRespuesta",
+                t."tasaAceptacion",
+                t."añosExperiencia",
+                t."identidadVerificada",
+                t."antecedentesVerificados",
+                t.matricula,
+                t."matriculaVerificada",
+                t."seguroVigente",
+                t."atiendeEmergencias",
+                t.idiomas,
+                t."metodosPago",
+                t.educacion,
+                t.experiencia,
+                t.aptitudes,
+                t.portfolio,
+                t.disponibilidad,
+                (
+                    SELECT COUNT(*) FROM "Cliente-Trabajador" ct
+                    WHERE ct."IdTrabajador" = t.id AND ct.estado = 'TERMINADO'
+                ) AS "trabajosRealizados",
+                (
+                    SELECT cs.nombre
+                    FROM "Trabajador_Servicio" ts
+                    INNER JOIN "Servicio" s ON s.id = ts.servicios_id
+                    INNER JOIN "CategoriaServicio" cs ON cs.id = s.categoria_id
+                    WHERE ts.trabajadores_id = t.id
+                    ORDER BY ts.id ASC
+                    LIMIT 1
+                ) AS categoria
+            FROM "Trabajador" t
+            INNER JOIN "Usuario" u ON t."IdPersona" = u.id
+            WHERE t.id = $1
+        `
+        const trabajadorResult = await client.query(sqlTrabajador, [idTrabajador])
+        const trabajador = trabajadorResult.rows[0]
+        if (!trabajador) return null
+
+        const serviciosResult = await client.query(
+            `SELECT s.id, s.nombre, s.categoria_id, ts.precio
+             FROM "Trabajador_Servicio" ts
+             INNER JOIN "Servicio" s ON s.id = ts.servicios_id
+             WHERE ts.trabajadores_id = $1
+             ORDER BY ts.id ASC`,
+            [idTrabajador]
+        )
+
+        const resenasResult = await client.query(
+            `SELECT r.id, r.estrellas, r.razon, r.descripcion, r."fechaCreacion",
+                    u.nombre, u.apellido
+             FROM "ReseñaCliente" r
+             INNER JOIN "Cliente" c ON c.id = r."idCliente"
+             INNER JOIN "Usuario" u ON u.id = c."IdPersona"
+             WHERE r."idTrabajador" = $1
+             ORDER BY r."fechaCreacion" DESC`,
+            [idTrabajador]
+        )
+
+        return {
+            ...trabajador,
+            servicios: serviciosResult.rows,
+            resenas: resenasResult.rows,
+        }
+    } catch (err) {
+        console.error('Error en obtenerPerfil (trabajador):', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
+
+actualizarPerfil = async (idTrabajador, body) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        await client.query('BEGIN')
+
+        const sets = []
+        const values = []
+        let idx = 1
+
+        const agregarSet = (columna, valor) => {
+            sets.push(`"${columna}" = $${idx++}`)
+            values.push(valor)
+        }
+
+        if (body.servicios !== undefined) {
+            const servicios = Array.isArray(body.servicios) ? body.servicios : []
+
+            const existentesResult = await client.query(
+                `SELECT s.id, s.nombre
+                 FROM "Servicio" s
+                 INNER JOIN "Trabajador_Servicio" ts ON ts.servicios_id = s.id
+                 WHERE ts.trabajadores_id = $1`,
+                [idTrabajador]
+            )
+            const existentes = existentesResult.rows
+
+            const idsNuevos = []
+            for (const item of servicios) {
+                const nombre = String(item.nombre ?? '').trim()
+                if (item.id && Number(item.id) > 0) {
+                    idsNuevos.push({ id: Number(item.id), precio: item.precio })
+                    continue
+                }
+                if (!nombre) continue
+                const yaExiste = existentes.find(
+                    (s) => s.nombre.toLowerCase() === nombre.toLowerCase()
+                )
+                if (yaExiste) {
+                    idsNuevos.push({ id: yaExiste.id, precio: item.precio })
+                    continue
+                }
+                const buscar = await client.query(
+                    `SELECT id FROM "Servicio" WHERE LOWER(nombre) = LOWER($1) LIMIT 1`,
+                    [nombre]
+                )
+                let idServicio = buscar.rows[0]?.id
+                if (!idServicio) {
+                    const insert = await client.query(
+                        `INSERT INTO "Servicio" (nombre, categoria_id) VALUES ($1, NULL) RETURNING id`,
+                        [nombre]
+                    )
+                    idServicio = insert.rows[0].id
+                }
+                idsNuevos.push({ id: idServicio, precio: item.precio })
+            }
+
+            await client.query(
+                `DELETE FROM "Trabajador_Servicio" WHERE trabajadores_id = $1`,
+                [idTrabajador]
+            )
+            for (const srv of idsNuevos) {
+                let precio = null
+                if (srv.precio !== undefined && srv.precio !== null && srv.precio !== '') {
+                    const n = Number(String(srv.precio).replace(/\./g, '').replace(/,/g, '.'))
+                    precio = Number.isFinite(n) ? n : null
+                }
+                await client.query(
+                    `INSERT INTO "Trabajador_Servicio" (trabajadores_id, servicios_id, precio)
+                     VALUES ($1, $2, $3)`,
+                    [idTrabajador, srv.id, precio]
+                )
+            }
+        }
+
+        if (body.zonaCobertura !== undefined) {
+            agregarSet('zonaTrabajo', Array.isArray(body.zonaCobertura) ? body.zonaCobertura.join(', ') : body.zonaCobertura)
+        }
+        for (const campo of ['descripcion', 'zonaTrabajo', 'foto', 'portada', 'matricula', 'tarifaDesde', 'tiempoRespuesta']) {
+            if (body[campo] !== undefined) {
+                if (campo === 'zonaTrabajo' && body.zonaCobertura !== undefined) continue
+                agregarSet(campo, body[campo])
+            }
+        }
+        for (const campo of ['tasaAceptacion', 'añosExperiencia']) {
+            if (body[campo] !== undefined) agregarSet(campo, Number(body[campo]) || 0)
+        }
+        for (const campo of ['identidadVerificada', 'antecedentesVerificados', 'matriculaVerificada', 'seguroVigente', 'atiendeEmergencias']) {
+            if (body[campo] !== undefined) agregarSet(campo, !!body[campo])
+        }
+        for (const campo of ['idiomas', 'metodosPago', 'educacion', 'experiencia', 'aptitudes', 'portfolio', 'disponibilidad']) {
+            if (body[campo] !== undefined) {
+                agregarSet(campo, JSON.stringify(Array.isArray(body[campo]) ? body[campo] : []))
+            }
+        }
+        if (body.horarioAtencion) {
+            const m = String(body.horarioAtencion).match(/(\d{1,2}:\d{2})[\s\S]*?(\d{1,2}:\d{2})/)
+            if (m) {
+                agregarSet('DispComienzo', m[1])
+                agregarSet('DispFinal', m[2])
+            }
+        }
+
+        if (sets.length > 0) {
+            await client.query(
+                `UPDATE "Trabajador" SET ${sets.join(', ')} WHERE id = $${idx}`,
+                [...values, idTrabajador]
+            )
+        }
+
+        const personal = ['nombre', 'apellido', 'email', 'telefono', 'direccion']
+        const setsPersonal = []
+        const valuesPersonal = []
+        for (const campo of personal) {
+            if (body[campo] === undefined) continue
+            setsPersonal.push(`"${campo}" = $${setsPersonal.length + 1}`)
+            valuesPersonal.push(body[campo])
+        }
+        if (setsPersonal.length > 0) {
+            const idPersonaResult = await client.query(
+                `SELECT "IdPersona" FROM "Trabajador" WHERE id = $1`,
+                [idTrabajador]
+            )
+            const idPersona = idPersonaResult.rows[0]?.IdPersona
+            if (idPersona) {
+                await client.query(
+                    `UPDATE "Usuario" SET ${setsPersonal.join(', ')} WHERE id = $${setsPersonal.length + 1}`,
+                    [...valuesPersonal, idPersona]
+                )
+            }
+        }
+
+        await client.query('COMMIT')
+        return { success: true, id: idTrabajador }
+    } catch (err) {
+        try { await client.query('ROLLBACK') } catch (_) {}
+        console.error('Error en actualizarPerfil (trabajador):', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
 }

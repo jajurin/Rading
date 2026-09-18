@@ -129,4 +129,12 @@ mostrarMisSolicitudes = async (idCliente) => {
         if (!hayTexto && !hayFiltros) return []
         return await this.#repo.buscarTrabajador({ texto, estrellas, especialidad, horarioDesde, horarioHasta, lat, lng, radioKm })
     }
+
+    obtenerPerfil = async (idCliente) => {
+        return await this.#repo.obtenerPerfil(idCliente)
+    }
+
+    actualizarPerfil = async (idCliente, body) => {
+        return await this.#repo.actualizarPerfil(idCliente, body)
+    }
 }

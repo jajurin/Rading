@@ -119,16 +119,14 @@ const THEME = {
 const RADIO_BUSQUEDA_KM = 5;
 
 // Cada tab define a qué pantalla del Stack.Navigator (App.js) navega.
-// screen: null  ->  la pantalla todavía no existe, así que el tab queda
-// "en blanco": se marca como activo visualmente pero NO navega a nada,
-// para no romper la app. Apenas crees ChatsTrabajador / PerfilTrabajador,
-// completá el campo screen acá y ya queda andando.
+// screen: null  ->  el tab queda "en blanco": se marca como activo
+// visualmente pero NO navega a nada, para no romper la app.
 const NAV_ITEMS = [
   { key: 'inicio',   label: 'Inicio',  Icon: Icons.Home,    screen: 'HomeTrabajador' },
   { key: 'busqueda', label: 'Ofertas', Icon: Icons.Search, screen: 'MisOfertasTrabajador' },
   { key: 'fab',      label: null,      Icon: Icons.Radar,   screen: null },
   { key: 'chats',    label: 'Chats',   Icon: Icons.Chat,    screen: 'PreviaChatTrabajador' },
-  { key: 'perfil',   label: 'Perfil',  Icon: Icons.Profile, screen: null }, // TODO: crear PerfilTrabajador
+  { key: 'perfil',   label: 'Perfil',  Icon: Icons.Profile, screen: 'PerfilTrabajador' },
 ];
 
 const FAB_INDEX = NAV_ITEMS.findIndex((i) => i.key === 'fab');

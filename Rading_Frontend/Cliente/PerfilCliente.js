@@ -14,8 +14,8 @@ import FotoPerfilCliente from './FotoPerfilCliente'
 import EditarDescripcionPerfilCliente from './EditarDescripcionPerfilCliente'
 import TarjetaPerfilCliente from './TarjetaPerfilCliente'
 
-// 👇 poné false cuando conectes el back real
-const USE_MOCK_DATA = true
+// 👇 true = datos de prueba, false = datos del backend real
+const USE_MOCK_DATA = false
 
 function direccionCorta(direccionCompleta) {
   if (!direccionCompleta) return 'Sin dirección'
@@ -233,10 +233,9 @@ export default function PerfilClienteScreen({ navigation, route }) {
     setLoadingCliente(true)
     setErrorCliente(null)
     try {
-      const resClientes = await fetch(`${BASE_URL}/cliente/todos`)
-      if (!resClientes.ok) throw new Error(`Error ${resClientes.status} al obtener clientes`)
-      const clientes = await resClientes.json()
-      const clienteEncontrado = clientes.find(c => c.id === ID_CLIENTE)
+      const resCliente = await fetch(`${BASE_URL}/cliente/perfil/${ID_CLIENTE}`)
+      if (!resCliente.ok) throw new Error(`Error ${resCliente.status} al obtener el perfil`)
+      const clienteEncontrado = await resCliente.json()
       if (!clienteEncontrado) throw new Error('Cliente no encontrado en la base de datos')
       setCliente(clienteEncontrado)
     } catch (err) {
@@ -288,7 +287,7 @@ export default function PerfilClienteScreen({ navigation, route }) {
     setCliente(prev => ({ ...prev, [campo]: valor }))
     if (USE_MOCK_DATA) return
     try {
-      const res = await fetch(`${BASE_URL}/cliente/actualizar/${ID_CLIENTE}`, {
+      const res = await fetch(`${BASE_URL}/cliente/perfil/${ID_CLIENTE}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [campo]: valor }),
@@ -300,9 +299,9 @@ export default function PerfilClienteScreen({ navigation, route }) {
     }
   }
 
-  const editarFoto = () => {
-    console.log('TODO: abrir selector de imagen para cambiar la foto')
-  }
+  const irAEditarPerfil = () => navigation?.navigate?.('EditarDatosPersonales', { tipo: 'cliente', usuario })
+
+  const editarFoto = () => irAEditarPerfil()
 
   // TODO: reemplazar por los endpoints reales cuando estén disponibles
   // (billetera, favoritos, historial completo, direcciones guardadas)
@@ -385,6 +384,14 @@ export default function PerfilClienteScreen({ navigation, route }) {
                     <View style={styles.verificadoBadge}>
                       <Ionicons name="checkmark-circle" size={15} color={BLUE} />
                     </View>
+                    <TouchableOpacity
+                      onPress={irAEditarPerfil}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={{ marginLeft: 'auto' }}
+                    >
+                      <Ionicons name="create-outline" size={17} color={BLUE} />
+                    </TouchableOpacity>
                   </View>
 
                   <View style={styles.ratingWithInfo}>

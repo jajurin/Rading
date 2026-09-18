@@ -743,4 +743,106 @@ ORDER BY ct.id DESC
 
     return result?.rows ?? []
 }
+
+/**
+ * Perfil completo de un cliente: datos de Usuario + Cliente.
+ * Requiere las columnas nuevas (FotoPerfil, foto, saldo, etc.) — si alguna
+ * no existe todavía, el error de Postgres lo deja bien claro.
+ */
+obtenerPerfil = async (idCliente) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+
+        const sql = `
+            SELECT
+                c.id,
+                c."IdPersona",
+                u.nombre,
+                u.apellido,
+                u.email,
+                u.direccion,
+                u.telefono,
+                u.lat,
+                u.lng,
+                c.categoria_id,
+                c.estrellas,
+                c."reseñasEnv",
+                c."reseñasRec",
+                c.foto,
+                c.saldo,
+                c."favoritosCount",
+                c."fechaRegistro",
+                c.preferencias,
+                c.descripcion
+            FROM "Cliente" c
+            INNER JOIN "Usuario" u ON c."IdPersona" = u.id
+            WHERE c.id = $1
+        `
+
+        const result = await client.query(sql, [idCliente])
+        return result.rows[0] ?? null
+    } catch (err) {
+        console.error('Error en obtenerPerfil (cliente):', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
+
+actualizarPerfil = async (idCliente, body) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+
+        const idPersonaResult = await client.query(
+            `SELECT "IdPersona" FROM "Cliente" WHERE id = $1`,
+            [idCliente]
+        )
+        const idPersona = idPersonaResult.rows[0]?.IdPersona
+        if (!idPersona) return { success: true, id: idCliente }
+
+        const permitidosCliente = ['preferencias', 'descripcion', 'foto', 'saldo', 'favoritosCount', 'fechaRegistro']
+        const setsCliente = []
+        const valuesCliente = []
+        let idx = 1
+
+        for (const campo of permitidosCliente) {
+            if (body[campo] === undefined) continue
+            setsCliente.push(`"${campo}" = $${idx++}`)
+            valuesCliente.push(body[campo])
+        }
+
+        const permitidosUsuario = ['nombre', 'apellido', 'email', 'telefono', 'direccion']
+        const setsUsuario = []
+        const valuesUsuario = []
+
+        for (const campo of permitidosUsuario) {
+            if (body[campo] === undefined) continue
+            setsUsuario.push(`"${campo}" = $${setsUsuario.length + 1}`)
+            valuesUsuario.push(body[campo])
+        }
+
+        if (setsCliente.length > 0) {
+            await client.query(
+                `UPDATE "Cliente" SET ${setsCliente.join(', ')} WHERE id = $${idx}`,
+                [...valuesCliente, idCliente]
+            )
+        }
+
+        if (setsUsuario.length > 0) {
+            await client.query(
+                `UPDATE "Usuario" SET ${setsUsuario.join(', ')} WHERE id = $${setsUsuario.length + 1}`,
+                [...valuesUsuario, idPersona]
+            )
+        }
+
+        return { success: true, id: idCliente }
+    } catch (err) {
+        console.error('Error en actualizarPerfil (cliente):', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
     }

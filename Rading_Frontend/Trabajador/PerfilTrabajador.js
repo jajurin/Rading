@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import Header from '../Header';
 import BottomNavBarTrabajador from './Navegadortrabajador';
+import API_URL from '../configS';
 
 /* ==================================================================== */
 /*  TOKENS                                                              */
@@ -466,83 +467,213 @@ function EditModal({ visible, tipo, titulo, valorInicial, onCerrar, onGuardar })
 /**
  * Props:
  * - usuario: usuario logueado (se le pasa a Header y a BottomNavBarTrabajador).
- * - perfilInicial: opcional, para precargar datos reales del backend.
- * - onGuardarPerfil(perfilActualizado, campo, valor): opcional. Se llama cada
- *   vez que se guarda una edición, para que lo conectes a tu API cuando quieras.
+ *   Puede llegar por prop directa o por `route.params.usuario`.
+ * - perfilInicial: opcional, para precargar datos antes del fetch.
+ * - onGuardarPerfil(perfilActualizado, campo, valor): opcional, callback extra
+ *   que se dispara después de persistir cada edición.
  *
- * Nota: este componente NO hace fetch ni persiste nada por su cuenta —
- * todo vive en estado local (útil para maquetar / probar el diseño) hasta
- * que decidas conectar onGuardarPerfil a tu backend.
+ * El perfil se obtiene del backend en `GET /trabajador/perfil/:id` usando
+ * `usuario.idTrabajador`. Cada edición se persiste con `PATCH /trabajador/perfil/:id`.
  */
-export default function PerfilTrabajador({ usuario, perfilInicial, onGuardarPerfil }) {
-  const [perfil, setPerfil] = useState({
-    categoria: 'Plomero',
-    nombre: 'Ricardo Caminante',
-    ubicacion: 'Villa del Parque, CABA',
-    foto: null,
-    portada: null,
+const PERFIL_VACIO = {
+  categoria: '',
+  nombre: '',
+  ubicacion: '',
+  foto: null,
+  portada: null,
 
-    // --- Confianza / verificación: lo primero que ve un cliente ---
-    identidadVerificada: true,
-    antecedentesVerificados: true,
-    matricula: 'Matrícula N° 4821 — Colegio de Plomeros CABA',
-    matriculaVerificada: true,
-    seguroVigente: false,
+  identidadVerificada: false,
+  antecedentesVerificados: false,
+  matricula: '',
+  matriculaVerificada: false,
+  seguroVigente: false,
 
-    // --- Métricas de desempeño ---
-    tiempoRespuesta: 'Responde en ~15 min',
-    tasaAceptacion: 92,
-    añosExperiencia: 8,
-    trabajosRealizados: 230,
-    calificacion: 4.8,
-    cantidadResenas: 96,
+  tiempoRespuesta: '',
+  tasaAceptacion: 0,
+  añosExperiencia: 0,
+  trabajosRealizados: 0,
+  calificacion: 0,
+  cantidadResenas: 0,
 
-    tarifaDesde: '7.500',
+  tarifaDesde: '',
 
-    descripcion:
-      'Plomero con especialización en instalación y reparación de sistemas de agua, gas y desagües. Responsable, puntual y enfocado en soluciones rápidas y eficientes.',
+  descripcion: '',
 
-    servicios: [
-      { nombre: 'Destape de cañerías', precio: '6.000' },
-      { nombre: 'Reparación de canillas y griferías', precio: '7.500' },
-      { nombre: 'Instalación de termotanque', precio: '18.000' },
-      { nombre: 'Detección de fugas', precio: '9.000' },
-    ],
+  servicios: [],
 
-    zonaCobertura: ['Villa del Parque', 'Villa Devoto', 'Agronomía', 'Paternal'],
+  zonaCobertura: [],
 
-    disponibilidad: ['X', 'V', 'S'],
-    horarioAtencion: '8:00 a 20:00 hs',
-    atiendeEmergencias: true,
+  disponibilidad: [],
+  horarioAtencion: '',
+  atiendeEmergencias: false,
 
-    idiomas: ['Español'],
-    metodosPago: ['Efectivo', 'Transferencia', 'Tarjeta de débito/crédito'],
+  idiomas: [],
+  metodosPago: [],
 
-    educacion: [
-      'Instituto Tecnológico Superior: Certificación Profesional en Instalaciones Sanitarias.',
-      'Cámara de Plomeros: Curso avanzado de reparación de calderas y sistemas de gas.',
-    ],
-    experiencia: [
-      'Mantenimiento Residencial Independiente: +5 años realizando reparaciones de urgencia, detección de filtraciones y mantenimiento preventivo.',
-      'Constructora "Nueva Ciudad": Instalación integral de redes de agua y desagüe en edificios de departamentos (obras nuevas).',
-    ],
-    aptitudes: [
-      'Detección de fugas con ultrasonido.',
-      'Reparación de termotanques y calefones.',
-      'Instalación de grifería de alta gama.',
-      'Destape de cañerías con maquinaria.',
-    ],
+  educacion: [],
+  experiencia: [],
+  aptitudes: [],
 
-    portfolio: [],
+  portfolio: [],
 
-    resenas: [
-      { nombre: 'Lucas Rigoletti', comentario: 'Excelente trabajo, muy prolijo y puntual.', estrellas: 5 },
-      { nombre: 'Marina Souza', comentario: 'Resolvió una urgencia un domingo, 100% recomendable.', estrellas: 5 },
-    ],
-    ...perfilInicial,
-  });
+  resenas: [],
+};
 
+function parsearJson(valor, fallback) {
+  if (valor == null) return fallback;
+  if (Array.isArray(valor)) return valor;
+  try {
+    const p = JSON.parse(valor);
+    return Array.isArray(p) ? p : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function parsearLista(valor, separador) {
+  if (!valor) return [];
+  return String(valor)
+    .split(separador)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function mapearPerfilTrabajador(db) {
+  if (!db) return PERFIL_VACIO;
+  return {
+    ...PERFIL_VACIO,
+    categoria: db.categoria ?? '',
+    nombre: `${db.nombre ?? ''} ${db.apellido ?? ''}`.trim(),
+    ubicacion: db.direccion ?? '',
+    foto: db.foto ?? null,
+    portada: db.portada ?? null,
+
+    identidadVerificada: db.identidadVerificada ?? false,
+    antecedentesVerificados: db.antecedentesVerificados ?? false,
+    matricula: db.matricula ?? '',
+    matriculaVerificada: db.matriculaVerificada ?? false,
+    seguroVigente: db.seguroVigente ?? false,
+
+    tiempoRespuesta: db.tiempoRespuesta ?? '',
+    tasaAceptacion: db.tasaAceptacion ?? 0,
+    añosExperiencia: db.añosExperiencia ?? 0,
+    trabajosRealizados: db.trabajosRealizados ?? 0,
+    calificacion: db.estrellas ?? 0,
+    cantidadResenas: db.reseñasRec ?? 0,
+
+    tarifaDesde: db.tarifaDesde != null ? String(db.tarifaDesde) : '',
+
+    descripcion: db.descripcion ?? '',
+
+    servicios: (db.servicios ?? []).map((s) => ({
+      id: s.id,
+      nombre: s.nombre ?? '',
+      precio: s.precio != null ? String(s.precio) : '',
+    })),
+
+    zonaCobertura: parsearLista(db.zonaTrabajo, ','),
+
+    disponibilidad: parsearJson(db.disponibilidad, []),
+    horarioAtencion:
+      db.DispComienzo && db.DispFinal ? `${db.DispComienzo} a ${db.DispFinal} hs` : '',
+    atiendeEmergencias: db.atiendeEmergencias ?? false,
+
+    idiomas: parsearJson(db.idiomas, []),
+    metodosPago: parsearJson(db.metodosPago, []),
+
+    educacion: parsearJson(db.educacion, []),
+    experiencia: parsearJson(db.experiencia, []),
+    aptitudes: parsearJson(db.aptitudes, []),
+
+    portfolio: parsearJson(db.portfolio, []),
+
+    resenas: (db.resenas ?? []).map((r) => ({
+      nombre: `${r.nombre ?? ''} ${r.apellido ?? ''}`.trim(),
+      comentario: r.descripcion ?? r.razon ?? '',
+      estrellas: r.estrellas ?? 0,
+    })),
+  };
+}
+
+export default function PerfilTrabajador(props) {
+  const usuario = props.usuario ?? props.route?.params?.usuario;
+  const navigation = props.navigation ?? null;
+  const { perfilInicial, onGuardarPerfil } = props;
+  const idTrabajador = usuario?.idTrabajador ?? usuario?.id ?? null;
+
+  const irAEditarDatos = () =>
+    navigation?.navigate?.('EditarDatosPersonales', { tipo: 'trabajador', usuario });
+
+  const [perfil, setPerfil] = useState({ ...PERFIL_VACIO, ...perfilInicial });
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState(null);
   const [modal, setModal] = useState({ visible: false, campo: null, tipo: 'texto', titulo: '' });
+
+  const cargarPerfil = useCallback(async () => {
+    setCargando(true);
+    setErrorCarga(null);
+    if (idTrabajador == null) {
+      setPerfil({ ...PERFIL_VACIO, ...perfilInicial });
+      setCargando(false);
+      return;
+    }
+    try {
+      const resp = await fetch(`${API_URL}/trabajador/perfil/${idTrabajador}`);
+      if (!resp.ok) throw new Error(`No se pudo cargar el perfil (HTTP ${resp.status})`);
+      const db = await resp.json();
+      setPerfil({ ...perfilInicial, ...mapearPerfilTrabajador(db) });
+    } catch (e) {
+      setErrorCarga(e.message || 'No se pudo cargar el perfil');
+    } finally {
+      setCargando(false);
+    }
+  }, [idTrabajador]);
+
+  useEffect(() => {
+    cargarPerfil();
+  }, [cargarPerfil]);
+
+  const persistirPerfil = async (perfilActualizado) => {
+    if (idTrabajador == null) return;
+    const payload = {
+      descripcion: perfilActualizado.descripcion,
+      zonaCobertura: perfilActualizado.zonaCobertura,
+      foto: perfilActualizado.foto,
+      portada: perfilActualizado.portada,
+      matricula: perfilActualizado.matricula,
+      tarifaDesde: perfilActualizado.tarifaDesde,
+      tiempoRespuesta: perfilActualizado.tiempoRespuesta,
+      tasaAceptacion: perfilActualizado.tasaAceptacion,
+      añosExperiencia: perfilActualizado.añosExperiencia,
+      identidadVerificada: perfilActualizado.identidadVerificada,
+      antecedentesVerificados: perfilActualizado.antecedentesVerificados,
+      matriculaVerificada: perfilActualizado.matriculaVerificada,
+      seguroVigente: perfilActualizado.seguroVigente,
+      atiendeEmergencias: perfilActualizado.atiendeEmergencias,
+      idiomas: perfilActualizado.idiomas,
+      metodosPago: perfilActualizado.metodosPago,
+      educacion: perfilActualizado.educacion,
+      experiencia: perfilActualizado.experiencia,
+      aptitudes: perfilActualizado.aptitudes,
+      portfolio: perfilActualizado.portfolio,
+      disponibilidad: perfilActualizado.disponibilidad,
+      horarioAtencion: perfilActualizado.horarioAtencion,
+      servicios: perfilActualizado.servicios.map((s) => ({ ...s })),
+    };
+    try {
+      const resp = await fetch(`${API_URL}/trabajador/perfil/${idTrabajador}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.message || `Error ${resp.status} al guardar`);
+      }
+    } catch (e) {
+      Alert.alert('No se pudo guardar el cambio', e.message);
+    }
+  };
 
   const abrirEdicion = (campo, tipo, titulo) => {
     setModal({ visible: true, campo, tipo, titulo });
@@ -551,11 +682,10 @@ export default function PerfilTrabajador({ usuario, perfilInicial, onGuardarPerf
   const cerrarModal = () => setModal((m) => ({ ...m, visible: false }));
 
   const actualizarCampo = (campo, valorNuevo) => {
-    setPerfil((prev) => {
-      const actualizado = { ...prev, [campo]: valorNuevo };
-      onGuardarPerfil?.(actualizado, campo, valorNuevo);
-      return actualizado;
-    });
+    const actualizado = { ...perfil, [campo]: valorNuevo };
+    setPerfil(actualizado);
+    onGuardarPerfil?.(actualizado, campo, valorNuevo);
+    persistirPerfil(actualizado);
   };
 
   const guardarCampo = (valorNuevo) => {
@@ -665,11 +795,25 @@ export default function PerfilTrabajador({ usuario, perfilInicial, onGuardarPerf
     <View style={styles.root}>
       <Header usuario={usuario} />
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+      {cargando ? (
+        <View style={styles.estadoVacio}>
+          <Ionicons name="sync" size={34} color={INDIGO} />
+          <Text style={styles.estadoTexto}>Cargando tu perfil...</Text>
+        </View>
+      ) : errorCarga ? (
+        <View style={styles.estadoVacio}>
+          <Ionicons name="cloud-offline-outline" size={38} color={GRAY_SOFT} />
+          <Text style={styles.estadoTexto}>{errorCarga}</Text>
+          <TouchableOpacity style={styles.estadoBoton} onPress={cargarPerfil} activeOpacity={0.85}>
+            <Text style={styles.estadoBotonTexto}>Reintentar</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
         {/* ---------- Portada + avatar flotante ---------- */}
         <TouchableOpacity
           style={styles.portada}
@@ -710,6 +854,14 @@ export default function PerfilTrabajador({ usuario, perfilInicial, onGuardarPerf
                 <Text style={styles.verificadoPillTexto}>Verificado</Text>
               </View>
             )}
+            <TouchableOpacity
+              onPress={irAEditarDatos}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ marginLeft: 'auto' }}
+            >
+              <Ionicons name="create-outline" size={17} color={INDIGO_DEEP} />
+            </TouchableOpacity>
           </View>
           <Text style={styles.nombreTexto}>{perfil.nombre}</Text>
 
@@ -973,6 +1125,7 @@ export default function PerfilTrabajador({ usuario, perfilInicial, onGuardarPerf
           {perfil.resenas.length === 0 && <Text style={styles.textoVacio}>Todavía no tenés reseñas.</Text>}
         </View>
       </ScrollView>
+      )}
 
       <BottomNavBarTrabajador usuario={usuario} pantallaActiva="perfil" />
 
@@ -1451,4 +1604,16 @@ const styles = StyleSheet.create({
   modalCancelarTexto: { fontSize: 14, fontWeight: '700', color: GRAY_TEXT },
   modalGuardar: { flex: 1, height: 46, borderRadius: 13, backgroundColor: INDIGO, alignItems: 'center', justifyContent: 'center' },
   modalGuardarTexto: { fontSize: 14, fontWeight: '800', color: WHITE },
+
+  /* Carga / error */
+  estadoVacio: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 32 },
+  estadoTexto: { fontSize: 13.5, color: GRAY_TEXT, fontWeight: '600', textAlign: 'center', lineHeight: 19 },
+  estadoBoton: {
+    marginTop: 4,
+    backgroundColor: INDIGO,
+    borderRadius: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 11,
+  },
+  estadoBotonTexto: { fontSize: 13, fontWeight: '800', color: WHITE },
 });
