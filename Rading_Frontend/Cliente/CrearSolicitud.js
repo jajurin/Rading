@@ -100,7 +100,7 @@ function SegmentedToggle({ options, selectedIndex, onChange }) {
   const left = anim.interpolate({
     inputRange: options.map((_, i) => i),
     outputRange: options.map((_, i) => `${(i * 100) / options.length}%`),
-  });
+  });x
 
   return (
     <View style={styles.segmentedTrack}>

@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
+import { useForm, Controller } from 'react-hook-form'
 import API_URL from './configS'
 
 const BLUE = '#1565D8'
@@ -23,6 +24,18 @@ const GRAY = '#6b7280'
 const BG = '#F2F4F8'
 const LINE = '#E4E7F0'
 const FIELD_BG = '#EFF2F8'
+const DANGER = '#B00020'
+
+// ─── Valores por defecto (mismas keys que antes) ───────────────────────────
+const VALORES_POR_DEFECTO = {
+  nombre: '',
+  apellido: '',
+  email: '',
+  telefono: '',
+  direccion: '',
+  preferencias: '',
+  descripcion: '',
+}
 
 export default function EditarDatosPersonales({ route, navigation }) {
   const tipo = route?.params?.tipo ?? 'cliente' // 'cliente' | 'trabajador'
@@ -33,18 +46,23 @@ export default function EditarDatosPersonales({ route, navigation }) {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState(null)
 
-  const [form, setForm] = useState({
-    foto: null,
-    nombre: '',
-    apellido: '',
-    email: '',
-    telefono: '',
-    direccion: '',
-    preferencias: '',
-    descripcion: '',
+  // La foto no se valida como campo de formulario, sigue como estado aparte
+  const [foto, setFoto] = useState(null)
+
+  // ── react-hook-form: reemplaza el useState(form) manual
+  const {
+    control,
+    handleSubmit,
+    watch,
+    reset,
+    formState: { errors },
+  } = useForm({
+    defaultValues: VALORES_POR_DEFECTO,
+    mode: 'onSubmit',
   })
 
-  const setCampo = (campo, valor) => setForm((prev) => ({ ...prev, [campo]: valor }))
+  const nombreWatch = watch('nombre')
+  const apellidoWatch = watch('apellido')
 
   useEffect(() => {
     if (idPerfil == null) {
@@ -58,8 +76,9 @@ export default function EditarDatosPersonales({ route, navigation }) {
         const res = await fetch(`${API_URL}/${tipo}/perfil/${idPerfil}`)
         if (!res.ok) throw new Error(`No se pudo cargar el perfil (HTTP ${res.status})`)
         const p = await res.json()
-        setForm({
-          foto: p.foto ?? null,
+        setFoto(p.foto ?? null)
+        // antes: setForm(...). ahora: reset() de react-hook-form carga los valores iniciales
+        reset({
           nombre: p.nombre ?? '',
           apellido: p.apellido ?? '',
           email: p.email ?? '',
@@ -75,7 +94,7 @@ export default function EditarDatosPersonales({ route, navigation }) {
       }
     }
     cargar()
-  }, [idPerfil, tipo])
+  }, [idPerfil, tipo, reset])
 
   const elegirFoto = async () => {
     const permiso = await ImagePicker.requestMediaLibraryPermissionsAsync()
@@ -90,18 +109,19 @@ export default function EditarDatosPersonales({ route, navigation }) {
       quality: 0.85,
     })
     if (!resultado.canceled && resultado.assets?.[0]?.uri) {
-      setCampo('foto', resultado.assets[0].uri)
+      setFoto(resultado.assets[0].uri)
     }
   }
 
-  const guardar = async () => {
+  // ── Submit: handleSubmit de RHF ya corrió todas las `rules` antes de llegar acá
+  const onSubmit = async (data) => {
     if (idPerfil == null) {
       Alert.alert('Error', 'Falta el id de perfil para guardar.')
       return
     }
     setGuardando(true)
     setError(null)
-    const payload = { ...form }
+    const payload = { ...data, foto }
     if (tipo === 'trabajador') delete payload.preferencias
     try {
       const res = await fetch(`${API_URL}/${tipo}/perfil/${idPerfil}`, {
@@ -110,8 +130,8 @@ export default function EditarDatosPersonales({ route, navigation }) {
         body: JSON.stringify(payload),
       })
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.message || `Error ${res.status} al guardar`)
+        const dataErr = await res.json().catch(() => ({}))
+        throw new Error(dataErr.message || `Error ${res.status} al guardar`)
       }
       Alert.alert('Listo', 'Tu perfil se guardó correctamente.')
       navigation?.goBack?.()
@@ -124,7 +144,7 @@ export default function EditarDatosPersonales({ route, navigation }) {
     }
   }
 
-  const iniciales = `${form.nombre} ${form.apellido}`
+  const iniciales = `${nombreWatch} ${apellidoWatch}`
     .split(' ')
     .filter(Boolean)
     .map((w) => w[0])
@@ -132,19 +152,37 @@ export default function EditarDatosPersonales({ route, navigation }) {
     .slice(0, 2)
     .toUpperCase()
 
-  const renderCampo = ({ label, campo, placeholder, keyboardType, multiline }) => (
-    <View style={styles.campo}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        style={[styles.input, multiline && styles.inputMultiline]}
-        value={form[campo]}
-        onChangeText={(v) => setCampo(campo, v)}
-        placeholder={placeholder}
-        placeholderTextColor="#A0A7B8"
-        keyboardType={keyboardType}
-        multiline={multiline}
-      />
-    </View>
+  // ── Campo reutilizable controlado por RHF (mismo look que antes)
+  const CampoControlado = ({ nombreCampo, label, placeholder, keyboardType, multiline, rules }) => (
+    <Controller
+      control={control}
+      name={nombreCampo}
+      rules={rules}
+      render={({ field: { value, onChange } }) => (
+        <View style={styles.campo}>
+          <Text style={styles.label}>{label}</Text>
+          <TextInput
+            style={[
+              styles.input,
+              multiline && styles.inputMultiline,
+              errors[nombreCampo] && styles.inputError,
+            ]}
+            value={value}
+            onChangeText={onChange}
+            placeholder={placeholder}
+            placeholderTextColor="#A0A7B8"
+            keyboardType={keyboardType}
+            multiline={multiline}
+          />
+          {errors[nombreCampo] ? (
+            <View style={styles.campoErrorRow}>
+              <Ionicons name="alert-circle" size={12} color={DANGER} />
+              <Text style={styles.campoErrorTexto}>{errors[nombreCampo].message}</Text>
+            </View>
+          ) : null}
+        </View>
+      )}
+    />
   )
 
   return (
@@ -184,7 +222,7 @@ export default function EditarDatosPersonales({ route, navigation }) {
           >
             {error && !guardando && (
               <View style={styles.aviso}>
-                <Ionicons name="alert-circle-outline" size={16} color="#B00020" />
+                <Ionicons name="alert-circle-outline" size={16} color={DANGER} />
                 <Text style={styles.avisoTexto}>{error}</Text>
               </View>
             )}
@@ -192,8 +230,8 @@ export default function EditarDatosPersonales({ route, navigation }) {
             {/* Foto */}
             <View style={styles.fotoCard}>
               <TouchableOpacity onPress={elegirFoto} activeOpacity={0.85}>
-                {form.foto ? (
-                  <Image source={{ uri: form.foto }} style={styles.avatar} />
+                {foto ? (
+                  <Image source={{ uri: foto }} style={styles.avatar} />
                 ) : (
                   <View style={[styles.avatar, styles.avatarVacio]}>
                     <Text style={styles.avatarIniciales}>{iniciales || '?'}</Text>
@@ -211,44 +249,63 @@ export default function EditarDatosPersonales({ route, navigation }) {
             <View style={styles.card}>
               <Text style={styles.seccionTitulo}>Datos personales</Text>
 
-              {renderCampo({
-                label: 'Nombre',
-                campo: 'nombre',
-                placeholder: 'Tu nombre',
-              })}
-              {renderCampo({
-                label: 'Apellido',
-                campo: 'apellido',
-                placeholder: 'Tu apellido',
-              })}
-              {renderCampo({
-                label: 'Email',
-                campo: 'email',
-                placeholder: 'tucorreo@ejemplo.com',
-                keyboardType: 'email-address',
-              })}
-              {renderCampo({
-                label: 'Teléfono',
-                campo: 'telefono',
-                placeholder: '11 1234 5678',
-                keyboardType: 'phone-pad',
-              })}
-              {renderCampo({
-                label: 'Dirección',
-                campo: 'direccion',
-                placeholder: 'Calle, número, ciudad',
-              })}
+              <CampoControlado
+                label="Nombre"
+                nombreCampo="nombre"
+                placeholder="Tu nombre"
+                rules={{
+                  required: 'Ingresá un nombre válido',
+                  validate: (v) => v.trim().length >= 2 || 'Ingresá un nombre válido',
+                }}
+              />
+              <CampoControlado
+                label="Apellido"
+                nombreCampo="apellido"
+                placeholder="Tu apellido"
+                rules={{
+                  required: 'Ingresá un apellido válido',
+                  validate: (v) => v.trim().length >= 2 || 'Ingresá un apellido válido',
+                }}
+              />
+              <CampoControlado
+                label="Email"
+                nombreCampo="email"
+                placeholder="tucorreo@ejemplo.com"
+                keyboardType="email-address"
+                rules={{
+                  required: 'Ingresá un correo válido',
+                  pattern: {
+                    value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+                    message: 'Ingresá un correo válido',
+                  },
+                }}
+              />
+              <CampoControlado
+                label="Teléfono"
+                nombreCampo="telefono"
+                placeholder="11 1234 5678"
+                keyboardType="phone-pad"
+                rules={{
+                  validate: (v) =>
+                    !v || v.replace(/\D/g, '').length >= 10 || 'Ingresá un teléfono válido (mínimo 10 dígitos)',
+                }}
+              />
+              <CampoControlado
+                label="Dirección"
+                nombreCampo="direccion"
+                placeholder="Calle, número, ciudad"
+              />
             </View>
 
             {tipo === 'cliente' && (
               <View style={styles.card}>
                 <Text style={styles.seccionTitulo}>Preferencias</Text>
-                {renderCampo({
-                  label: 'Preferencias personales de servicio',
-                  campo: 'preferencias',
-                  placeholder: 'Ej: prefiero horarios de mañana...',
-                  multiline: true,
-                })}
+                <CampoControlado
+                  label="Preferencias personales de servicio"
+                  nombreCampo="preferencias"
+                  placeholder="Ej: prefiero horarios de mañana..."
+                  multiline
+                />
               </View>
             )}
 
@@ -256,17 +313,17 @@ export default function EditarDatosPersonales({ route, navigation }) {
               <Text style={styles.seccionTitulo}>
                 {tipo === 'trabajador' ? 'Sobre mí' : 'Acerca de vos'}
               </Text>
-              {renderCampo({
-                label: 'Descripción',
-                campo: 'descripcion',
-                placeholder: 'Contá quién sos y qué ofrecés...',
-                multiline: true,
-              })}
+              <CampoControlado
+                label="Descripción"
+                nombreCampo="descripcion"
+                placeholder="Contá quién sos y qué ofrecés..."
+                multiline
+              />
             </View>
 
             <TouchableOpacity
               style={[styles.guardarBtn, guardando && styles.guardarBtnDisabled]}
-              onPress={guardar}
+              onPress={handleSubmit(onSubmit)}
               disabled={guardando}
               activeOpacity={0.9}
             >
@@ -323,7 +380,7 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 14,
   },
-  avisoTexto: { color: '#B00020', fontSize: 12, flex: 1 },
+  avisoTexto: { color: DANGER, fontSize: 12, flex: 1 },
 
   fotoCard: { alignItems: 'center', marginBottom: 18, gap: 10 },
   avatar: {
@@ -379,6 +436,9 @@ const styles = StyleSheet.create({
     color: '#1A2233',
   },
   inputMultiline: { minHeight: 90, textAlignVertical: 'top' },
+  inputError: { borderColor: DANGER, backgroundColor: '#FDF1F1' },
+  campoErrorRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 },
+  campoErrorTexto: { color: DANGER, fontSize: 11.5, fontWeight: '500' },
 
   guardarBtn: {
     backgroundColor: BLUE,
