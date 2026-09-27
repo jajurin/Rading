@@ -2,6 +2,8 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { ThemeProvider } from './ThemeContext';
+import Configuracion from './Configuracion';
 import OfertasCercanasTrabajador from './Trabajador/Ofertascercanastrabajador';
 import ChatCliente from './Cliente/Chat';
 import ChatsCliente from './Cliente/PreviaChat';
@@ -38,16 +40,20 @@ import CalificarClienteTrabajador from './Trabajador/Calificarclientetrabajador'
 import CancelarTrabajoCl from './Trabajador/cancelarTrabajo';
 import Notificaciones from './Notificaciones';
 import EditarDatosPersonales from './EditarDatosPersonales';
+import ConfiguracionTrabajador from './Trabajador/ConfiguracionTrabajador';
 const Stack = createStackNavigator();
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
+    <ThemeProvider>
+      <SafeAreaProvider>
+        <NavigationContainer>
+          <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
                <Stack.Screen name="Login" component={Login} />
            <Stack.Screen name="Notificaciones" component={Notificaciones} />
            <Stack.Screen name="EditarDatosPersonales" component={EditarDatosPersonales} />
+           <Stack.Screen name="ConfiguracionTrabajador" component={ConfiguracionTrabajador} />
+           <Stack.Screen name="Configuracion" component={Configuracion} />
            <Stack.Screen name="CancelarTrabajoCl" component={CancelarTrabajoCl} />
            <Stack.Screen name="PerfilScreen" component={PerfilScreen} />
                                   <Stack.Screen name="trabajadorclasifcar" component={ClasificarTrabajador} />
@@ -87,7 +93,8 @@ export default function App() {
           <Stack.Screen name="BottomNavBarTrabajador" component={BottomNavBarTrabajador} />
           <Stack.Screen name="OfertaRecibidaOverlayCliente" component={OfertaRecibidaOverlayCliente} />
         </Stack.Navigator>
-      </NavigationContainer>
-    </SafeAreaProvider>
+        </NavigationContainer>
+      </SafeAreaProvider>
+    </ThemeProvider>
   );
 }

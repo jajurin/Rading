@@ -1,18 +1,21 @@
 import config from '../../configs/dbconfig.js'
 import usuarioRepository from '../general/usuario-repositories.js'
+import NotificacionServices from '../../services/notificacion-services.js'
 import pkg from 'pg'
 const { Client } = pkg
 const DURACION_SUBASTA_HORAS = 2
-  const MAX_INTENTOS = 5
+const MAX_INTENTOS = 5
 const CODIGO_VALIDEZ_MIN = 15
 const generarCodigoNumerico = () => String(Math.floor(1000 + Math.random() * 9000)) // 4 dígitos
+
 export default class trabajadorRepository {
  #usuarioRepo = new usuarioRepository()
+ #notifSvc = new NotificacionServices()
+
     /**
      * Busca clientes por nombre/apellido (texto libre).
      * Si se pasan ids, filtra solo entre esos ids (usado tras aplicar filtros).
      */
-    
     buscarCliente = async (texto, ids = []) => {
     const client = new Client(config)
     let result
@@ -98,6 +101,10 @@ enviarOferta = async (idTrabajo, idTrabajador, { precio, costoExtraMin = null, c
                  RETURNING *`,
                 [idTrabajador, idTrabajo, ct.precio, costoExtraMin, costoExtraMax, mensaje]
             )
+
+            this.#notifSvc.notificarOfertaNueva({ idTrabajo, idTrabajador, precio: ct.precio })
+                .catch(err => console.error('[Notif] Error notificarOfertaNueva:', err.message))
+
             return { modo: 'fijo', oferta: ofertaResult.rows[0] }
         }
 
@@ -123,6 +130,9 @@ enviarOferta = async (idTrabajo, idTrabajador, { precio, costoExtraMin = null, c
              RETURNING *`,
             [idTrabajador, idTrabajo, precio, costoExtraMin, costoExtraMax, mensaje]
         )
+
+        this.#notifSvc.notificarOfertaNueva({ idTrabajo, idTrabajador, precio })
+            .catch(err => console.error('[Notif] Error notificarOfertaNueva:', err.message))
 
         return { modo: 'subasta', oferta: ofertaResult.rows[0], subastaTermina }
     } catch (err) {
@@ -222,6 +232,16 @@ avisarSubastasVencidas = async () => {
 
                 await client.query('COMMIT')
 
+                // Avisa al trabajador ganador y al cliente que la subasta cerró.
+                this.#notifSvc.notificarCierreSubasta({
+                    idTrabajo: ct.id,
+                    idTrabajador: oferta.idTrabajador,
+                    idUsuarioTrabajador: oferta.idUsuarioTrabajador,
+                    idUsuarioCliente: oferta.idUsuarioCliente,
+                    precio: oferta.precio,
+                    nombreTrabajador: `${oferta.nombre} ${oferta.apellido}`,
+                }).catch(err => console.error('[Notif] Error notificarCierreSubasta:', err.message))
+
                 resultados.push({
                     idTrabajo: ct.id,
                     idCliente: ct.IdCliente,
@@ -242,6 +262,7 @@ avisarSubastasVencidas = async () => {
     }
     return resultados
 }
+
 mostrarTrabajosActivos = async (idTrabajador) => {
     const client = new Client(config)
     try {
@@ -285,6 +306,7 @@ mostrarTrabajosActivos = async (idTrabajador) => {
         await client.end()
     }
 }
+
 mostrarMisOfertas = async (idTrabajador) => {
     const client = new Client(config)
     try {
@@ -327,6 +349,7 @@ mostrarMisOfertas = async (idTrabajador) => {
         await client.end()
     }
 }
+
 /**
  * El trabajador edita una oferta que ya envió, mientras siga PENDIENTE.
  * No se puede editar si ya fue ACEPTADA o RECHAZADA, ni si es de otro
@@ -365,6 +388,7 @@ editarOferta = async (idOferta, idTrabajador, { precio, costoExtraMin = null, co
         await client.end()
     }
 }
+
     /**
      * Muestra los trabajos realizados (TERMINADO o CANCELADO) de un trabajador.
      */
@@ -473,6 +497,7 @@ editarOferta = async (idOferta, idTrabajador, { precio, costoExtraMin = null, co
             await client.end()
         }
     }
+
 /**
  * Ofertas cercanas para el trabajador: solo solicitudes PENDIENTE sin
  * asignar. Calcula la distancia real (haversine) entre la ubicación
@@ -720,6 +745,7 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
 
         return result?.rows ?? []
     }
+
    buscarSolicitudes = async (texto, ids = []) => {
     const client = new Client(config)
     try {
@@ -772,6 +798,7 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
         await client.end()
     }
 }
+
  obtenerEstado = async (idTrabajo) => {
         const client = new Client(config)
         try {
@@ -804,14 +831,6 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
             await client.end()
         }
     }
-
-    // rol: 'CLIENTE' | 'TRABAJADOR'. Idempotente: si ya había confirmado,
-    // no pisa la fecha original (COALESCE). Bloquea la fila con FOR UPDATE
-    // para que dos confirmaciones simultáneas no pisen el chequeo de
-    // "¿ya confirmaron ambos?".
-
-
-
 
 // ── Llegada ──────────────────────────────────────────────
 
@@ -847,6 +866,10 @@ generarCodigoLlegada = async (idTrabajo) => {
         )
 
         await client.query('COMMIT')
+
+        this.#notifSvc.notificarCodigo({ idTrabajo, tipo: 'CODIGO_LLEGADA', codigo: actualizado.rows[0].codigo_llegada })
+            .catch(err => console.error('[Notif] Error notificarCodigo:', err.message))
+
         return {
             idTrabajo,
             codigo: actualizado.rows[0].codigo_llegada,
@@ -961,6 +984,10 @@ generarCodigoFin = async (idTrabajo) => {
         )
 
         await client.query('COMMIT')
+
+        this.#notifSvc.notificarCodigo({ idTrabajo, tipo: 'CODIGO_FIN', codigo: actualizado.rows[0].codigo_fin })
+            .catch(err => console.error('[Notif] Error notificarCodigo:', err.message))
+
         return {
             idTrabajo,
             codigo: actualizado.rows[0].codigo_fin,
@@ -1030,6 +1057,10 @@ confirmarFin = async (idTrabajo, codigo) => {
         )
 
         await client.query('COMMIT')
+
+        this.#notifSvc.notificarTrabajoFinalizado({ idTrabajo })
+            .catch(err => console.error('[Notif] Error notificarTrabajoFinalizado:', err.message))
+
         return { idTrabajo, idCliente: fila.idCliente, idTrabajador: fila.idTrabajador, trabajoTerminadoAhora: true }
     } catch (err) {
         try { await client.query('ROLLBACK') } catch (_) {}

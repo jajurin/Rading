@@ -1,12 +1,14 @@
 import config from '../../configs/dbconfig.js'
-    import usuarioRepository from '../general/usuario-repositories.js'
-    import pkg from 'pg'
-    const { Client } = pkg
+import usuarioRepository from '../general/usuario-repositories.js'
+import NotificacionServices from '../../services/notificacion-services.js'
+import pkg from 'pg'
+const { Client } = pkg
 
-    export default class clienteRepository {
-        #usuarioRepo = new usuarioRepository()
+export default class clienteRepository {
+    #usuarioRepo = new usuarioRepository()
+    #notifSvc = new NotificacionServices()
 
-       buscarTrabajador = async (filtros = {}) => {
+   buscarTrabajador = async (filtros = {}) => {
     const {
         texto, estrellas, especialidad,
         horarioDesde, horarioHasta,
@@ -544,6 +546,14 @@ crearReseñaCliente = async (reseña) => {
         )
 
         await client.query('COMMIT')
+
+        this.#notifSvc.notificarReseña({
+            idTrabajo: reseña.idTrabajo,
+            idTrabajador: reseña.idTrabajador,
+            idCliente: reseña.idCliente,
+            estrellas: reseña.estrellas,
+        }).catch(err => console.error('[Notif] Error notificarReseña:', err.message))
+
         return { id: idReseña, nuevoPromedio: promedio, totalReseñas: total }
 
     } catch (err) {
@@ -685,6 +695,15 @@ aceptarOferta = async (idOferta) => {
         )
 
         await client.query('COMMIT')
+
+        this.#notifSvc.notificarOfertaAceptada({ idTrabajo: oferta.idTrabajo, idTrabajador: oferta.idTrabajador, precioFinal })
+            .catch(err => console.error('[Notif] Error notificarOfertaAceptada:', err.message))
+        this.#notifSvc.notificarTrabajoAceptado({ idTrabajo: oferta.idTrabajo, precioFinal })
+            .catch(err => console.error('[Notif] Error notificarTrabajoAceptado:', err.message))
+        for (const r of rechazadas.rows) {
+            this.#notifSvc.notificarOfertaRechazada({ idTrabajo: oferta.idTrabajo, idTrabajador: r.idTrabajador })
+                .catch(err => console.error('[Notif] Error notificarOfertaRechazada:', err.message))
+        }
 
         return {
             idTrabajo: oferta.idTrabajo,

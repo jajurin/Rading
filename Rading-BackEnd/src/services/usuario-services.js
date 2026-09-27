@@ -1,10 +1,13 @@
 import usuarioRepository from "../repositories/general/usuario-repositories.js";
+import { ConfiguracionRepository } from "../repositories/configuracion-repositories.js";
 import Usuario from "../entities/usuario.js"
 export default class UsuarioServices {
     #repo
+    #configRepo
 
     constructor() {
         this.#repo = new usuarioRepository()
+        this.#configRepo = new ConfiguracionRepository()
     }
 login = async ({ identificador, contrasena }) => {
     let usuario = await this.#repo.buscarPorEmail(identificador)
@@ -38,7 +41,16 @@ return { ...usuario, tipo: esTrabajador ? 'trabajador' : 'cliente', idCliente, i
 
     const usuario = new Usuario(nombre, apellido, email, direccion, contrasena, telefono, fechaNac, dni, IdCuentaBancaria ?? null, lat ?? null, lng ?? null)
 
-    return await this.#repo.registrarUsuario(usuario)
+    const idUsuario = await this.#repo.registrarUsuario(usuario)
+    
+    // Crear preferencias por defecto para el nuevo usuario
+    try {
+        await this.#configRepo.crear(idUsuario)
+    } catch (e) {
+        console.error('Error creando preferencias por defecto:', e)
+    }
+    
+    return idUsuario
 }
 
     buscarPorEmail = async (email) => {

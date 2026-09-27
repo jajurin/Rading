@@ -1,8 +1,10 @@
 import config from '../../configs/dbconfig.js'
+import NotificacionServices from '../../services/notificacion-services.js'
 import pkg from 'pg'
 const { Client } = pkg
 
 export default class chatRepository {
+    #notifSvc = new NotificacionServices()
 
     // Busca el chat entre un cliente y un trabajador. Si no existe, lo crea.
     buscarOCrearChat = async (idCliente, idTrabajador) => {
@@ -190,7 +192,6 @@ export default class chatRepository {
     }
 
 }
-// ── Agregar dentro de la clase, junto a los demás métodos ──
 
     // Edita el contenido de un mensaje de tipo TEXTO, solo si pertenece a userId.
     editarMensaje = async (mensajeId, contenido, userId) => {
@@ -287,6 +288,9 @@ export default class chatRepository {
 
         await client.query('COMMIT')
 
+        this.#notifSvc.notificarMensaje({ chatId: finalChatId, enviadorId, contenido, tipo })
+            .catch(err => console.error('[Notif] Error notificarMensaje:', err.message))
+
         if (tipo === 'PROPUESTA') {
             return { ...result.rows[0], precio, ESTADO_OFERTA: 'PENDIENTE' }
         }
@@ -339,6 +343,10 @@ export default class chatRepository {
             )
 
             await client.query('COMMIT')
+
+            this.#notifSvc.notificarMensaje({ chatId: finalChatId, enviadorId, contenido: archivoUrl, tipo })
+                .catch(err => console.error('[Notif] Error notificarMensaje:', err.message))
+
             return { ...result.rows[0], archivoNombre }
         } catch (err) {
             await client.query('ROLLBACK')

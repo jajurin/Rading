@@ -189,7 +189,8 @@ export default function Header({
 
   const abrirAjustes = () => {
     onSettings?.();
-    setAjustesVisible(true);
+    setAjustesVisible(false);
+    navigation.navigate('Configuracion', { usuario });
   };
 
   return (
