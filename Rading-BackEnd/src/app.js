@@ -9,6 +9,7 @@ import chatRoutes from './routes/chat-routes.js'
 import trabajoRoutes from './routes/trabajo-routes.js'
 import notificacionRoutes from "./routes/notificacion-routes.js"
 import configuracionRoutes from "./routes/configuracion-routes.js"
+import uploadRoutes from "./routes/upload-routes.js"
 import path from "path"
 
 const app = express();
@@ -23,5 +24,6 @@ app.use('/chat', chatRoutes)
 app.use('/trabajo', trabajoRoutes)
 app.use('/notificacion', notificacionRoutes)
 app.use('/configuracion', configuracionRoutes)
+app.use('/upload', uploadRoutes)
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')))
 export default app;

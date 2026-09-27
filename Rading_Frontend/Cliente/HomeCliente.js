@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import Header from '../Header';
 import BottomNavBar from './NavegadorCliente';
 import TrabajoActivoWidget from './Trabajoactivowidget';
@@ -121,6 +122,22 @@ export default function HomeCliente({ route, navigation }) {
 const [tieneChatsSinLeer, setTieneChatsSinLeer] = useState(false);
 const [notificaciones, setNotificaciones] = useState([]);
 
+// ── Foto de perfil: se trae del backend (no del parámetro de navegación,
+// que queda desactualizado si el usuario la cambia en "Editar perfil") ──
+const [fotoPerfil, setFotoPerfil] = useState(usuario?.foto ?? null);
+
+const cargarFotoPerfil = useCallback(async () => {
+  if (!usuario?.idCliente) return;
+  try {
+    const resp = await fetch(`${API_BASE_URL}/cliente/perfil/${usuario.idCliente}`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    setFotoPerfil(data.foto ?? null);
+  } catch (err) {
+    console.error('Error al cargar foto de perfil:', err);
+  }
+}, [usuario?.idCliente]);
+
 const cargarNotificaciones = useCallback(async () => {
   if (!usuario?.id) {
     setNotificaciones([]);
@@ -197,12 +214,18 @@ const chequearChatsSinLeer = useCallback(async () => {
     }
   }, [usuario?.idCliente]);
 
-  useEffect(() => {
-  cargarServicios();
-  cargarRecientes();
-  chequearChatsSinLeer();
-  cargarNotificaciones();
-}, [cargarServicios, cargarRecientes, chequearChatsSinLeer, cargarNotificaciones]);
+  // useFocusEffect en vez de useEffect: así se refresca todo (incluida la
+  // foto) cada vez que la pantalla vuelve a tener foco, por ejemplo al
+  // volver de "Editar perfil".
+  useFocusEffect(
+    useCallback(() => {
+      cargarServicios();
+      cargarRecientes();
+      chequearChatsSinLeer();
+      cargarNotificaciones();
+      cargarFotoPerfil();
+    }, [cargarServicios, cargarRecientes, chequearChatsSinLeer, cargarNotificaciones, cargarFotoPerfil])
+  );
 
   const buscarServicio = (nombreServicio) => {
     buscadorRef.current?.buscarPorEspecialidad(nombreServicio);
@@ -246,8 +269,8 @@ const chequearChatsSinLeer = useCallback(async () => {
           </View>
 
           <View style={styles.avatarChip}>
-            {usuario?.foto ? (
-              <Image source={{ uri: usuario.foto }} style={styles.avatarChipImg} />
+            {fotoPerfil ? (
+              <Image source={{ uri: fotoPerfil }} style={styles.avatarChipImg} />
             ) : (
               <Text style={styles.avatarChipText}>{iniciales(usuario?.nombre)}</Text>
             )}

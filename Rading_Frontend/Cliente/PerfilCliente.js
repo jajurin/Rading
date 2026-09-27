@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import API_URL from '../configS'
-
+import { useFocusEffect } from '@react-navigation/native'
 import {
   View, Text, StyleSheet, ScrollView,
   StatusBar, ActivityIndicator, TouchableOpacity, Alert,
@@ -207,10 +207,12 @@ export default function PerfilClienteScreen({ navigation, route }) {
   const [errorCliente,  setErrorCliente]  = useState(null)
   const [errorTrabajos, setErrorTrabajos] = useState(null)
 
-  useEffect(() => {
-    fetchCliente()
-    fetchTrabajos()
-  }, [])
+    useFocusEffect(
+    useCallback(() => {
+      fetchCliente()
+      fetchTrabajos()
+    }, [])
+  )
 
   const fetchCliente = async () => {
     if (USE_MOCK_DATA) {

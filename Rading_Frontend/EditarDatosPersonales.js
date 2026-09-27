@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import { useForm, Controller } from 'react-hook-form'
 import API_URL from './configS'
+import { subirFoto } from './subirFoto'
 
 const BLUE = '#1565D8'
 const BLUE_DARK = '#0d4bb8'
@@ -42,6 +43,7 @@ export default function EditarDatosPersonales({ route, navigation }) {
   const usuario = route?.params?.usuario ?? {}
   const idPerfil = tipo === 'trabajador' ? usuario?.idTrabajador : usuario?.idCliente
 
+  const [subiendoFoto, setSubiendoFoto] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState(null)
@@ -108,8 +110,16 @@ export default function EditarDatosPersonales({ route, navigation }) {
       aspect: [1, 1],
       quality: 0.85,
     })
-    if (!resultado.canceled && resultado.assets?.[0]?.uri) {
-      setFoto(resultado.assets[0].uri)
+    if (resultado.canceled || !resultado.assets?.[0]?.uri) return
+
+    setSubiendoFoto(true)
+    try {
+      const urlSubida = await subirFoto(resultado.assets[0].uri)
+      setFoto(urlSubida)
+    } catch (e) {
+      Alert.alert('No se pudo subir la foto', e.message)
+    } finally {
+      setSubiendoFoto(false)
     }
   }
 
@@ -229,7 +239,7 @@ export default function EditarDatosPersonales({ route, navigation }) {
 
             {/* Foto */}
             <View style={styles.fotoCard}>
-              <TouchableOpacity onPress={elegirFoto} activeOpacity={0.85}>
+              <TouchableOpacity onPress={elegirFoto} activeOpacity={0.85} disabled={subiendoFoto}>
                 {foto ? (
                   <Image source={{ uri: foto }} style={styles.avatar} />
                 ) : (
@@ -238,11 +248,17 @@ export default function EditarDatosPersonales({ route, navigation }) {
                   </View>
                 )}
                 <View style={styles.camaraBadge}>
-                  <Ionicons name="camera" size={13} color="#fff" />
+                  {subiendoFoto ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="camera" size={13} color="#fff" />
+                  )}
                 </View>
               </TouchableOpacity>
-              <TouchableOpacity onPress={elegirFoto} activeOpacity={0.8}>
-                <Text style={styles.cambiarFoto}>Cambiar foto de perfil</Text>
+              <TouchableOpacity onPress={elegirFoto} activeOpacity={0.8} disabled={subiendoFoto}>
+                <Text style={styles.cambiarFoto}>
+                  {subiendoFoto ? 'Subiendo foto...' : 'Cambiar foto de perfil'}
+                </Text>
               </TouchableOpacity>
             </View>
 

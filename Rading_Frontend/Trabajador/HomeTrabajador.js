@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -530,6 +531,22 @@ export default function HomeTrabajador({ route, navigation }) {
 
   const [notificaciones, setNotificaciones] = useState([]);
 
+  // ── Foto de perfil: se trae del backend (no del parámetro de navegación,
+  // que queda desactualizado si el usuario la cambia en "Editar perfil") ──
+  const [fotoPerfil, setFotoPerfil] = useState(usuario?.foto ?? null);
+
+  const cargarFotoPerfil = useCallback(async () => {
+    if (!idTrabajador) return;
+    try {
+      const resp = await fetch(`${API_URL}/trabajador/perfil/${idTrabajador}`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      setFotoPerfil(data.foto ?? null);
+    } catch (err) {
+      console.error('Error al cargar foto de perfil:', err);
+    }
+  }, [idTrabajador]);
+
   const cargarNotificaciones = useCallback(async () => {
     if (!usuario?.id) {
       setNotificaciones([]);
@@ -614,11 +631,17 @@ export default function HomeTrabajador({ route, navigation }) {
     }
   }, [idTrabajador]);
 
-  useEffect(() => {
-    cargarResumen();
-    chequearChatsSinLeer();
-    cargarNotificaciones();
-  }, [cargarResumen, chequearChatsSinLeer, cargarNotificaciones]);
+  // useFocusEffect en vez de useEffect: así se refresca todo (incluida la
+  // foto) cada vez que la pantalla vuelve a tener foco, por ejemplo al
+  // volver de "Editar perfil".
+  useFocusEffect(
+    useCallback(() => {
+      cargarResumen();
+      chequearChatsSinLeer();
+      cargarNotificaciones();
+      cargarFotoPerfil();
+    }, [cargarResumen, chequearChatsSinLeer, cargarNotificaciones, cargarFotoPerfil])
+  );
 
   const toggleDisponibilidad = async (valor) => {
     setDisponible(valor);
@@ -720,8 +743,8 @@ export default function HomeTrabajador({ route, navigation }) {
           </View>
 
           <View style={styles.avatarChip}>
-            {usuario?.foto ? (
-              <Image source={{ uri: usuario.foto }} style={styles.avatarChipImg} />
+            {fotoPerfil ? (
+              <Image source={{ uri: fotoPerfil }} style={styles.avatarChipImg} />
             ) : (
               <Text style={styles.avatarChipText}>{iniciales(usuario?.nombre)}</Text>
             )}

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -13,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Pressable,
   Switch,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -608,7 +610,27 @@ export default function PerfilTrabajador(props) {
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState(null);
   const [modal, setModal] = useState({ visible: false, campo: null, tipo: 'texto', titulo: '' });
+// ── Animación de rotación para el ícono de carga ──────────────────────
+const spinValue = useRef(new Animated.Value(0)).current;
 
+useEffect(() => {
+  if (!cargando) return;
+  spinValue.setValue(0);
+  const animacion = Animated.loop(
+    Animated.timing(spinValue, {
+      toValue: 1,
+      duration: 900,
+      useNativeDriver: true,
+    })
+  );
+  animacion.start();
+  return () => animacion.stop();
+}, [cargando]);
+
+const spin = spinValue.interpolate({
+  inputRange: [0, 1],
+  outputRange: ['0deg', '360deg'],
+});
   const cargarPerfil = useCallback(async () => {
     setCargando(true);
     setErrorCarga(null);
@@ -629,9 +651,11 @@ export default function PerfilTrabajador(props) {
     }
   }, [idTrabajador]);
 
-  useEffect(() => {
-    cargarPerfil();
-  }, [cargarPerfil]);
+    useFocusEffect(
+    useCallback(() => {
+      cargarPerfil();
+    }, [cargarPerfil])
+  );
 
   const persistirPerfil = async (perfilActualizado) => {
     if (idTrabajador == null) return;
@@ -796,11 +820,13 @@ export default function PerfilTrabajador(props) {
       <Header usuario={usuario} />
 
       {cargando ? (
-        <View style={styles.estadoVacio}>
-          <Ionicons name="sync" size={34} color={INDIGO} />
-          <Text style={styles.estadoTexto}>Cargando tu perfil...</Text>
-        </View>
-      ) : errorCarga ? (
+  <View style={styles.estadoVacio}>
+    <Animated.View style={{ transform: [{ rotate: spin }] }}>
+      <Ionicons name="sync" size={34} color={INDIGO} />
+    </Animated.View>
+    <Text style={styles.estadoTexto}>Cargando tu perfil...</Text>
+  </View>
+) : errorCarga ? (
         <View style={styles.estadoVacio}>
           <Ionicons name="cloud-offline-outline" size={38} color={GRAY_SOFT} />
           <Text style={styles.estadoTexto}>{errorCarga}</Text>
