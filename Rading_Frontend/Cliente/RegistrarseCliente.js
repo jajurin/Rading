@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   StyleSheet, Text, View, TouchableOpacity,
@@ -6,7 +6,9 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '../asyncStorage';
 import API_URL from '../configS';
+import { useTheme } from '../ThemeContext';
 
 const BLUE      = '#1565D8';
 const BLUE_DARK = '#0D47A8';
@@ -20,7 +22,8 @@ const CATEGORIAS = [
   { id: 3, key: 'profesionales', label: 'Profesionales',  icon: 'briefcase-outline',   descripcion: 'Abogados, contadores, consultores' },
 ];
 
-function Checkbox({ label, checked, onToggle }) {
+function Checkbox({ label, checked, onToggle, checkboxStyles }) {
+  const { colors } = useTheme();
   return (
     <TouchableOpacity style={checkboxStyles.row} onPress={onToggle} activeOpacity={0.75}>
       <View style={[checkboxStyles.box, checked && checkboxStyles.boxChecked]}>
@@ -32,6 +35,7 @@ function Checkbox({ label, checked, onToggle }) {
 }
 
 export default function RegistrarseCliente({ route, navigation }) {
+  const { colors, isDark, syncUsuario } = useTheme();
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(CATEGORIAS[0]);
   const [mayorEdad, setMayorEdad] = useState(false);
   const [terminos, setTerminos]   = useState(false);
@@ -51,45 +55,54 @@ export default function RegistrarseCliente({ route, navigation }) {
   const listo = mayorEdad && terminos;
 
   const finalizarRegistro = async () => {
-  if (!mayorEdad || !terminos) {
-    alert('Debés aceptar los términos y confirmar tu edad');
-    return;
-  }
-
-  setEnviando(true);
-  try {
-    const { email } = route?.params || {};
-    const response = await fetch(`${API_URL}/cliente/registrar`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email,
-        categoriaId: categoriaSeleccionada.id,
-      }),
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      alert(data.message || 'Error al registrar');
+    if (!mayorEdad || !terminos) {
+      alert('Debés aceptar los términos y confirmar tu edad');
       return;
     }
 
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'HomeCliente', params: { usuario: data.usuario } }],
-    });
-  } catch (e) {
-    alert('No se pudo conectar al servidor');
-    console.error(e);
-  } finally {
-    setEnviando(false);
-  }
-};
+    setEnviando(true);
+    try {
+      const { email } = route?.params || {};
+      const response = await fetch(`${API_URL}/cliente/registrar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          categoriaId: categoriaSeleccionada.id,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.message || 'Error al registrar');
+        return;
+      }
+
+      // Guardar user ID y sincronizar tema con el usuario
+      if (data.usuario?.id) {
+        await AsyncStorage.setItem('@rading_user_id', String(data.usuario.id));
+        syncUsuario(data.usuario.id);
+      }
+
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'HomeCliente', params: { usuario: data.usuario } }],
+      });
+    } catch (e) {
+      alert('No se pudo conectar al servidor');
+      console.error(e);
+    } finally {
+      setEnviando(false);
+    }
+  };
 
   const posicionIzquierda = animacionMover.interpolate({
     inputRange: [0, 1, 2],
     outputRange: ['0%', '33.3333%', '66.6666%'],
   });
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const checkboxStyles = useMemo(() => createCheckboxStyles(colors, isDark), [colors, isDark]);
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
@@ -128,7 +141,7 @@ export default function RegistrarseCliente({ route, navigation }) {
                 <Ionicons
                   name={cat.icon}
                   size={15}
-                  color={categoriaSeleccionada.key === cat.key ? '#fff' : MUTED}
+                  color={categoriaSeleccionada.key === cat.key ? '#fff' : colors.textTertiary}
                   style={{ marginBottom: 3 }}
                 />
                 <Text style={[
@@ -156,8 +169,8 @@ export default function RegistrarseCliente({ route, navigation }) {
         <View style={styles.divider} />
 
         <View style={styles.checksWrap}>
-          <Checkbox label="Confirmo que tengo 18 años o más" checked={mayorEdad} onToggle={() => setMayorEdad(!mayorEdad)} />
-          <Checkbox label="Acepto los términos y condiciones" checked={terminos} onToggle={() => setTerminos(!terminos)} />
+          <Checkbox label="Confirmo que tengo 18 años o más" checked={mayorEdad} onToggle={() => setMayorEdad(!mayorEdad)} checkboxStyles={checkboxStyles} />
+          <Checkbox label="Acepto los términos y condiciones" checked={terminos} onToggle={() => setTerminos(!terminos)} checkboxStyles={checkboxStyles} />
         </View>
 
         <TouchableOpacity activeOpacity={0.88} onPress={finalizarRegistro} disabled={enviando}>
@@ -173,25 +186,25 @@ export default function RegistrarseCliente({ route, navigation }) {
         </TouchableOpacity>
       </View>
 
-      <StatusBar style="light" />
+      <StatusBar style={colors.statusBar} />
     </ScrollView>
   );
 }
 
-const checkboxStyles = StyleSheet.create({
+const createCheckboxStyles = (colors, isDark) => StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   box: {
     width: 22, height: 22, borderRadius: 7,
-    borderWidth: 2, borderColor: '#C7D2E3',
+    borderWidth: 2, borderColor: colors.border,
     alignItems: 'center', justifyContent: 'center', marginRight: 12,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
   },
   boxChecked: { backgroundColor: BLUE, borderColor: BLUE },
-  text: { color: '#4A5568', fontSize: 13, flex: 1, lineHeight: 18 },
+  text: { color: colors.textSecondary, fontSize: 13, flex: 1, lineHeight: 18 },
 });
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F3F5FA' },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
 
   header: {
     paddingTop: Platform.OS === 'ios' ? 70 : 50,
@@ -210,12 +223,12 @@ const styles = StyleSheet.create({
   subtitle: { color: 'rgba(255,255,255,0.78)', fontSize: 13.5, fontWeight: '500' },
 
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     marginHorizontal: 16,
     marginTop: -34,
     borderRadius: 26,
     padding: 24,
-    shadowColor: BLUE_DARK,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.12,
     shadowRadius: 24,
@@ -228,20 +241,20 @@ const styles = StyleSheet.create({
     backgroundColor: BLUE_SOFT,
     justifyContent: 'center', alignItems: 'center',
   },
-  sectionTitle: { color: INK, fontSize: 14.5, fontWeight: '800' },
-  sectionSubtitle: { color: MUTED, fontSize: 11.5, marginTop: 1 },
+  sectionTitle: { color: colors.text, fontSize: 14.5, fontWeight: '800' },
+  sectionSubtitle: { color: colors.textTertiary, fontSize: 11.5, marginTop: 1 },
 
-  divider: { height: 1, backgroundColor: 'rgba(0,0,0,0.08)', marginVertical: 20 },
+  divider: { height: 1, backgroundColor: colors.divider, marginVertical: 20 },
 
   // Tabs
   macroTabs: {
-    backgroundColor: '#F5F7FB',
+    backgroundColor: colors.inputBg,
     borderRadius: 16,
     height: 62,
     marginBottom: 14,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(21,101,216,0.08)',
+    borderColor: colors.border,
   },
   tabsRelativeWrapper: { flexDirection: 'row', width: '100%', height: '100%', position: 'relative' },
   burbujaActiva: {
@@ -251,7 +264,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3, shadowRadius: 6, elevation: 3,
   },
   tabButton: { flex: 1, justifyContent: 'center', alignItems: 'center', zIndex: 2 },
-  tabButtonText: { fontSize: 10.5, fontWeight: '700', color: MUTED },
+  tabButtonText: { fontSize: 10.5, fontWeight: '700', color: colors.textTertiary },
   tabButtonTextActive: { color: 'white' },
 
   // Categoría seleccionada
@@ -265,11 +278,11 @@ const styles = StyleSheet.create({
   },
   seleccionadaIconWrap: {
     width: 40, height: 40, borderRadius: 12,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     justifyContent: 'center', alignItems: 'center',
   },
-  seleccionadaNombre: { color: INK, fontWeight: '800', fontSize: 14.5, marginBottom: 2 },
-  seleccionadaTexto: { color: '#5B6478', fontSize: 11.5, lineHeight: 15 },
+  seleccionadaNombre: { color: colors.text, fontWeight: '800', fontSize: 14.5, marginBottom: 2 },
+  seleccionadaTexto: { color: colors.textSecondary, fontSize: 11.5, lineHeight: 15 },
 
   checksWrap: { marginBottom: 6 },
 

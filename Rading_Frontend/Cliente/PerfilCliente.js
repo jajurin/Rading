@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import API_URL from '../configS'
 import { useFocusEffect } from '@react-navigation/native'
 import {
@@ -13,175 +13,10 @@ import Header from '../Header'
 import FotoPerfilCliente from './FotoPerfilCliente'
 import EditarDescripcionPerfilCliente from './EditarDescripcionPerfilCliente'
 import TarjetaPerfilCliente from './TarjetaPerfilCliente'
+import { useTheme } from '../ThemeContext'
 
-// 👇 true = datos de prueba, false = datos del backend real
 const USE_MOCK_DATA = false
 
-function direccionCorta(direccionCompleta) {
-  if (!direccionCompleta) return 'Sin dirección'
-  const partes = direccionCompleta.split(',').map(p => p.trim())
-  if (partes.length >= 2) return `${partes[1]} ${partes[0]}`
-  return partes[0]
-}
-
-function formatoMoneda(valor = 0) {
-  return Number(valor).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
-}
-
-function mesAnioCorto(fechaISO) {
-  if (!fechaISO) return null
-  try {
-    const f = new Date(fechaISO)
-    return f.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
-  } catch {
-    return null
-  }
-}
-
-function EstrellasRating({ valor = 0, size = 16, showNumber = true }) {
-  const estrellas = Math.max(0, Math.min(5, Number(valor) || 0))
-  const llenas = Math.floor(estrellas)
-  const decimal = estrellas - llenas
-  const media = decimal >= 0.25 && decimal < 0.75
-  const extraLlena = decimal >= 0.75
-  const totalLlenas = llenas + (extraLlena ? 1 : 0)
-  const vacias = 5 - totalLlenas - (media ? 1 : 0)
-
-  return (
-    <View style={styles.ratingRow}>
-      <View style={styles.starsRow}>
-        {Array.from({ length: totalLlenas }).map((_, i) => (
-          <Ionicons key={`f${i}`} name="star" size={size} color="#F5A623" />
-        ))}
-        {media && <Ionicons name="star-half" size={size} color="#F5A623" />}
-        {Array.from({ length: vacias }).map((_, i) => (
-          <Ionicons key={`e${i}`} name="star-outline" size={size} color="#F5A623" />
-        ))}
-      </View>
-      {showNumber && (
-        <Text style={styles.ratingNumero}>{estrellas.toFixed(1)}</Text>
-      )}
-    </View>
-  )
-}
-
-function InfoBadge({ mensaje }) {
-  return (
-    <TouchableOpacity
-      style={styles.infoBadge}
-      onPress={() => Alert.alert('¿Por qué tengo este puntaje?', mensaje)}
-      activeOpacity={0.6}
-      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-    >
-      <Text style={styles.infoBadgeText}>?</Text>
-    </TouchableOpacity>
-  )
-}
-
-// ── Billetera Rading ──────────────────────────────────────────────────
-function BilleteraCard({ saldo, onAgregarSaldo, onVerMovimientos, onMetodosPago }) {
-  return (
-    <LinearGradient
-      colors={[BLUE, BLUE_DARK]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.walletCard}
-    >
-      <View style={styles.walletGlow} />
-
-      <View style={styles.walletTopRow}>
-        <View style={styles.walletTagRow}>
-          <Ionicons name="wallet-outline" size={14} color="#fff" />
-          <Text style={styles.walletTag}>Billetera Rading</Text>
-        </View>
-        <TouchableOpacity onPress={onVerMovimientos} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons name="time-outline" size={18} color="rgba(255,255,255,0.85)" />
-        </TouchableOpacity>
-      </View>
-
-      <Text style={styles.walletSaldoLabel}>Saldo disponible</Text>
-      <Text style={styles.walletSaldo}>{formatoMoneda(saldo)}</Text>
-
-      <View style={styles.walletBtnRow}>
-        <TouchableOpacity style={styles.walletBtnPrimary} onPress={onAgregarSaldo} activeOpacity={0.88}>
-          <Ionicons name="add" size={16} color={BLUE_DARK} />
-          <Text style={styles.walletBtnPrimaryText}>Agregar dinero</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.walletBtnSecondary} onPress={onMetodosPago} activeOpacity={0.85}>
-          <Ionicons name="card-outline" size={15} color="#fff" />
-          <Text style={styles.walletBtnSecondaryText}>Métodos de pago</Text>
-        </TouchableOpacity>
-      </View>
-    </LinearGradient>
-  )
-}
-
-// ── Fila de estadísticas rápidas ─────────────────────────────────────
-function EstadisticasRow({ trabajosContratados, favoritos, miembroDesde }) {
-  const items = [
-    { icon: 'briefcase-outline', valor: trabajosContratados, label: 'Contratados' },
-    { icon: 'heart-outline', valor: favoritos, label: 'Favoritos' },
-    { icon: 'ribbon-outline', valor: miembroDesde || '—', label: 'Miembro desde', small: !!miembroDesde },
-  ]
-  return (
-    <View style={styles.statsRow}>
-      {items.map((it, idx) => (
-        <React.Fragment key={it.label}>
-          <View style={styles.statItem}>
-            <View style={styles.statIconWrap}>
-              <Ionicons name={it.icon} size={16} color={BLUE} />
-            </View>
-            <Text style={[styles.statValor, it.small && { fontSize: 12.5 }]} numberOfLines={1}>
-              {it.valor}
-            </Text>
-            <Text style={styles.statLabel}>{it.label}</Text>
-          </View>
-          {idx < items.length - 1 && <View style={styles.statDivider} />}
-        </React.Fragment>
-      ))}
-    </View>
-  )
-}
-
-// ── Accesos rápidos ────────────────────────────────────────────────────
-function AccesosRapidos({ onDirecciones, onFavoritos, onHistorial, onAyuda }) {
-  const accesos = [
-    { icon: 'location-outline', label: 'Direcciones', onPress: onDirecciones },
-    { icon: 'heart-outline', label: 'Favoritos', onPress: onFavoritos },
-    { icon: 'document-text-outline', label: 'Historial', onPress: onHistorial },
-    { icon: 'help-buoy-outline', label: 'Ayuda', onPress: onAyuda },
-  ]
-  return (
-    <View style={styles.accesosGrid}>
-      {accesos.map((a) => (
-        <TouchableOpacity key={a.label} style={styles.accesoItem} onPress={a.onPress} activeOpacity={0.8}>
-          <View style={styles.accesoIconWrap}>
-            <Ionicons name={a.icon} size={19} color={BLUE} />
-          </View>
-          <Text style={styles.accesoLabel} numberOfLines={1}>{a.label}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  )
-}
-
-// ── Banner de referidos ────────────────────────────────────────────────
-function ReferidosBanner({ onPress }) {
-  return (
-    <TouchableOpacity style={styles.referidosCard} onPress={onPress} activeOpacity={0.9}>
-      <View style={styles.referidosIconWrap}>
-        <Ionicons name="gift-outline" size={22} color="#fff" />
-      </View>
-      <View style={{ flex: 1, marginLeft: 12 }}>
-        <Text style={styles.referidosTitulo}>Invitá y ganá saldo</Text>
-        <Text style={styles.referidosSub}>Sumá crédito en tu billetera por cada amigo que se una a Rading</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={18} color={BLUE} />
-    </TouchableOpacity>
-  )
-}
-
-const BASE_URL   = API_URL
 const BLUE       = '#1565D8'
 const BLUE_DARK  = '#0d4bb8'
 const STATUS_BAR = '#0D4FD7'
@@ -189,7 +24,8 @@ const GRAY       = '#6b7280'
 const BG         = '#F2F4F8'
 
 export default function PerfilClienteScreen({ navigation, route }) {
-  // 👇 fallback para que no crashee si route.params viene undefined
+  const { colors, isDark } = useTheme();
+
   const usuario = route?.params?.usuario ?? {
     idCliente: 1,
     nombre: 'Usuario',
@@ -200,14 +36,15 @@ export default function PerfilClienteScreen({ navigation, route }) {
   const [cliente,  setCliente]  = useState(null)
   const [trabajos, setTrabajos] = useState([])
 
-  // 👇 loadings separados: cada sección carga (y muestra) de forma independiente
   const [loadingCliente,  setLoadingCliente]  = useState(true)
   const [loadingTrabajos, setLoadingTrabajos] = useState(true)
 
   const [errorCliente,  setErrorCliente]  = useState(null)
   const [errorTrabajos, setErrorTrabajos] = useState(null)
 
-    useFocusEffect(
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
+  useFocusEffect(
     useCallback(() => {
       fetchCliente()
       fetchTrabajos()
@@ -235,7 +72,7 @@ export default function PerfilClienteScreen({ navigation, route }) {
     setLoadingCliente(true)
     setErrorCliente(null)
     try {
-      const resCliente = await fetch(`${BASE_URL}/cliente/perfil/${ID_CLIENTE}`)
+      const resCliente = await fetch(`${API_URL}/cliente/perfil/${ID_CLIENTE}`)
       if (!resCliente.ok) throw new Error(`Error ${resCliente.status} al obtener el perfil`)
       const clienteEncontrado = await resCliente.json()
       if (!clienteEncontrado) throw new Error('Cliente no encontrado en la base de datos')
@@ -274,7 +111,7 @@ export default function PerfilClienteScreen({ navigation, route }) {
     setLoadingTrabajos(true)
     setErrorTrabajos(null)
     try {
-      const resTrabajos = await fetch(`${BASE_URL}/cliente/trabajosActivos/${ID_CLIENTE}`)
+      const resTrabajos = await fetch(`${API_URL}/cliente/trabajosActivos/${ID_CLIENTE}`)
       if (!resTrabajos.ok) throw new Error(`Error ${resTrabajos.status} al obtener trabajos activos`)
       setTrabajos(await resTrabajos.json())
     } catch (err) {
@@ -289,7 +126,7 @@ export default function PerfilClienteScreen({ navigation, route }) {
     setCliente(prev => ({ ...prev, [campo]: valor }))
     if (USE_MOCK_DATA) return
     try {
-      const res = await fetch(`${BASE_URL}/cliente/perfil/${ID_CLIENTE}`, {
+      const res = await fetch(`${API_URL}/cliente/perfil/${ID_CLIENTE}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [campo]: valor }),
@@ -302,11 +139,8 @@ export default function PerfilClienteScreen({ navigation, route }) {
   }
 
   const irAEditarPerfil = () => navigation?.navigate?.('EditarDatosPersonales', { tipo: 'cliente', usuario })
-
   const editarFoto = () => irAEditarPerfil()
 
-  // TODO: reemplazar por los endpoints reales cuando estén disponibles
-  // (billetera, favoritos, historial completo, direcciones guardadas)
   const irABilletera        = () => navigation?.navigate?.('BilleteraCliente', { usuario })
   const irAAgregarSaldo     = () => navigation?.navigate?.('AgregarSaldo', { usuario })
   const irAMetodosPago      = () => navigation?.navigate?.('MetodosPagoCliente', { usuario })
@@ -323,10 +157,143 @@ export default function PerfilClienteScreen({ navigation, route }) {
   const favoritosCount = cliente?.favoritosCount ?? 0
   const miembroDesde = cliente ? mesAnioCorto(cliente.creadoEn ?? cliente.fechaRegistro) : null
 
-  return (
+  // Componentes movidos dentro del componente principal
+  const EstrellasRating = ({ valor = 0, size = 16, showNumber = true }) => {
+    const estrellas = Math.max(0, Math.min(5, Number(valor) || 0))
+    const llenas = Math.floor(estrellas)
+    const decimal = estrellas - llenas
+    const media = decimal >= 0.25 && decimal < 0.75
+    const extraLlena = decimal >= 0.75
+    const totalLlenas = llenas + (extraLlena ? 1 : 0)
+    const vacias = 5 - totalLlenas - (media ? 1 : 0)
 
+    return (
+      <View style={styles.ratingRow}>
+        <View style={styles.starsRow}>
+          {Array.from({ length: totalLlenas }).map((_, i) => (
+            <Ionicons key={`f${i}`} name="star" size={size} color="#F5A623" />
+          ))}
+          {media && <Ionicons name="star-half" size={size} color="#F5A623" />}
+          {Array.from({ length: vacias }).map((_, i) => (
+            <Ionicons key={`e${i}`} name="star-outline" size={size} color="#F5A623" />
+          ))}
+        </View>
+        {showNumber && (
+          <Text style={styles.ratingNumero}>{estrellas.toFixed(1)}</Text>
+        )}
+      </View>
+    )
+  }
+
+  const InfoBadge = ({ mensaje }) => (
+    <TouchableOpacity
+      style={styles.infoBadge}
+      onPress={() => Alert.alert('¿Por qué tengo este puntaje?', mensaje)}
+      activeOpacity={0.6}
+      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+    >
+      <Text style={styles.infoBadgeText}>?</Text>
+    </TouchableOpacity>
+  )
+
+  const BilleteraCard = ({ saldo, onAgregarSaldo, onVerMovimientos, onMetodosPago }) => (
+    <LinearGradient
+      colors={[BLUE, BLUE_DARK]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.walletCard}
+    >
+      <View style={styles.walletGlow} />
+
+      <View style={styles.walletTopRow}>
+        <View style={styles.walletTagRow}>
+          <Ionicons name="wallet-outline" size={14} color="#fff" />
+          <Text style={styles.walletTag}>Billetera Rading</Text>
+        </View>
+        <TouchableOpacity onPress={onVerMovimientos} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name="time-outline" size={18} color="rgba(255,255,255,0.85)" />
+        </TouchableOpacity>
+      </View>
+
+      <Text style={styles.walletSaldoLabel}>Saldo disponible</Text>
+      <Text style={styles.walletSaldo}>{formatoMoneda(saldo)}</Text>
+
+      <View style={styles.walletBtnRow}>
+        <TouchableOpacity style={styles.walletBtnPrimary} onPress={onAgregarSaldo} activeOpacity={0.88}>
+          <Ionicons name="add" size={16} color={BLUE_DARK} />
+          <Text style={styles.walletBtnPrimaryText}>Agregar dinero</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.walletBtnSecondary} onPress={onMetodosPago} activeOpacity={0.85}>
+          <Ionicons name="card-outline" size={15} color="#fff" />
+          <Text style={styles.walletBtnSecondaryText}>Métodos de pago</Text>
+        </TouchableOpacity>
+      </View>
+    </LinearGradient>
+  )
+
+  const EstadisticasRow = ({ trabajosContratados, favoritos, miembroDesde }) => {
+    const items = [
+      { icon: 'briefcase-outline', valor: trabajosContratados, label: 'Contratados' },
+      { icon: 'heart-outline', valor: favoritos, label: 'Favoritos' },
+      { icon: 'ribbon-outline', valor: miembroDesde || '—', label: 'Miembro desde', small: !!miembroDesde },
+    ]
+    return (
+      <View style={styles.statsRow}>
+        {items.map((it, idx) => (
+          <React.Fragment key={it.label}>
+            <View style={styles.statItem}>
+              <View style={styles.statIconWrap}>
+                <Ionicons name={it.icon} size={16} color={BLUE} />
+              </View>
+              <Text style={[styles.statValor, it.small && { fontSize: 12.5 }]} numberOfLines={1}>
+                {it.valor}
+              </Text>
+              <Text style={styles.statLabel}>{it.label}</Text>
+            </View>
+            {idx < items.length - 1 && <View style={styles.statDivider} />}
+          </React.Fragment>
+        ))}
+      </View>
+    )
+  }
+
+  const AccesosRapidos = ({ onDirecciones, onFavoritos, onHistorial, onAyuda }) => {
+    const accesos = [
+      { icon: 'location-outline', label: 'Direcciones', onPress: onDirecciones },
+      { icon: 'heart-outline', label: 'Favoritos', onPress: onFavoritos },
+      { icon: 'document-text-outline', label: 'Historial', onPress: onHistorial },
+      { icon: 'help-buoy-outline', label: 'Ayuda', onPress: onAyuda },
+    ]
+    return (
+      <View style={styles.accesosGrid}>
+        {accesos.map((a) => (
+          <TouchableOpacity key={a.label} style={styles.accesoItem} onPress={a.onPress} activeOpacity={0.8}>
+            <View style={styles.accesoIconWrap}>
+              <Ionicons name={a.icon} size={19} color={BLUE} />
+            </View>
+            <Text style={styles.accesoLabel} numberOfLines={1}>{a.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    )
+  }
+
+  const ReferidosBanner = ({ onPress }) => (
+    <TouchableOpacity style={styles.referidosCard} onPress={onPress} activeOpacity={0.9}>
+      <View style={styles.referidosIconWrap}>
+        <Ionicons name="gift-outline" size={22} color="#fff" />
+      </View>
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <Text style={styles.referidosTitulo}>Invitá y ganá saldo</Text>
+        <Text style={styles.referidosSub}>Sumá crédito en tu billetera por cada amigo que se una a Rading</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={BLUE} />
+    </TouchableOpacity>
+  )
+
+  return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={STATUS_BAR} />
+      <StatusBar barStyle={colors.statusBar} backgroundColor={colors.statusBarBg} />
 
       <Header
         direccion={ubicacion}
@@ -484,18 +451,17 @@ export default function PerfilClienteScreen({ navigation, route }) {
               key={item.id ?? idx}
               item={item}
               onPressChat={(trabajo) =>
-  navigation?.navigate('ChatCliente', {
-    usuario,
-    contacto: {
-      idTrabajador: trabajo.idTrabajador,
-      nombre: `${trabajo.nombre} ${trabajo.apellido}`.trim(),
-      servicio: trabajo.servicio_nombre,
-      foto: trabajo.foto,
-      online: false,
-    },
-    // 👇 sin chatId: se crea recién cuando mande el primer mensaje
-  })
-}
+                navigation?.navigate('ChatCliente', {
+                  usuario,
+                  contacto: {
+                    idTrabajador: trabajo.idTrabajador,
+                    nombre: `${trabajo.nombre} ${trabajo.apellido}`.trim(),
+                    servicio: trabajo.servicio_nombre,
+                    foto: trabajo.foto,
+                    online: false,
+                  },
+                })
+              }
             />
           ))
         )}
@@ -508,16 +474,38 @@ export default function PerfilClienteScreen({ navigation, route }) {
   )
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: STATUS_BAR },
+// ── Helpers ──────────────────────────────────────────────────────────────
+function direccionCorta(direccionCompleta) {
+  if (!direccionCompleta) return 'Sin dirección'
+  const partes = direccionCompleta.split(',').map(p => p.trim())
+  if (partes.length >= 2) return `${partes[1]} ${partes[0]}`
+  return partes[0]
+}
 
-  body:             { flex: 1, backgroundColor: BG, paddingHorizontal: 16, paddingTop: 16 },
+function formatoMoneda(valor = 0) {
+  return Number(valor).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
+}
+
+function mesAnioCorto(fechaISO) {
+  if (!fechaISO) return null
+  try {
+    const f = new Date(fechaISO)
+    return f.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+  } catch {
+    return null
+  }
+}
+
+const createStyles = (colors, isDark) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.statusBarBg },
+
+  body:             { flex: 1, backgroundColor: colors.background, paddingHorizontal: 16, paddingTop: 16 },
 
   inlineLoadingBox: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingVertical: 20, justifyContent: 'center',
   },
-  inlineLoadingText: { color: GRAY, fontSize: 13 },
+  inlineLoadingText: { color: colors.textSecondary, fontSize: 13 },
 
   errorInlineBox:   { alignItems: 'center', justifyContent: 'center', paddingVertical: 20, gap: 8 },
 
@@ -531,8 +519,8 @@ const styles = StyleSheet.create({
   avisoTexto:       { color: '#B00020', fontSize: 12, flex: 1 },
 
   perfilCard:       {
-    backgroundColor: '#fff', borderRadius: 22, padding: 18, marginBottom: 16,
-    shadowColor: '#0d4bb8', shadowOffset: { width: 0, height: 6 },
+    backgroundColor: colors.card, borderRadius: 22, padding: 18, marginBottom: 16,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08, shadowRadius: 14, elevation: 3,
   },
   perfilRow:        { flexDirection: 'row' },
@@ -548,7 +536,7 @@ const styles = StyleSheet.create({
 
   perfilInfo:       { flex: 1, marginLeft: 16 },
   nombreRow:        { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 },
-  nombre:           { fontSize: 22, fontWeight: '800', color: '#1A2233', flexShrink: 1 },
+  nombre:           { fontSize: 22, fontWeight: '800', color: colors.text, flexShrink: 1 },
   verificadoBadge:  { marginTop: 1 },
 
   ratingWithInfo:   { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
@@ -561,14 +549,14 @@ const styles = StyleSheet.create({
 
   ratingRow:        { flexDirection: 'row', alignItems: 'center', gap: 6 },
   starsRow:         { flexDirection: 'row', gap: 1 },
-  ratingNumero:     { fontSize: 13, fontWeight: '700', color: '#8A94A6' },
+  ratingNumero:     { fontSize: 13, fontWeight: '700', color: colors.textTertiary },
 
-  divisor:          { height: 1, backgroundColor: '#EEF1F6', marginVertical: 12 },
+  divisor:          { height: 1, backgroundColor: colors.divider, marginVertical: 12 },
 
   // ── Estadísticas ──────────────────────────────────────────────────
   statsRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginTop: 18, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#EEF1F6',
+    marginTop: 18, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.divider,
   },
   statItem:         { flex: 1, alignItems: 'center' },
   statIconWrap: {
@@ -576,14 +564,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(21,101,216,0.08)',
     alignItems: 'center', justifyContent: 'center', marginBottom: 6,
   },
-  statValor:        { fontSize: 15, fontWeight: '800', color: '#1A2233' },
-  statLabel:        { fontSize: 10.5, color: GRAY, marginTop: 2, textAlign: 'center' },
-  statDivider:      { width: 1, height: 40, backgroundColor: '#EEF1F6' },
+  statValor:        { fontSize: 15, fontWeight: '800', color: colors.text },
+  statLabel:        { fontSize: 10.5, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
+  statDivider:      { width: 1, height: 40, backgroundColor: colors.divider },
 
   // ── Billetera ─────────────────────────────────────────────────────
   walletCard: {
     borderRadius: 22, padding: 20, marginBottom: 16, overflow: 'hidden',
-    shadowColor: '#0d4bb8', shadowOffset: { width: 0, height: 10 },
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.28, shadowRadius: 18, elevation: 6,
   },
   walletGlow: {
@@ -610,9 +598,9 @@ const styles = StyleSheet.create({
 
   // ── Accesos rápidos ───────────────────────────────────────────────
   accesosGrid: {
-    flexDirection: 'row', backgroundColor: '#fff', borderRadius: 20,
+    flexDirection: 'row', backgroundColor: colors.card, borderRadius: 20,
     paddingVertical: 16, marginBottom: 16,
-    shadowColor: '#0d4bb8', shadowOffset: { width: 0, height: 4 },
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
   },
   accesoItem:       { flex: 1, alignItems: 'center', gap: 7 },
@@ -621,11 +609,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(21,101,216,0.08)',
     alignItems: 'center', justifyContent: 'center',
   },
-  accesoLabel:      { fontSize: 10.5, color: '#4A5568', fontWeight: '600' },
+  accesoLabel:      { fontSize: 10.5, color: colors.textSecondary, fontWeight: '600' },
 
   // ── Referidos ─────────────────────────────────────────────────────
   referidosCard: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card,
     borderRadius: 18, padding: 16, marginBottom: 26,
     borderWidth: 1, borderColor: 'rgba(21,101,216,0.12)',
   },
@@ -633,14 +621,14 @@ const styles = StyleSheet.create({
     width: 44, height: 44, borderRadius: 14, backgroundColor: BLUE,
     alignItems: 'center', justifyContent: 'center',
   },
-  referidosTitulo:  { fontSize: 14, fontWeight: '800', color: '#1A2233' },
-  referidosSub:     { fontSize: 11.5, color: GRAY, marginTop: 3, lineHeight: 15 },
+  referidosTitulo:  { fontSize: 14, fontWeight: '800', color: colors.text },
+  referidosSub:     { fontSize: 11.5, color: colors.textSecondary, marginTop: 3, lineHeight: 15 },
 
   seccionHeader:    {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14,
   },
   seccionTituloRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  seccionTitulo:    { fontSize: 17, fontWeight: '800', color: '#1A2233' },
+  seccionTitulo:    { fontSize: 17, fontWeight: '800', color: colors.text },
   contadorBadge:    {
     backgroundColor: BLUE, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 1,
     minWidth: 20, alignItems: 'center',
@@ -650,7 +638,7 @@ const styles = StyleSheet.create({
 
   emptyBox:         {
     alignItems: 'center', justifyContent: 'center', paddingVertical: 36, gap: 10,
-    backgroundColor: '#fff', borderRadius: 18,
+    backgroundColor: colors.card, borderRadius: 18,
   },
-  emptyText:        { color: GRAY, fontSize: 14, textAlign: 'center', paddingHorizontal: 20 },
+  emptyText:        { color: colors.textSecondary, fontSize: 14, textAlign: 'center', paddingHorizontal: 20 },
 })

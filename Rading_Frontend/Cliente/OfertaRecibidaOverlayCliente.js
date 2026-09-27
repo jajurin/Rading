@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 
 
 import {
@@ -9,8 +9,9 @@ import { Ionicons } from "@expo/vector-icons";
 import API_URL from '../configS';
 import ConfirmarLlegadaCl from './ConfirmarLlegadaCl';
 import ConfirmarTrabajoCl from './ConfirmarTrabajoCl';
+import { useTheme } from "../ThemeContext";
 
-const TrabajoItem = ({ trabajo, onSelect, isSelected }) => (
+const TrabajoItem = ({ trabajo, onSelect, isSelected, styles }) => (
   <TouchableOpacity
     style={[styles.item, isSelected && styles.itemSelected]}
     onPress={() => onSelect(trabajo)}
@@ -49,7 +50,7 @@ const TrabajoItem = ({ trabajo, onSelect, isSelected }) => (
   </TouchableOpacity>
 );
 
-const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar }) => {
+const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar, styles, navigation }) => {
   const yaLlego = !!trabajo.trabajo_iniciado_en;
   const yaTermino = trabajo.estado === 'TERMINADO';
 
@@ -63,9 +64,14 @@ const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar }) => {
           style={styles.detalleAvatar}
         />
         <View style={styles.detalleWorkerInfo}>
-          <Text style={styles.detalleNombre}>
-            {trabajo.nombre} {trabajo.apellido}
-          </Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('PerfilTrabajadorParaCliente', { idTrabajador: trabajo.idTrabajador })}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.detalleNombre}>
+              {trabajo.nombre} {trabajo.apellido}
+            </Text>
+          </TouchableOpacity>
           <View style={styles.ratingRow}>
             <Ionicons name="star" size={14} color="#c87000" />
             <Text style={styles.rating}>
@@ -175,6 +181,9 @@ export default function OfertaRecibidaOverlayCliente({
   usuario,
   navigation
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [trabajos, setTrabajos] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -375,6 +384,7 @@ export default function OfertaRecibidaOverlayCliente({
                     trabajo={trabajo}
                     onSelect={handleSelect}
                     isSelected={trabajoSeleccionado?.id === trabajo.id}
+                    styles={styles}
                   />
                   {trabajoSeleccionado?.id === trabajo.id && (
                     <TrabajoDetalle
@@ -382,6 +392,8 @@ export default function OfertaRecibidaOverlayCliente({
                       onChat={handleChat}
                       onIniciar={(t) => setConfirmacion({ tipo: 'llegada', trabajo: t })}
                       onFinalizar={(t) => setConfirmacion({ tipo: 'fin', trabajo: t })}
+                      styles={styles}
+                      navigation={navigation}
                     />
                   )}
                 </View>
@@ -420,17 +432,17 @@ export default function OfertaRecibidaOverlayCliente({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: isDark ? colors.overlay : "rgba(0,0,0,0.5)",
     justifyContent: "center",
     alignItems: "center",
   },
   container: {
     width: "92%",
     maxHeight: "85%",
-    backgroundColor: "#FFD000",
+    backgroundColor: isDark ? colors.surface : "#FFD000",
     borderRadius: 20,
     overflow: "hidden",
   },
@@ -441,7 +453,7 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.1)",
+    borderBottomColor: isDark ? colors.divider : "rgba(0,0,0,0.1)",
     gap: 12,
   },
   headerTop: {
@@ -521,7 +533,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.08)",
+    borderBottomColor: isDark ? colors.divider : "rgba(0,0,0,0.08)",
   },
   itemSelected: {
     backgroundColor: "#FFC200",
@@ -580,11 +592,11 @@ const styles = StyleSheet.create({
 
   // Detalle expandido
   detalle: {
-    backgroundColor: "#FFF8DC",
+    backgroundColor: isDark ? colors.surfaceVariant : "#FFF8DC",
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.08)",
+    borderBottomColor: isDark ? colors.divider : "rgba(0,0,0,0.08)",
   },
   detalleWorkerRow: {
     flexDirection: "row",
@@ -628,7 +640,7 @@ const styles = StyleSheet.create({
 
   separador: {
     height: 1,
-    backgroundColor: "rgba(0,0,0,0.08)",
+    backgroundColor: isDark ? colors.divider : "rgba(0,0,0,0.08)",
     marginBottom: 14,
   },
 
@@ -640,7 +652,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   infoCard: {
-    backgroundColor: "#FFD000",
+    backgroundColor: isDark ? colors.surfaceVariant : "#FFD000",
     borderRadius: 12,
     padding: 10,
     minWidth: "47%",

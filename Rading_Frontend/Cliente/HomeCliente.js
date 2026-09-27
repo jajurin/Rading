@@ -6,6 +6,7 @@ import TrabajoActivoWidget from './Trabajoactivowidget';
 import BuscadorTrabajadorWidget from './Buscadortrabajadorwidget';
 import API_BASE_URL from '../configS';
 import { listarNotificaciones, marcarNotificacionLeida, mapearParaHeader } from '../Notificaciones';
+import { useTheme } from '../ThemeContext';
 import {
   View,
   Text,
@@ -21,8 +22,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // ── Paleta ────────────────────────────────────────────────────────────────
-// Un azul índigo más rico que el celeste plano original, con un acento ámbar
-// reservado para valoraciones y momentos de foco (CTA, insignias).
 const NAVY        = '#0F1B4C';
 const INDIGO      = '#2A3FD6';
 const INDIGO_SOFT = '#5C6DF2';
@@ -71,9 +70,6 @@ const obtenerIconoServicio = (nombre) => {
   return match ? match.icon : 'construct';
 };
 
-// Franja horaria: cambia el saludo, el ícono y el degradé del banner según
-// el momento del día. Es el único gesto "grande" de la pantalla — el resto
-// se mantiene sobrio a propósito.
 const obtenerFranjaHoraria = () => {
   const h = new Date().getHours();
   if (h >= 5 && h < 12) {
@@ -106,6 +102,7 @@ const iniciales = (nombre = '') =>
     .join('') || '👤';
 
 export default function HomeCliente({ route, navigation }) {
+  const { colors, isDark } = useTheme();
   const usuario = route?.params?.usuario;
   const buscadorRef = useRef(null);
   const serviciosScrollRef = useRef(null);
@@ -119,61 +116,60 @@ export default function HomeCliente({ route, navigation }) {
   const [serviciosScrollX, setServiciosScrollX] = useState(0);
   const [serviciosContentWidth, setServiciosContentWidth] = useState(0);
   const [serviciosContainerWidth, setServiciosContainerWidth] = useState(0);
-const [tieneChatsSinLeer, setTieneChatsSinLeer] = useState(false);
-const [notificaciones, setNotificaciones] = useState([]);
+  const [tieneChatsSinLeer, setTieneChatsSinLeer] = useState(false);
+  const [notificaciones, setNotificaciones] = useState([]);
 
-// ── Foto de perfil: se trae del backend (no del parámetro de navegación,
-// que queda desactualizado si el usuario la cambia en "Editar perfil") ──
-const [fotoPerfil, setFotoPerfil] = useState(usuario?.foto ?? null);
+  // ── Foto de perfil ──
+  const [fotoPerfil, setFotoPerfil] = useState(usuario?.foto ?? null);
 
-const cargarFotoPerfil = useCallback(async () => {
-  if (!usuario?.idCliente) return;
-  try {
-    const resp = await fetch(`${API_BASE_URL}/cliente/perfil/${usuario.idCliente}`);
-    if (!resp.ok) return;
-    const data = await resp.json();
-    setFotoPerfil(data.foto ?? null);
-  } catch (err) {
-    console.error('Error al cargar foto de perfil:', err);
-  }
-}, [usuario?.idCliente]);
+  const cargarFotoPerfil = useCallback(async () => {
+    if (!usuario?.idCliente) return;
+    try {
+      const resp = await fetch(`${API_BASE_URL}/cliente/perfil/${usuario.idCliente}`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      setFotoPerfil(data.foto ?? null);
+    } catch (err) {
+      console.error('Error al cargar foto de perfil:', err);
+    }
+  }, [usuario?.idCliente]);
 
-const cargarNotificaciones = useCallback(async () => {
-  if (!usuario?.id) {
-    setNotificaciones([]);
-    return;
-  }
-  try {
-    const filas = await listarNotificaciones(usuario.id);
-    setNotificaciones(filas.map(mapearParaHeader));
-  } catch (err) {
-    console.error('Error al cargar notificaciones:', err.message);
-  }
-}, [usuario?.id]);
+  const cargarNotificaciones = useCallback(async () => {
+    if (!usuario?.id) {
+      setNotificaciones([]);
+      return;
+    }
+    try {
+      const filas = await listarNotificaciones(usuario.id);
+      setNotificaciones(filas.map(mapearParaHeader));
+    } catch (err) {
+      console.error('Error al cargar notificaciones:', err.message);
+    }
+  }, [usuario?.id]);
 
-const marcarLeidaEnHeader = async (item) => {
-  if (!usuario?.id) return;
-  try {
-    await marcarNotificacionLeida(item.id, usuario.id);
-    await cargarNotificaciones();
-  } catch (err) {
-    console.error('Error al marcar notificación leída:', err.message);
-  }
-};
+  const marcarLeidaEnHeader = async (item) => {
+    if (!usuario?.id) return;
+    try {
+      await marcarNotificacionLeida(item.id, usuario.id);
+      await cargarNotificaciones();
+    } catch (err) {
+      console.error('Error al marcar notificación leída:', err.message);
+    }
+  };
 
-const chequearChatsSinLeer = useCallback(async () => {
-  if (!usuario?.idCliente || !usuario?.id) return;
-  try {
-    const resp = await fetch(
-      `${API_BASE_URL}/chat/cliente/${usuario.idCliente}?idUsuario=${usuario.id}`
-    );
-    if (!resp.ok) throw new Error('Respuesta no OK al chequear chats sin leer');
-    const chats = await resp.json();
-    setTieneChatsSinLeer(chats.some((c) => Number(c.no_leidos) > 0));
-  } catch (err) {
-    console.error('Error al chequear chats sin leer:', err);
-  }
-}, [usuario?.idCliente, usuario?.id]);
+  const chequearChatsSinLeer = useCallback(async () => {
+    if (!usuario?.idCliente || !usuario?.id) return;
+    try {
+      const resp = await fetch(
+        `${API_BASE_URL}/chat/cliente/${usuario.idCliente}?idUsuario=${usuario.id}`
+      );
+      if (!resp.ok) throw new Error('Respuesta no OK al chequear chats sin leer');
+      const chats = await resp.json();
+      setTieneChatsSinLeer(chats.some((c) => Number(c.no_leidos) > 0));
+    } catch (err) {
+      console.error('Error al chequear chats sin leer:', err);
+    }
+  }, [usuario?.idCliente, usuario?.id]);
   const franja = useMemo(() => obtenerFranjaHoraria(), []);
 
   const cargarServicios = useCallback(async () => {
@@ -214,9 +210,6 @@ const chequearChatsSinLeer = useCallback(async () => {
     }
   }, [usuario?.idCliente]);
 
-  // useFocusEffect en vez de useEffect: así se refresca todo (incluida la
-  // foto) cada vez que la pantalla vuelve a tener foco, por ejemplo al
-  // volver de "Editar perfil".
   useFocusEffect(
     useCallback(() => {
       cargarServicios();
@@ -243,9 +236,21 @@ const chequearChatsSinLeer = useCallback(async () => {
   const puedeIrDerecha = hayOverflowServicios &&
     serviciosScrollX < (serviciosContentWidth - serviciosContainerWidth - 4);
 
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
+  // Estado vacío reutilizable: ahora definido dentro del componente para acceder a styles
+  const EstadoVacio = ({ icon, texto }) => (
+    <View style={styles.emptyBox}>
+      <View style={styles.emptyIconWrap}>
+        <Ionicons name={icon} size={20} color={INDIGO} />
+      </View>
+      <Text style={styles.emptyText}>{texto}</Text>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="light-content" backgroundColor={NAVY} />
+      <StatusBar barStyle={colors.statusBar} backgroundColor={colors.statusBarBg} />
       <Header
         usuario={usuario}
         notificaciones={notificaciones}
@@ -279,7 +284,7 @@ const chequearChatsSinLeer = useCallback(async () => {
 
         {/* ── Banner hero con degradé según franja horaria ────────────── */}
         <LinearGradient
-          colors={franja.gradient}
+          colors={isDark ? ['#1a2350', '#0d1330'] : franja.gradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.banner}
@@ -455,19 +460,8 @@ const chequearChatsSinLeer = useCallback(async () => {
   );
 }
 
-// Estado vacío reutilizable: siempre con ícono + mensaje accionable en vez
-// de un simple texto gris perdido en la pantalla.
-const EstadoVacio = ({ icon, texto }) => (
-  <View style={styles.emptyBox}>
-    <View style={styles.emptyIconWrap}>
-      <Ionicons name={icon} size={20} color={INDIGO} />
-    </View>
-    <Text style={styles.emptyText}>{texto}</Text>
-  </View>
-);
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   scrollContent: { paddingBottom: 180 },
 
   loaderBox: { paddingVertical: 26, alignItems: 'center' },
@@ -478,12 +472,12 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 14,
     marginHorizontal: 16,
-    backgroundColor: CARD,
+    backgroundColor: colors.card,
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: colors.border,
   },
   emptyIconWrap: {
     width: 36,
@@ -493,7 +487,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyText: { flex: 1, color: TEXT_MUTED, fontSize: 13, lineHeight: 18 },
+  emptyText: { flex: 1, color: colors.textSecondary, fontSize: 13, lineHeight: 18 },
 
   saludoRow: {
     paddingHorizontal: 20,
@@ -509,8 +503,8 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 3,
   },
-  saludoTexto: { fontSize: 22, fontWeight: '800', color: TEXT_DARK },
-  saludoSub: { fontSize: 13, color: TEXT_MUTED, marginTop: 3 },
+  saludoTexto: { fontSize: 22, fontWeight: '800', color: colors.text },
+  saludoSub: { fontSize: 13, color: colors.textSecondary, marginTop: 3 },
   avatarChip: {
     width: 44,
     height: 44,
@@ -519,7 +513,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    shadowColor: NAVY,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
@@ -534,7 +528,7 @@ const styles = StyleSheet.create({
     borderRadius: 26,
     padding: 22,
     overflow: 'hidden',
-    shadowColor: NAVY,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.3,
     shadowRadius: 20,
@@ -568,7 +562,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sectionTitle: { color: TEXT_DARK, fontWeight: '800', fontSize: 17 },
+  sectionTitle: { color: colors.text, fontWeight: '800', fontSize: 17 },
   countBadge: {
     minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6,
     backgroundColor: 'rgba(42,63,214,0.1)', alignItems: 'center', justifyContent: 'center',
@@ -581,15 +575,15 @@ const styles = StyleSheet.create({
   categoryCard: {
     width: CARD_WIDTH,
     height: 112,
-    backgroundColor: CARD,
+    backgroundColor: colors.card,
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: BORDER,
-    shadowColor: NAVY,
+    borderColor: colors.border,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.06,
     shadowRadius: 12,
@@ -612,9 +606,9 @@ const styles = StyleSheet.create({
   categoryText: { color: '#2D3348', fontSize: 12, fontWeight: '700', textAlign: 'center' },
 
   recentCard: {
-    width: 96, backgroundColor: CARD, borderRadius: 18, alignItems: 'center',
-    paddingVertical: 16, borderWidth: 1, borderColor: BORDER,
-    shadowColor: NAVY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
+    width: 96, backgroundColor: colors.card, borderRadius: 18, alignItems: 'center',
+    paddingVertical: 16, borderWidth: 1, borderColor: colors.border,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
   },
   avatar: { width: 54, height: 54, borderRadius: 27, borderWidth: 2, borderColor: 'rgba(42,63,214,0.15)' },
   avatarPlaceholder: {
@@ -636,8 +630,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: BORDER,
-    shadowColor: NAVY,
+    borderColor: colors.border,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.12,
     shadowRadius: 8,

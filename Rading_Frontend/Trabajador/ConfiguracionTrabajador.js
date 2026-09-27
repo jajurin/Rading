@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Header from '../Header';
 import BottomNavBarTrabajador from './Navegadortrabajador';
 import API_URL from '../configS';
+import { useTheme } from '../ThemeContext';
 
 /* ==================================================================== */
 /*  TOKENS                                                              */
@@ -47,423 +48,15 @@ const DIAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const DIAS_NOMBRE = { L: 'Lunes', M: 'Martes', X: 'Miércoles', J: 'Jueves', V: 'Viernes', S: 'Sábado', D: 'Domingo' };
 
 /* ------------------------------------------------------------------ */
-/*  Componentes reutilizables                                          */
-/* ------------------------------------------------------------------ */
-
-function SettingRow({ icon, iconColor = INDIGO, titulo, subtitulo, onPress, rightContent, disabled }) {
-  return (
-    <TouchableOpacity
-      style={[styles.settingRow, disabled && { opacity: 0.5 }]}
-      onPress={disabled ? undefined : onPress}
-      activeOpacity={disabled ? 1 : 0.65}
-      disabled={disabled}
-    >
-      <View style={[styles.settingIconWrap, { backgroundColor: `${iconColor}15` }]}>
-        <Ionicons name={icon} size={18} color={iconColor} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.settingTitulo}>{titulo}</Text>
-        {subtitulo ? <Text style={styles.settingSubtitulo}>{subtitulo}</Text> : null}
-      </View>
-      {rightContent || (
-        <Ionicons name="chevron-forward" size={16} color="rgba(10,18,48,0.25)" />
-      )}
-    </TouchableOpacity>
-  );
-}
-
-function ToggleRow({ icon, iconColor = INDIGO, titulo, subtitulo, value, onValueChange, disabled }) {
-  return (
-    <View style={[styles.settingRow, disabled && { opacity: 0.5 }]}>
-      <View style={[styles.settingIconWrap, { backgroundColor: `${iconColor}15` }]}>
-        <Ionicons name={icon} size={18} color={iconColor} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.settingTitulo}>{titulo}</Text>
-        {subtitulo ? <Text style={styles.settingSubtitulo}>{subtitulo}</Text> : null}
-      </View>
-      <Switch
-        value={value}
-        onValueChange={disabled ? undefined : onValueChange}
-        trackColor={{ false: CHIP_OFF_BORDER, true: TEAL_BORDER }}
-        thumbColor={value ? TEAL : WHITE}
-        disabled={disabled}
-      />
-    </View>
-  );
-}
-
-function SectionCard({ titulo, subtitulo, children, style }) {
-  return (
-    <View style={[styles.card, style]}>
-      <View style={{ marginBottom: 4 }}>
-        <Text style={styles.cardTitulo}>{titulo}</Text>
-        {subtitulo ? <Text style={styles.cardSubtitulo}>{subtitulo}</Text> : null}
-      </View>
-      {children}
-    </View>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Modal para editar horarios                                         */
-/* ------------------------------------------------------------------ */
-
-function HorarioModal({ visible, horaInicio, horaFin, onCerrar, onGuardar }) {
-  const [inicio, setInicio] = useState(horaInicio);
-  const [fin, setFin] = useState(horaFin);
-
-  useEffect(() => {
-    if (visible) {
-      setInicio(horaInicio);
-      setFin(horaFin);
-    }
-  }, [visible, horaInicio, horaFin]);
-
-  const horas = [];
-  for (let h = 0; h < 24; h++) {
-    horas.push(`${String(h).padStart(2, '0')}:00`);
-  }
-
-  const minutos = ['00', '15', '30', '45'];
-
-  const renderPicker = (valor, onChange, label) => {
-    const [h, m] = valor.split(':');
-    return (
-      <View style={styles.horarioPickerWrap}>
-        <Text style={styles.horarioLabel}>{label}</Text>
-        <View style={styles.horarioPickerRow}>
-          <View style={styles.horarioWheel}>
-            {horas.map((hh) => (
-              <TouchableOpacity
-                key={hh}
-                style={[styles.horarioOption, h === hh.split(':')[0] && styles.horarioOptionActive]}
-                onPress={() => onChange(`${hh.split(':')[0]}:${m}`)}
-              >
-                <Text style={[styles.horarioOptionText, h === hh.split(':')[0] && styles.horarioOptionTextActive]}>
-                  {hh}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <View style={styles.horarioWheel}>
-            {minutos.map((mm) => (
-              <TouchableOpacity
-                key={mm}
-                style={[styles.horarioOption, m === mm && styles.horarioOptionActive]}
-                onPress={() => onChange(`${h}:${mm}`)}
-              >
-                <Text style={[styles.horarioOptionText, m === mm && styles.horarioOptionTextActive]}>
-                  {mm}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      </View>
-    );
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCerrar}>
-      <Pressable style={styles.modalOverlay} onPress={onCerrar}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ width: '100%' }}
-        >
-          <Pressable style={styles.modalSheet} onPress={() => {}}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitulo}>Horario de atención</Text>
-              <TouchableOpacity onPress={onCerrar} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={22} color={GRAY_TEXT} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.horarioContent}>
-              {renderPicker(inicio, setInicio, 'Desde')}
-              <View style={styles.horarioSep} />
-              {renderPicker(fin, setFin, 'Hasta')}
-            </View>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity style={styles.modalCancelar} onPress={onCerrar} activeOpacity={0.8}>
-                <Text style={styles.modalCancelarTexto}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalGuardar} onPress={() => onGuardar(inicio, fin)} activeOpacity={0.88}>
-                <Text style={styles.modalGuardarTexto}>Guardar</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </KeyboardAvoidingView>
-      </Pressable>
-    </Modal>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Modal para editar días disponibles                                 */
-/* ------------------------------------------------------------------ */
-
-function DiasModal({ visible, diasActivos, onCerrar, onGuardar }) {
-  const [dias, setDias] = useState(diasActivos);
-
-  useEffect(() => {
-    if (visible) setDias(diasActivos);
-  }, [visible, diasActivos]);
-
-  const toggleDia = (d) => {
-    setDias((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCerrar}>
-      <Pressable style={styles.modalOverlay} onPress={onCerrar}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ width: '100%' }}
-        >
-          <Pressable style={styles.modalSheet} onPress={() => {}}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitulo}>Días disponibles</Text>
-              <TouchableOpacity onPress={onCerrar} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={22} color={GRAY_TEXT} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.diasModalGrid}>
-              {DIAS.map((d) => {
-                const activo = dias.includes(d);
-                return (
-                  <TouchableOpacity
-                    key={d}
-                    style={[styles.diaModalChip, activo && styles.diaModalChipActivo]}
-                    onPress={() => toggleDia(d)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.diaModalChipTexto, activo && styles.diaModalChipTextoActivo]}>
-                      {DIAS_NOMBRE[d]}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity style={styles.modalCancelar} onPress={onCerrar} activeOpacity={0.8}>
-                <Text style={styles.modalCancelarTexto}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalGuardar} onPress={() => onGuardar(dias)} activeOpacity={0.88}>
-                <Text style={styles.modalGuardarTexto}>Guardar</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </KeyboardAvoidingView>
-      </Pressable>
-    </Modal>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Modal para editar radio de cobertura                               */
-/* ------------------------------------------------------------------ */
-
-function RadioModal({ visible, valorActual, onCerrar, onGuardar }) {
-  const [valor, setValor] = useState(String(valorActual));
-
-  useEffect(() => {
-    if (visible) setValor(String(valorActual));
-  }, [visible, valorActual]);
-
-  const opciones = [1, 2, 3, 5, 8, 10, 15, 20, 30, 50];
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCerrar}>
-      <Pressable style={styles.modalOverlay} onPress={onCerrar}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ width: '100%' }}
-        >
-          <Pressable style={styles.modalSheet} onPress={() => {}}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitulo}>Radio de cobertura</Text>
-              <TouchableOpacity onPress={onCerrar} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={22} color={GRAY_TEXT} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.radioSubtitle}>
-              ¿A qué distancia estás dispuesto a viajar para un trabajo?
-            </Text>
-
-            <View style={styles.radioGrid}>
-              {opciones.map((km) => {
-                const activo = Number(valor) === km;
-                return (
-                  <TouchableOpacity
-                    key={km}
-                    style={[styles.radioChip, activo && styles.radioChipActivo]}
-                    onPress={() => setValor(String(km))}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.radioChipTexto, activo && styles.radioChipTextoActivo]}>
-                      {km} km
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity style={styles.modalCancelar} onPress={onCerrar} activeOpacity={0.8}>
-                <Text style={styles.modalCancelarTexto}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalGuardar} onPress={() => onGuardar(Number(valor))} activeOpacity={0.88}>
-                <Text style={styles.modalGuardarTexto}>Guardar</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </KeyboardAvoidingView>
-      </Pressable>
-    </Modal>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Modal para cambiar contraseña                                      */
-/* ------------------------------------------------------------------ */
-
-function PasswordModal({ visible, onCerrar }) {
-  const [actual, setActual] = useState('');
-  const [nueva, setNueva] = useState('');
-  const [confirmar, setConfirmar] = useState('');
-  const [mostrarActual, setMostrarActual] = useState(false);
-  const [mostrarNueva, setMostrarNueva] = useState(false);
-  const [mostrarConfirmar, setMostrarConfirmar] = useState(false);
-  const [guardando, setGuardando] = useState(false);
-
-  const handleGuardar = async () => {
-    if (!actual || !nueva || !confirmar) {
-      Alert.alert('Completá todos los campos');
-      return;
-    }
-    if (nueva.length < 6) {
-      Alert.alert('La contraseña debe tener al menos 6 caracteres');
-      return;
-    }
-    if (nueva !== confirmar) {
-      Alert.alert('Las contraseñas no coinciden');
-      return;
-    }
-    setGuardando(true);
-    try {
-      // Aquí iría la llamada al backend para cambiar la contraseña
-      await new Promise((r) => setTimeout(r, 1000));
-      Alert.alert('Contraseña actualizada', 'Tu contraseña fue cambiada correctamente');
-      onCerrar();
-    } catch (e) {
-      Alert.alert('Error', 'No se pudo cambiar la contraseña');
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCerrar}>
-      <Pressable style={styles.modalOverlay} onPress={onCerrar}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ width: '100%' }}
-        >
-          <Pressable style={styles.modalSheet} onPress={() => {}}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitulo}>Cambiar contraseña</Text>
-              <TouchableOpacity onPress={onCerrar} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={22} color={GRAY_TEXT} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.passwordContent}>
-              <View style={styles.passwordField}>
-                <Text style={styles.passwordLabel}>Contraseña actual</Text>
-                <View style={styles.passwordInputRow}>
-                  <TextInput
-                    style={styles.passwordInput}
-                    value={actual}
-                    onChangeText={setActual}
-                    secureTextEntry={!mostrarActual}
-                    placeholder="••••••••"
-                    placeholderTextColor={GRAY_SOFT}
-                  />
-                  <TouchableOpacity onPress={() => setMostrarActual(!mostrarActual)}>
-                    <Ionicons name={mostrarActual ? 'eye-off' : 'eye'} size={18} color={GRAY_SOFT} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={styles.passwordField}>
-                <Text style={styles.passwordLabel}>Nueva contraseña</Text>
-                <View style={styles.passwordInputRow}>
-                  <TextInput
-                    style={styles.passwordInput}
-                    value={nueva}
-                    onChangeText={setNueva}
-                    secureTextEntry={!mostrarNueva}
-                    placeholder="••••••••"
-                    placeholderTextColor={GRAY_SOFT}
-                  />
-                  <TouchableOpacity onPress={() => setMostrarNueva(!mostrarNueva)}>
-                    <Ionicons name={mostrarNueva ? 'eye-off' : 'eye'} size={18} color={GRAY_SOFT} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={styles.passwordField}>
-                <Text style={styles.passwordLabel}>Confirmar nueva contraseña</Text>
-                <View style={styles.passwordInputRow}>
-                  <TextInput
-                    style={styles.passwordInput}
-                    value={confirmar}
-                    onChangeText={setConfirmar}
-                    secureTextEntry={!mostrarConfirmar}
-                    placeholder="••••••••"
-                    placeholderTextColor={GRAY_SOFT}
-                  />
-                  <TouchableOpacity onPress={() => setMostrarConfirmar(!mostrarConfirmar)}>
-                    <Ionicons name={mostrarConfirmar ? 'eye-off' : 'eye'} size={18} color={GRAY_SOFT} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity style={styles.modalCancelar} onPress={onCerrar} activeOpacity={0.8}>
-                <Text style={styles.modalCancelarTexto}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalGuardar, guardando && { opacity: 0.7 }]}
-                onPress={handleGuardar}
-                activeOpacity={0.88}
-                disabled={guardando}
-              >
-                <Text style={styles.modalGuardarTexto}>
-                  {guardando ? 'Guardando...' : 'Guardar'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </KeyboardAvoidingView>
-      </Pressable>
-    </Modal>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /*  Pantalla principal: Configuración del Trabajador                  */
 /* ------------------------------------------------------------------ */
 
 export default function ConfiguracionTrabajador(props) {
+  const { colors, isDark } = useTheme();
   const usuario = props.usuario ?? props.route?.params?.usuario;
   const navigation = props.navigation ?? null;
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   /* ---------------- Estado ---------------- */
   const [disponible, setDisponible] = useState(true);
@@ -543,6 +136,392 @@ export default function ConfiguracionTrabajador(props) {
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Cerrar sesión', style: 'destructive', onPress: () => navigation?.navigate?.('Login') },
       ]
+    );
+  };
+
+  // Componentes movidos dentro del componente principal
+  const SettingRow = ({ icon, iconColor = INDIGO, titulo, subtitulo, onPress, rightContent, disabled }) => (
+    <TouchableOpacity
+      style={[styles.settingRow, disabled && { opacity: 0.5 }]}
+      onPress={disabled ? undefined : onPress}
+      activeOpacity={disabled ? 1 : 0.65}
+      disabled={disabled}
+    >
+      <View style={[styles.settingIconWrap, { backgroundColor: `${iconColor}15` }]}>
+        <Ionicons name={icon} size={18} color={iconColor} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.settingTitulo}>{titulo}</Text>
+        {subtitulo ? <Text style={styles.settingSubtitulo}>{subtitulo}</Text> : null}
+      </View>
+      {rightContent || (
+        <Ionicons name="chevron-forward" size={16} color="rgba(10,18,48,0.25)" />
+      )}
+    </TouchableOpacity>
+  );
+
+  const ToggleRow = ({ icon, iconColor = INDIGO, titulo, subtitulo, value, onValueChange, disabled }) => (
+    <View style={[styles.settingRow, disabled && { opacity: 0.5 }]}>
+      <View style={[styles.settingIconWrap, { backgroundColor: `${iconColor}15` }]}>
+        <Ionicons name={icon} size={18} color={iconColor} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.settingTitulo}>{titulo}</Text>
+        {subtitulo ? <Text style={styles.settingSubtitulo}>{subtitulo}</Text> : null}
+      </View>
+      <Switch
+        value={value}
+        onValueChange={disabled ? undefined : onValueChange}
+        trackColor={{ false: CHIP_OFF_BORDER, true: TEAL_BORDER }}
+        thumbColor={value ? TEAL : WHITE}
+        disabled={disabled}
+      />
+    </View>
+  );
+
+  const SectionCard = ({ titulo, subtitulo, children, style }) => (
+    <View style={[styles.card, style]}>
+      <View style={{ marginBottom: 4 }}>
+        <Text style={styles.cardTitulo}>{titulo}</Text>
+        {subtitulo ? <Text style={styles.cardSubtitulo}>{subtitulo}</Text> : null}
+      </View>
+      {children}
+    </View>
+  );
+
+  const HorarioModal = ({ visible, horaInicio, horaFin, onCerrar, onGuardar }) => {
+    const [inicio, setInicio] = useState(horaInicio);
+    const [fin, setFin] = useState(horaFin);
+
+    useEffect(() => {
+      if (visible) {
+        setInicio(horaInicio);
+        setFin(horaFin);
+      }
+    }, [visible, horaInicio, horaFin]);
+
+    const horas = [];
+    for (let h = 0; h < 24; h++) {
+      horas.push(`${String(h).padStart(2, '0')}:00`);
+    }
+
+    const minutos = ['00', '15', '30', '45'];
+
+    const renderPicker = (valor, onChange, label) => {
+      const [h, m] = valor.split(':');
+      return (
+        <View style={styles.horarioPickerWrap}>
+          <Text style={styles.horarioLabel}>{label}</Text>
+          <View style={styles.horarioPickerRow}>
+            <View style={styles.horarioWheel}>
+              {horas.map((hh) => (
+                <TouchableOpacity
+                  key={hh}
+                  style={[styles.horarioOption, h === hh.split(':')[0] && styles.horarioOptionActive]}
+                  onPress={() => onChange(`${hh.split(':')[0]}:${m}`)}
+                >
+                  <Text style={[styles.horarioOptionText, h === hh.split(':')[0] && styles.horarioOptionTextActive]}>
+                    {hh}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.horarioWheel}>
+              {minutos.map((mm) => (
+                <TouchableOpacity
+                  key={mm}
+                  style={[styles.horarioOption, m === mm && styles.horarioOptionActive]}
+                  onPress={() => onChange(`${h}:${mm}`)}
+                >
+                  <Text style={[styles.horarioOptionText, m === mm && styles.horarioOptionTextActive]}>
+                    {mm}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      );
+    };
+
+    return (
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={onCerrar}>
+        <Pressable style={styles.modalOverlay} onPress={onCerrar}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%' }}
+          >
+            <Pressable style={styles.modalSheet} onPress={() => {}}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitulo}>Horario de atención</Text>
+                <TouchableOpacity onPress={onCerrar} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close" size={22} color={GRAY_TEXT} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.horarioContent}>
+                {renderPicker(inicio, setInicio, 'Desde')}
+                <View style={styles.horarioSep} />
+                {renderPicker(fin, setFin, 'Hasta')}
+              </View>
+
+              <View style={styles.modalFooter}>
+                <TouchableOpacity style={styles.modalCancelar} onPress={onCerrar} activeOpacity={0.8}>
+                  <Text style={styles.modalCancelarTexto}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalGuardar} onPress={() => onGuardar(inicio, fin)} activeOpacity={0.88}>
+                  <Text style={styles.modalGuardarTexto}>Guardar</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+    );
+  };
+
+  const DiasModal = ({ visible, diasActivos, onCerrar, onGuardar }) => {
+    const [dias, setDias] = useState(diasActivos);
+
+    useEffect(() => {
+      if (visible) setDias(diasActivos);
+    }, [visible, diasActivos]);
+
+    const toggleDia = (d) => {
+      setDias((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
+    };
+
+    return (
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={onCerrar}>
+        <Pressable style={styles.modalOverlay} onPress={onCerrar}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%' }}
+          >
+            <Pressable style={styles.modalSheet} onPress={() => {}}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitulo}>Días disponibles</Text>
+                <TouchableOpacity onPress={onCerrar} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close" size={22} color={GRAY_TEXT} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.diasModalGrid}>
+                {DIAS.map((d) => {
+                  const activo = dias.includes(d);
+                  return (
+                    <TouchableOpacity
+                      key={d}
+                      style={[styles.diaModalChip, activo && styles.diaModalChipActivo]}
+                      onPress={() => toggleDia(d)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.diaModalChipTexto, activo && styles.diaModalChipTextoActivo]}>
+                        {DIAS_NOMBRE[d]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={styles.modalFooter}>
+                <TouchableOpacity style={styles.modalCancelar} onPress={onCerrar} activeOpacity={0.8}>
+                  <Text style={styles.modalCancelarTexto}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalGuardar} onPress={() => onGuardar(dias)} activeOpacity={0.88}>
+                  <Text style={styles.modalGuardarTexto}>Guardar</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+    );
+  };
+
+  const RadioModal = ({ visible, valorActual, onCerrar, onGuardar }) => {
+    const [valor, setValor] = useState(String(valorActual));
+
+    useEffect(() => {
+      if (visible) setValor(String(valorActual));
+    }, [visible, valorActual]);
+
+    const opciones = [1, 2, 3, 5, 8, 10, 15, 20, 30, 50];
+
+    return (
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={onCerrar}>
+        <Pressable style={styles.modalOverlay} onPress={onCerrar}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%' }}
+          >
+            <Pressable style={styles.modalSheet} onPress={() => {}}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitulo}>Radio de cobertura</Text>
+                <TouchableOpacity onPress={onCerrar} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close" size={22} color={GRAY_TEXT} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.radioSubtitle}>
+                ¿A qué distancia estás dispuesto a viajar para un trabajo?
+              </Text>
+
+              <View style={styles.radioGrid}>
+                {opciones.map((km) => {
+                  const activo = Number(valor) === km;
+                  return (
+                    <TouchableOpacity
+                      key={km}
+                      style={[styles.radioChip, activo && styles.radioChipActivo]}
+                      onPress={() => setValor(String(km))}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.radioChipTexto, activo && styles.radioChipTextoActivo]}>
+                        {km} km
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={styles.modalFooter}>
+                <TouchableOpacity style={styles.modalCancelar} onPress={onCerrar} activeOpacity={0.8}>
+                  <Text style={styles.modalCancelarTexto}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalGuardar} onPress={() => onGuardar(Number(valor))} activeOpacity={0.88}>
+                  <Text style={styles.modalGuardarTexto}>Guardar</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+    );
+  };
+
+  const PasswordModal = ({ visible, onCerrar }) => {
+    const [actual, setActual] = useState('');
+    const [nueva, setNueva] = useState('');
+    const [confirmar, setConfirmar] = useState('');
+    const [mostrarActual, setMostrarActual] = useState(false);
+    const [mostrarNueva, setMostrarNueva] = useState(false);
+    const [mostrarConfirmar, setMostrarConfirmar] = useState(false);
+    const [guardando, setGuardando] = useState(false);
+
+    const handleGuardar = async () => {
+      if (!actual || !nueva || !confirmar) {
+        Alert.alert('Completá todos los campos');
+        return;
+      }
+      if (nueva.length < 6) {
+        Alert.alert('La contraseña debe tener al menos 6 caracteres');
+        return;
+      }
+      if (nueva !== confirmar) {
+        Alert.alert('Las contraseñas no coinciden');
+        return;
+      }
+      setGuardando(true);
+      try {
+        // Aquí iría la llamada al backend para cambiar la contraseña
+        await new Promise((r) => setTimeout(r, 1000));
+        Alert.alert('Contraseña actualizada', 'Tu contraseña fue cambiada correctamente');
+        onCerrar();
+      } catch (e) {
+        Alert.alert('Error', 'No se pudo cambiar la contraseña');
+      } finally {
+        setGuardando(false);
+      }
+    };
+
+    return (
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={onCerrar}>
+        <Pressable style={styles.modalOverlay} onPress={onCerrar}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%' }}
+          >
+            <Pressable style={styles.modalSheet} onPress={() => {}}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitulo}>Cambiar contraseña</Text>
+                <TouchableOpacity onPress={onCerrar} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close" size={22} color={GRAY_TEXT} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.passwordContent}>
+                <View style={styles.passwordField}>
+                  <Text style={styles.passwordLabel}>Contraseña actual</Text>
+                  <View style={styles.passwordInputRow}>
+                    <TextInput
+                      style={styles.passwordInput}
+                      value={actual}
+                      onChangeText={setActual}
+                      secureTextEntry={!mostrarActual}
+                      placeholder="••••••••"
+                      placeholderTextColor={GRAY_SOFT}
+                    />
+                    <TouchableOpacity onPress={() => setMostrarActual(!mostrarActual)}>
+                      <Ionicons name={mostrarActual ? 'eye-off' : 'eye'} size={18} color={GRAY_SOFT} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.passwordField}>
+                  <Text style={styles.passwordLabel}>Nueva contraseña</Text>
+                  <View style={styles.passwordInputRow}>
+                    <TextInput
+                      style={styles.passwordInput}
+                      value={nueva}
+                      onChangeText={setNueva}
+                      secureTextEntry={!mostrarNueva}
+                      placeholder="••••••••"
+                      placeholderTextColor={GRAY_SOFT}
+                    />
+                    <TouchableOpacity onPress={() => setMostrarNueva(!mostrarNueva)}>
+                      <Ionicons name={mostrarNueva ? 'eye-off' : 'eye'} size={18} color={GRAY_SOFT} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.passwordField}>
+                  <Text style={styles.passwordLabel}>Confirmar nueva contraseña</Text>
+                  <View style={styles.passwordInputRow}>
+                    <TextInput
+                      style={styles.passwordInput}
+                      value={confirmar}
+                      onChangeText={setConfirmar}
+                      secureTextEntry={!mostrarConfirmar}
+                      placeholder="••••••••"
+                      placeholderTextColor={GRAY_SOFT}
+                    />
+                    <TouchableOpacity onPress={() => setMostrarConfirmar(!mostrarConfirmar)}>
+                      <Ionicons name={mostrarConfirmar ? 'eye-off' : 'eye'} size={18} color={GRAY_SOFT} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.modalFooter}>
+                <TouchableOpacity style={styles.modalCancelar} onPress={onCerrar} activeOpacity={0.8}>
+                  <Text style={styles.modalCancelarTexto}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalGuardar, guardando && { opacity: 0.7 }]}
+                  onPress={handleGuardar}
+                  activeOpacity={0.88}
+                  disabled={guardando}
+                >
+                  <Text style={styles.modalGuardarTexto}>
+                    {guardando ? 'Guardando...' : 'Guardar'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
     );
   };
 
@@ -774,27 +753,27 @@ export default function ConfiguracionTrabajador(props) {
 /*  Estilos                                                            */
 /* ------------------------------------------------------------------ */
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: BG },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.background },
   scrollContent: { paddingBottom: 120 },
 
   /* Cards */
   card: {
-    backgroundColor: WHITE,
+    backgroundColor: colors.card,
     borderRadius: 18,
     padding: 16,
     marginHorizontal: 16,
     marginTop: 14,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
-    shadowColor: NAVY,
+    borderColor: colors.border,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.05,
     shadowRadius: 12,
     elevation: 2,
   },
   cardTitulo: { fontSize: 15.5, fontWeight: '800', color: INDIGO_DEEP, letterSpacing: -0.2 },
-  cardSubtitulo: { fontSize: 11.5, color: GRAY_SOFT, fontWeight: '600', marginTop: 2 },
+  cardSubtitulo: { fontSize: 11.5, color: colors.textTertiary, fontWeight: '600', marginTop: 2 },
 
   /* Setting rows */
   settingRow: {
@@ -803,7 +782,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(10,18,48,0.05)',
+    borderBottomColor: colors.borderLight,
   },
   settingIconWrap: {
     width: 38,
@@ -815,11 +794,11 @@ const styles = StyleSheet.create({
   settingTitulo: {
     fontSize: 13.5,
     fontWeight: '700',
-    color: NAVY,
+    color: colors.text,
   },
   settingSubtitulo: {
     fontSize: 11,
-    color: GRAY_SOFT,
+    color: colors.textTertiary,
     marginTop: 1,
     fontWeight: '500',
   },
@@ -834,7 +813,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: WHITE,
+    backgroundColor: colors.card,
     borderRadius: 14,
     paddingVertical: 14,
     borderWidth: 1,
@@ -849,13 +828,13 @@ const styles = StyleSheet.create({
   /* Modal */
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(10,18,48,0.5)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
   modalSheet: {
-    backgroundColor: WHITE,
+    backgroundColor: colors.card,
     borderRadius: 20,
     width: '100%',
     maxWidth: 380,
@@ -868,12 +847,12 @@ const styles = StyleSheet.create({
     padding: 18,
     paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(10,18,48,0.06)',
+    borderBottomColor: colors.borderLight,
   },
   modalTitulo: {
     fontSize: 16,
     fontWeight: '800',
-    color: NAVY,
+    color: colors.text,
   },
   modalFooter: {
     flexDirection: 'row',
@@ -891,7 +870,7 @@ const styles = StyleSheet.create({
   modalCancelarTexto: {
     fontSize: 14,
     fontWeight: '700',
-    color: GRAY_TEXT,
+    color: colors.textSecondary,
   },
   modalGuardar: {
     flex: 1,
@@ -916,7 +895,7 @@ const styles = StyleSheet.create({
   horarioLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: GRAY_TEXT,
+    color: colors.textSecondary,
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -928,7 +907,7 @@ const styles = StyleSheet.create({
   horarioWheel: {
     flex: 1,
     maxHeight: 120,
-    backgroundColor: BG,
+    backgroundColor: colors.background,
     borderRadius: 12,
     padding: 4,
   },
@@ -944,14 +923,14 @@ const styles = StyleSheet.create({
   horarioOptionText: {
     fontSize: 12,
     fontWeight: '600',
-    color: GRAY_TEXT,
+    color: colors.textSecondary,
   },
   horarioOptionTextActive: {
     color: WHITE,
   },
   horarioSep: {
     height: 1,
-    backgroundColor: 'rgba(10,18,48,0.06)',
+    backgroundColor: colors.borderLight,
     marginVertical: 12,
   },
 
@@ -976,7 +955,7 @@ const styles = StyleSheet.create({
   diaModalChipTexto: {
     fontSize: 13,
     fontWeight: '700',
-    color: GRAY_TEXT,
+    color: colors.textSecondary,
   },
   diaModalChipTextoActivo: {
     color: WHITE,
@@ -985,7 +964,7 @@ const styles = StyleSheet.create({
   /* Radio modal */
   radioSubtitle: {
     fontSize: 13,
-    color: GRAY_TEXT,
+    color: colors.textSecondary,
     paddingHorizontal: 18,
     paddingTop: 4,
     lineHeight: 18,
@@ -1011,7 +990,7 @@ const styles = StyleSheet.create({
   radioChipTexto: {
     fontSize: 13,
     fontWeight: '700',
-    color: GRAY_TEXT,
+    color: colors.textSecondary,
   },
   radioChipTextoActivo: {
     color: WHITE,
@@ -1028,21 +1007,21 @@ const styles = StyleSheet.create({
   passwordLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: GRAY_TEXT,
+    color: colors.textSecondary,
   },
   passwordInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: BG,
+    backgroundColor: colors.background,
     borderRadius: 12,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: CHIP_OFF_BORDER,
+    borderColor: colors.inputBorder,
   },
   passwordInput: {
     flex: 1,
     paddingVertical: 12,
     fontSize: 14,
-    color: NAVY,
+    color: colors.text,
   },
 });

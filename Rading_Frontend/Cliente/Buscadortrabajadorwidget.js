@@ -1,15 +1,14 @@
-import React, { useState, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useMemo, forwardRef, useImperativeHandle } from 'react';
 import {
   View, Text, TouchableOpacity, Image, StyleSheet,
   ActivityIndicator, Modal, ScrollView, TextInput,
 } from 'react-native';
+import { useTheme } from '../ThemeContext';
 import API_URL from '../configS';
 import Svg, { Path } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 
 // ── Paleta ─────────────────────────────────────────────────────────────────
-// Misma identidad que HomeCliente: índigo como color de marca, ámbar como
-// único acento (rating, insignias), navy para superficies oscuras.
 const WHITE      = '#ffffff';
 const AMBER      = '#F5A623';
 const INDIGO     = '#2A3FD6';
@@ -18,152 +17,13 @@ const NAVY       = '#0F1B4C';
 const NAVY_SOFT  = '#161F52';
 const TEXT_DARK  = '#12172E';
 const TEXT_GRAY  = '#828AA0';
-const BG_SOFT    = 'rgba(42,63,214,0.08)';
 const BORDER     = 'rgba(15,27,76,0.08)';
-
-// ─── Sub-components ──────────────────────────────────────────────────────────
-
-const EstrellasRating = ({ valor = 0, size = 13 }) => {
-  const estrellas = Math.max(0, Math.min(5, Number(valor) || 0));
-  const llenas = Math.floor(estrellas);
-  const decimal = estrellas - llenas;
-  const media = decimal >= 0.25 && decimal < 0.75;
-  const extraLlena = decimal >= 0.75;
-  const totalLlenas = llenas + (extraLlena ? 1 : 0);
-  const vacias = 5 - totalLlenas - (media ? 1 : 0);
-
-  return (
-    <View style={styles.starsRowMini}>
-      {Array.from({ length: totalLlenas }).map((_, i) => (
-        <Ionicons key={`f${i}`} name="star" size={size} color={AMBER} />
-      ))}
-      {media && <Ionicons name="star-half" size={size} color={AMBER} />}
-      {Array.from({ length: vacias }).map((_, i) => (
-        <Ionicons key={`e${i}`} name="star-outline" size={size} color={AMBER} />
-      ))}
-      <Text style={styles.ratingNumero}>{estrellas.toFixed(1)}</Text>
-    </View>
-  );
-};
-
-const Avatar = ({ foto, nombre, apellido }) => {
-  if (foto) {
-    return <Image source={{ uri: foto }} style={styles.avatar} />;
-  }
-  const iniciales = `${nombre?.[0] ?? ''}${apellido?.[0] ?? ''}`.toUpperCase();
-  return (
-    <View style={[styles.avatar, styles.avatarFallback]}>
-      <Text style={styles.avatarIniciales}>{iniciales || '?'}</Text>
-    </View>
-  );
-};
-
-const ClienteCard = ({ item, onPressChat }) => (
-  <View style={styles.card}>
-    <Avatar foto={item.foto} nombre={item.nombre} apellido={item.apellido} />
-
-    <View style={styles.cardBody}>
-      <Text style={styles.cardName} numberOfLines={1}>
-        {item.nombre} {item.apellido}
-      </Text>
-
-      <View style={styles.cardMetaRow}>
-        <EstrellasRating valor={item.estrellas} />
-        {item.distancia_km != null && (
-          <View style={styles.distPill}>
-            <Ionicons name="location" size={10} color={INDIGO} />
-            <Text style={styles.distPillText}>{Number(item.distancia_km).toFixed(1)} km</Text>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.contactRow}>
-        <Ionicons name="mail-outline" size={12} color={TEXT_GRAY} />
-        <Text style={styles.cardContacto} numberOfLines={1}>{item.email ?? 'Sin email'}</Text>
-      </View>
-      <View style={styles.contactRow}>
-        <Ionicons name="call-outline" size={12} color={TEXT_GRAY} />
-        <Text style={styles.cardContacto} numberOfLines={1}>{item.telefono ?? 'Sin teléfono'}</Text>
-      </View>
-    </View>
-
-    <TouchableOpacity
-      style={styles.chatButton}
-      onPress={() => onPressChat?.(item)}
-      activeOpacity={0.85}
-    >
-      <Ionicons name="chatbubble-ellipses" size={19} color={WHITE} />
-    </TouchableOpacity>
-  </View>
-);
-
-const StarSelector = ({ value, onChange }) => (
-  <View style={styles.starsRow}>
-    {[1, 2, 3, 4, 5].map(n => (
-      <TouchableOpacity key={n} onPress={() => onChange(value === n ? null : n)} activeOpacity={0.7}>
-        <Ionicons
-          name={n <= (value ?? 0) ? 'star' : 'star-outline'}
-          size={27}
-          color={n <= (value ?? 0) ? AMBER : 'rgba(255,255,255,0.3)'}
-        />
-      </TouchableOpacity>
-    ))}
-    {value ? (
-      <Text style={styles.starLabel}>+{value} estrellas</Text>
-    ) : null}
-  </View>
-);
-
-const TimePicker = ({ label, value, onChange }) => {
-  const [hour, minute] = value ? value.split(':') : ['', ''];
-
-  const setHour = (h) => {
-    const hh = h.replace(/[^0-9]/g, '').slice(0, 2);
-    if (hh === '' || (Number(hh) >= 0 && Number(hh) <= 23)) {
-      onChange(hh + ':' + (minute || '00'));
-    }
-  };
-
-  const setMinute = (m) => {
-    const mm = m.replace(/[^0-9]/g, '').slice(0, 2);
-    if (mm === '' || (Number(mm) >= 0 && Number(mm) <= 59)) {
-      onChange((hour || '00') + ':' + mm);
-    }
-  };
-
-  return (
-    <View style={styles.timePickerRow}>
-      <Text style={styles.timeLabel}>{label}</Text>
-      <View style={styles.timeInputs}>
-        <TextInput
-          style={styles.timeInput}
-          value={hour}
-          onChangeText={setHour}
-          placeholder="HH"
-          placeholderTextColor="rgba(255,255,255,0.35)"
-          keyboardType="number-pad"
-          maxLength={2}
-        />
-        <Text style={styles.timeSep}>:</Text>
-        <TextInput
-          style={styles.timeInput}
-          value={minute}
-          onChangeText={setMinute}
-          placeholder="MM"
-          placeholderTextColor="rgba(255,255,255,0.35)"
-          keyboardType="number-pad"
-          maxLength={2}
-        />
-      </View>
-    </View>
-  );
-};
 
 const ESPECIALIDADES_POR_CATEGORIA = [
   {
     categoria: 'Hogar y oficios',
     servicios: [
-      'Electrisista', 'Plomero', 'Jardinero', 'Gasista', 'Limpieza', 'Cerrajero',
+      'Electricista', 'Plomero', 'Jardinero', 'Gasista', 'Limpieza', 'Cerrajero',
       'Pintor', 'Carpintería', 'Mudanzas', 'Vidriero', 'Colocador de Pisos',
       'Tapicero', 'Herrero', 'Albañil', 'Service de Electrodomésticos',
       'Fumigador / Control de Plagas', 'Mantenimiento de Piletas',
@@ -185,116 +45,13 @@ const ESPECIALIDADES_POR_CATEGORIA = [
   },
 ];
 
-const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
-  const [estrellas, setEstrellas]       = useState(initialFilters.estrellas ?? null);
-  const [especialidad, setEspecialidad] = useState(initialFilters.especialidad ?? null);
-  const [horarioDesde, setHorarioDesde] = useState(initialFilters.horarioDesde ?? '');
-  const [horarioHasta, setHorarioHasta] = useState(initialFilters.horarioHasta ?? '');
-  const [radioKm, setRadioKm]           = useState(initialFilters.radioKm ?? null);
-
-  const handleApply = () => {
-    onApply({ estrellas, especialidad, horarioDesde, horarioHasta, radioKm });
-    onClose();
-  };
-
-  const handleReset = () => {
-    setEstrellas(null);
-    setEspecialidad(null);
-    setHorarioDesde('');
-    setHorarioHasta('');
-    setRadioKm(null);
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
-          <View style={styles.sheetGrabber} />
-
-          <View style={styles.sheetHeader}>
-            <View>
-              <Text style={styles.sheetEyebrow}>FILTROS</Text>
-              <Text style={styles.sheetTitle}>Encontrá a tu profesional</Text>
-            </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={20} color={WHITE} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-
-            <Text style={styles.filterLabel}>Valoración mínima</Text>
-            <StarSelector value={estrellas} onChange={setEstrellas} />
-
-            <Text style={[styles.filterLabel, { marginTop: 22 }]}>Especialidad</Text>
-
-            {ESPECIALIDADES_POR_CATEGORIA.map(grupo => (
-              <View key={grupo.categoria} style={{ marginBottom: 14 }}>
-                <Text style={styles.categoriaLabel}>{grupo.categoria}</Text>
-                <View style={styles.chipsWrap}>
-                  {grupo.servicios.map(esp => (
-                    <TouchableOpacity
-                      key={esp}
-                      style={[styles.chip, especialidad === esp && styles.chipActive]}
-                      onPress={() => setEspecialidad(especialidad === esp ? null : esp)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.chipText, especialidad === esp && styles.chipTextActive]}>
-                        {esp}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            ))}
-
-            <Text style={[styles.filterLabel, { marginTop: 8 }]}>Horario disponible</Text>
-            <View style={styles.timePickers}>
-              <TimePicker label="Desde" value={horarioDesde} onChange={setHorarioDesde} />
-              <TimePicker label="Hasta" value={horarioHasta} onChange={setHorarioHasta} />
-            </View>
-            <Text style={styles.timeHint}>
-              El trabajador debe estar disponible en ese rango
-            </Text>
-
-            <Text style={[styles.filterLabel, { marginTop: 22 }]}>Distancia máxima</Text>
-            <View style={styles.distanciaRow}>
-              {[5, 10, 20, 50].map(km => (
-                <TouchableOpacity
-                  key={km}
-                  style={[styles.chip, radioKm === km && styles.chipActive]}
-                  onPress={() => setRadioKm(radioKm === km ? null : km)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.chipText, radioKm === km && styles.chipTextActive]}>{km} km</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={styles.timeHint}>Ordena por cercanía a tu dirección registrada</Text>
-
-          </ScrollView>
-
-          <View style={styles.sheetFooter}>
-            <TouchableOpacity style={styles.resetBtn} onPress={handleReset} activeOpacity={0.8}>
-              <Text style={styles.resetBtnText}>Restablecer</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.applyBtn} onPress={handleApply} activeOpacity={0.85}>
-              <Text style={styles.applyBtnText}>Aplicar filtros</Text>
-              <Ionicons name="arrow-forward" size={16} color={WHITE} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-};
-
 // ─── Widget principal ──────────────────────────────────────────────────────────
 
 const BuscadorTrabajadorWidget = forwardRef(function BuscadorTrabajadorWidget(
   { usuario, navigation, initialTexto = '' },
   ref
 ) {
+  const { colors, isDark } = useTheme();
   const [texto, setTexto]           = useState(initialTexto);
   const [clientes, setClientes]     = useState([]);
   const [loading, setLoading]       = useState(false);
@@ -308,6 +65,8 @@ const BuscadorTrabajadorWidget = forwardRef(function BuscadorTrabajadorWidget(
     horarioHasta: '',
     radioKm: null,
   });
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const activeFilterCount = [
     filters.estrellas,
@@ -370,6 +129,256 @@ const BuscadorTrabajadorWidget = forwardRef(function BuscadorTrabajadorWidget(
       fetchTrabajadores('', newFilters);
     },
   }));
+
+  // Componentes movidos dentro del componente principal
+  const EstrellasRating = ({ valor = 0, size = 13 }) => {
+    const estrellas = Math.max(0, Math.min(5, Number(valor) || 0));
+    const llenas = Math.floor(estrellas);
+    const decimal = estrellas - llenas;
+    const media = decimal >= 0.25 && decimal < 0.75;
+    const extraLlena = decimal >= 0.75;
+    const totalLlenas = llenas + (extraLlena ? 1 : 0);
+    const vacias = 5 - totalLlenas - (media ? 1 : 0);
+
+    return (
+      <View style={styles.starsRowMini}>
+        {Array.from({ length: totalLlenas }).map((_, i) => (
+          <Ionicons key={`f${i}`} name="star" size={size} color={AMBER} />
+        ))}
+        {media && <Ionicons name="star-half" size={size} color={AMBER} />}
+        {Array.from({ length: vacias }).map((_, i) => (
+          <Ionicons key={`e${i}`} name="star-outline" size={size} color={AMBER} />
+        ))}
+        <Text style={styles.ratingNumero}>{estrellas.toFixed(1)}</Text>
+      </View>
+    );
+  };
+
+  const Avatar = ({ foto, nombre, apellido }) => {
+    if (foto) {
+      return <Image source={{ uri: foto }} style={styles.avatar} />;
+    }
+    const iniciales = `${nombre?.[0] ?? ''}${apellido?.[0] ?? ''}`.toUpperCase();
+    return (
+      <View style={[styles.avatar, styles.avatarFallback]}>
+        <Text style={styles.avatarIniciales}>{iniciales || '?'}</Text>
+      </View>
+    );
+  };
+
+  // ── Tarjeta de trabajador ──────────────────────────────────────────────
+  // Ahora la parte de avatar + info es tocable y navega al perfil del
+  // trabajador. El botón de chat queda fuera de ese TouchableOpacity para
+  // que tocar el chat no dispare también la navegación al perfil.
+  const ClienteCard = ({ item, onPressChat }) => (
+    <View style={styles.card}>
+      <TouchableOpacity
+        style={styles.cardTouchable}
+        activeOpacity={0.7}
+onPress={() => navigation?.navigate('PerfilTrabajadorParaCliente', { idTrabajador: item.id })}      >
+        <Avatar foto={item.foto} nombre={item.nombre} apellido={item.apellido} />
+
+        <View style={styles.cardBody}>
+          <Text style={styles.cardName} numberOfLines={1}>
+            {item.nombre} {item.apellido}
+          </Text>
+
+          <View style={styles.cardMetaRow}>
+            <EstrellasRating valor={item.estrellas} />
+            {item.distancia_km != null && (
+              <View style={styles.distPill}>
+                <Ionicons name="location" size={10} color={INDIGO} />
+                <Text style={styles.distPillText}>{Number(item.distancia_km).toFixed(1)} km</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.contactRow}>
+            <Ionicons name="mail-outline" size={12} color={TEXT_GRAY} />
+            <Text style={styles.cardContacto} numberOfLines={1}>{item.email ?? 'Sin email'}</Text>
+          </View>
+          <View style={styles.contactRow}>
+            <Ionicons name="call-outline" size={12} color={TEXT_GRAY} />
+            <Text style={styles.cardContacto} numberOfLines={1}>{item.telefono ?? 'Sin teléfono'}</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.chatButton}
+        onPress={() => onPressChat?.(item)}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="chatbubble-ellipses" size={19} color={WHITE} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const StarSelector = ({ value, onChange }) => (
+    <View style={styles.starsRow}>
+      {[1, 2, 3, 4, 5].map(n => (
+        <TouchableOpacity key={n} onPress={() => onChange(value === n ? null : n)} activeOpacity={0.7}>
+          <Ionicons
+            name={n <= (value ?? 0) ? 'star' : 'star-outline'}
+            size={27}
+            color={n <= (value ?? 0) ? AMBER : 'rgba(255,255,255,0.3)'}
+          />
+        </TouchableOpacity>
+      ))}
+      {value ? (
+        <Text style={styles.starLabel}>+{value} estrellas</Text>
+      ) : null}
+    </View>
+  );
+
+  const TimePicker = ({ label, value, onChange }) => {
+    const [hour, minute] = value ? value.split(':') : ['', ''];
+
+    const setHour = (h) => {
+      const hh = h.replace(/[^0-9]/g, '').slice(0, 2);
+      if (hh === '' || (Number(hh) >= 0 && Number(hh) <= 23)) {
+        onChange(hh + ':' + (minute || '00'));
+      }
+    };
+
+    const setMinute = (m) => {
+      const mm = m.replace(/[^0-9]/g, '').slice(0, 2);
+      if (mm === '' || (Number(mm) >= 0 && Number(mm) <= 59)) {
+        onChange((hour || '00') + ':' + mm);
+      }
+    };
+
+    return (
+      <View style={styles.timePickerRow}>
+        <Text style={styles.timeLabel}>{label}</Text>
+        <View style={styles.timeInputs}>
+          <TextInput
+            style={styles.timeInput}
+            value={hour}
+            onChangeText={setHour}
+            placeholder="HH"
+            placeholderTextColor="rgba(255,255,255,0.35)"
+            keyboardType="number-pad"
+            maxLength={2}
+          />
+          <Text style={styles.timeSep}>:</Text>
+          <TextInput
+            style={styles.timeInput}
+            value={minute}
+            onChangeText={setMinute}
+            placeholder="MM"
+            placeholderTextColor="rgba(255,255,255,0.35)"
+            keyboardType="number-pad"
+            maxLength={2}
+          />
+        </View>
+      </View>
+    );
+  };
+
+  const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
+    const [estrellas, setEstrellas]       = useState(initialFilters.estrellas ?? null);
+    const [especialidad, setEspecialidad] = useState(initialFilters.especialidad ?? null);
+    const [horarioDesde, setHorarioDesde] = useState(initialFilters.horarioDesde ?? '');
+    const [horarioHasta, setHorarioHasta] = useState(initialFilters.horarioHasta ?? '');
+    const [radioKm, setRadioKm]           = useState(initialFilters.radioKm ?? null);
+
+    const handleApply = () => {
+      onApply({ estrellas, especialidad, horarioDesde, horarioHasta, radioKm });
+      onClose();
+    };
+
+    const handleReset = () => {
+      setEstrellas(null);
+      setEspecialidad(null);
+      setHorarioDesde('');
+      setHorarioHasta('');
+      setRadioKm(null);
+    };
+
+    return (
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <View style={styles.overlay}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetGrabber} />
+
+            <View style={styles.sheetHeader}>
+              <View>
+                <Text style={styles.sheetEyebrow}>FILTROS</Text>
+                <Text style={styles.sheetTitle}>Encontrá a tu profesional</Text>
+              </View>
+              <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={20} color={WHITE} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+
+              <Text style={styles.filterLabel}>Valoración mínima</Text>
+              <StarSelector value={estrellas} onChange={setEstrellas} />
+
+              <Text style={[styles.filterLabel, { marginTop: 22 }]}>Especialidad</Text>
+
+              {ESPECIALIDADES_POR_CATEGORIA.map(grupo => (
+                <View key={grupo.categoria} style={{ marginBottom: 14 }}>
+                  <Text style={styles.categoriaLabel}>{grupo.categoria}</Text>
+                  <View style={styles.chipsWrap}>
+                    {grupo.servicios.map(esp => (
+                      <TouchableOpacity
+                        key={esp}
+                        style={[styles.chip, especialidad === esp && styles.chipActive]}
+                        onPress={() => setEspecialidad(especialidad === esp ? null : esp)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.chipText, especialidad === esp && styles.chipTextActive]}>
+                          {esp}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              ))}
+
+              <Text style={[styles.filterLabel, { marginTop: 8 }]}>Horario disponible</Text>
+              <View style={styles.timePickers}>
+                <TimePicker label="Desde" value={horarioDesde} onChange={setHorarioDesde} />
+                <TimePicker label="Hasta" value={horarioHasta} onChange={setHorarioHasta} />
+              </View>
+              <Text style={styles.timeHint}>
+                El trabajador debe estar disponible en ese rango
+              </Text>
+
+              <Text style={[styles.filterLabel, { marginTop: 22 }]}>Distancia máxima</Text>
+              <View style={styles.distanciaRow}>
+                {[5, 10, 20, 50].map(km => (
+                  <TouchableOpacity
+                    key={km}
+                    style={[styles.chip, radioKm === km && styles.chipActive]}
+                    onPress={() => setRadioKm(radioKm === km ? null : km)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.chipText, radioKm === km && styles.chipTextActive]}>{km} km</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.timeHint}>Ordena por cercanía a tu dirección registrada</Text>
+
+            </ScrollView>
+
+            <View style={styles.sheetFooter}>
+              <TouchableOpacity style={styles.resetBtn} onPress={handleReset} activeOpacity={0.8}>
+                <Text style={styles.resetBtnText}>Restablecer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.applyBtn} onPress={handleApply} activeOpacity={0.85}>
+                <Text style={styles.applyBtnText}>Aplicar filtros</Text>
+                <Ionicons name="arrow-forward" size={16} color={WHITE} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
 
   return (
     <View>
@@ -473,17 +482,17 @@ const BuscadorTrabajadorWidget = forwardRef(function BuscadorTrabajadorWidget(
 
 export default BuscadorTrabajadorWidget;
 
-// ─── Styles ─────────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16 },
   searchBox: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
+    flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? colors.surface : '#fff',
     borderRadius: 18, height: 52, paddingHorizontal: 16, gap: 10,
-    borderWidth: 1, borderColor: BORDER,
+    borderWidth: 1, borderColor: isDark ? colors.border : BORDER,
     shadowColor: NAVY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
   },
-  searchInput: { flex: 1, fontSize: 14, color: TEXT_DARK },
+  searchInput: { flex: 1, fontSize: 14, color: isDark ? colors.text : TEXT_DARK },
   filterIconBtn: {
     width: 52, height: 52, borderRadius: 18, backgroundColor: INDIGO,
     justifyContent: 'center', alignItems: 'center',
@@ -506,16 +515,17 @@ const styles = StyleSheet.create({
   listContent: { paddingHorizontal: 16, paddingTop: 18 },
   resultCount: { color: TEXT_GRAY, fontSize: 12, fontWeight: '700', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
   card: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: WHITE, borderRadius: 18,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? colors.card : WHITE, borderRadius: 18,
     marginBottom: 10, padding: 12, gap: 12,
-    borderWidth: 1, borderColor: BORDER,
+    borderWidth: 1, borderColor: isDark ? colors.border : BORDER,
     shadowColor: NAVY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 3,
   },
-  avatar: { width: 56, height: 56, borderRadius: 28, borderWidth: 2, borderColor: BG_SOFT },
+  cardTouchable: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatar: { width: 56, height: 56, borderRadius: 28, borderWidth: 2, borderColor: BORDER },
   avatarFallback: { backgroundColor: INDIGO, justifyContent: 'center', alignItems: 'center' },
   avatarIniciales: { color: WHITE, fontWeight: '800', fontSize: 17 },
   cardBody: { flex: 1, gap: 4 },
-  cardName: { color: TEXT_DARK, fontWeight: '800', fontSize: 15 },
+  cardName: { color: isDark ? colors.text : TEXT_DARK, fontWeight: '800', fontSize: 15 },
   cardMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 1 },
   starsRowMini: { flexDirection: 'row', alignItems: 'center', gap: 1 },
   ratingNumero: { fontSize: 11.5, fontWeight: '700', color: TEXT_GRAY, marginLeft: 4 },

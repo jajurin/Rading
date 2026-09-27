@@ -8,11 +8,11 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
+import { useTheme } from '../ThemeContext';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNavBar from './NavegadorCliente';
-// TODO: ajustá el path si tu estructura de carpetas es distinta.
 import API_URL from '../configS';
 
 // -------------------------------------------------------------------------
@@ -36,11 +36,9 @@ const COLORS = {
   red: '#E23744',
   redBg: 'rgba(226,55,68,0.1)',
   shadow: '#0d47a8',
-  // Fijo = vos ya definiste el precio del trabajo
   fijo: '#6D28D9',
   fijoBg: 'rgba(109,40,217,0.09)',
   fijoBorder: 'rgba(109,40,217,0.28)',
-  // Subasta = los trabajadores compiten ofertando precio
   subasta: '#B4740E',
   subastaBg: 'rgba(217,142,10,0.12)',
   subastaBorder: 'rgba(217,142,10,0.32)',
@@ -53,12 +51,6 @@ const FILTROS = [
   { key: 'TERMINADO', label: 'Terminadas' },
   { key: 'CANCELADO', label: 'Canceladas' },
 ];
-
-function modalidadInfo(fijo) {
-  return fijo
-    ? { shortLabel: 'FIJO', color: COLORS.fijo, bg: COLORS.fijoBg, border: COLORS.fijoBorder }
-    : { shortLabel: 'SUBASTA', color: COLORS.subasta, bg: COLORS.subastaBg, border: COLORS.subastaBorder };
-}
 
 // -------------------------------------------------------------------------
 // Iconos
@@ -165,173 +157,22 @@ function estadoTrabajoInfo(estado) {
   }
 }
 
-// -------------------------------------------------------------------------
-// Badge de modalidad (Fijo / Subasta)
-// -------------------------------------------------------------------------
-function ModalidadBadge({ fijo }) {
-  const info = modalidadInfo(fijo);
-  const Icon = fijo ? Icons.Etiqueta : Icons.Subasta;
-  return (
-    <View style={[styles.modBadge, { backgroundColor: info.bg, borderColor: info.border }]}>
-      <Icon color={info.color} size={11} />
-      <Text style={[styles.modBadgeText, { color: info.color }]}>{info.shortLabel}</Text>
-    </View>
-  );
-}
-
-// -------------------------------------------------------------------------
-// Fila de filtros (scrolleable, con contador por estado)
-// -------------------------------------------------------------------------
-function FiltrosBar({ filtro, setFiltro, solicitudes }) {
-  const conteo = useMemo(() => {
-    const c = { TODAS: solicitudes.length, PENDIENTE: 0, 'EN PROCESO': 0, TERMINADO: 0, CANCELADO: 0 };
-    solicitudes.forEach((s) => {
-      if (c[s.estado] !== undefined) c[s.estado] += 1;
-    });
-    return c;
-  }, [solicitudes]);
-
-  return (
-    <View style={styles.filtrosWrap}>
-      <FlatList
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        data={FILTROS}
-        keyExtractor={(f) => f.key}
-        contentContainerStyle={styles.filtrosRow}
-        ItemSeparatorComponent={() => <View style={{ width: 8 }} />}
-        renderItem={({ item: f }) => {
-          const activo = filtro === f.key;
-          const cantidad = conteo[f.key] ?? 0;
-          return (
-            <TouchableOpacity
-              style={[styles.filtroChip, activo && styles.filtroChipActivo]}
-              activeOpacity={0.8}
-              onPress={() => setFiltro(f.key)}
-            >
-              <Text style={[styles.filtroChipText, activo && styles.filtroChipTextActivo]}>{f.label}</Text>
-              {cantidad > 0 && (
-                <View style={[styles.filtroChipCount, activo && styles.filtroChipCountActivo]}>
-                  <Text style={[styles.filtroChipCountText, activo && styles.filtroChipCountTextActivo]}>
-                    {cantidad}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        }}
-      />
-    </View>
-  );
-}
-
-// -------------------------------------------------------------------------
-// Card
-// -------------------------------------------------------------------------
-function SolicitudCard({ item, onVerDetalles }) {
-  const precio = formatMonto(item);
-  const categoriaLabel = item.categoria_nombre || item.servicio_nombre || 'Servicio';
-  const estadoInfo = estadoTrabajoInfo(item.estado);
-  const modInfo = modalidadInfo(item.fijo);
-  const trabajadorAsignado = item.idTrabajadorAsignado
-    ? `${item.trabajadorNombre || ''} ${item.trabajadorApellido || ''}`.trim()
-    : null;
-  const mostrarOfertas = item.estado === 'PENDIENTE' && Number(item.cantidadOfertas) > 0;
-
-  return (
-    <View style={[styles.card, { borderLeftColor: modInfo.color }, item.emergencia && styles.cardEmergency]}>
-      {item.emergencia && (
-        <View style={styles.emergencyStrip}>
-          <Icons.Alert color="#FFFFFF" size={13} />
-          <Text style={styles.emergencyStripText}>EMERGENCIA</Text>
-        </View>
-      )}
-
-      <View style={styles.cardBody}>
-        <View style={styles.cardHeaderRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.categoriaTitulo} numberOfLines={1}>
-              {categoriaLabel}
-            </Text>
-            <View style={styles.chipsRow}>
-              <ModalidadBadge fijo={item.fijo} />
-            </View>
-            {trabajadorAsignado ? (
-              <View style={styles.trabajadorRow}>
-                <View style={styles.avatarChico}>
-                  <Text style={styles.avatarChicoText}>
-                    {iniciales(item.trabajadorNombre, item.trabajadorApellido)}
-                  </Text>
-                </View>
-                <Text style={styles.trabajadorNombre} numberOfLines={1}>
-                  {trabajadorAsignado}
-                </Text>
-              </View>
-            ) : (
-              <Text style={styles.sinAsignar}>Sin trabajador asignado</Text>
-            )}
-          </View>
-
-          <View style={[styles.estadoBadge, { backgroundColor: estadoInfo.bg }]}>
-            <Text style={[styles.estadoBadgeText, { color: estadoInfo.color }]}>{estadoInfo.label}</Text>
-          </View>
-        </View>
-
-        {!!item.descripcion && (
-          <Text style={styles.descripcion} numberOfLines={2}>
-            {item.descripcion}
-          </Text>
-        )}
-
-        <View style={styles.infoRow}>
-          <View style={styles.infoItem}>
-            <Icons.Clock />
-            <View>
-              <Text style={styles.infoLabel}>Horario</Text>
-              <Text style={styles.infoValor}>{formatHora(item.horario_requerido)}</Text>
-            </View>
-          </View>
-
-          <View style={styles.infoDivider} />
-
-          <View style={styles.infoItem}>
-            <Icons.Cash color={modInfo.color} />
-            <View>
-              <Text style={styles.infoLabel}>{precio.label}</Text>
-              <Text style={styles.infoValor}>{precio.valor}</Text>
-            </View>
-          </View>
-        </View>
-
-        {mostrarOfertas && (
-          <View style={[styles.ofertasBanner, { backgroundColor: modInfo.bg }]}>
-            <Icons.Users color={modInfo.color} />
-            <Text style={[styles.ofertasBannerText, { color: modInfo.color }]}>
-              {item.cantidadOfertas} oferta{Number(item.cantidadOfertas) === 1 ? '' : 's'} esperando tu respuesta
-            </Text>
-          </View>
-        )}
-
-        <TouchableOpacity
-          style={styles.detalleBtn}
-          activeOpacity={0.85}
-          onPress={() => onVerDetalles(item)}
-        >
-          <Text style={styles.detalleBtnText}>{mostrarOfertas ? 'Ver ofertas' : 'Ver detalles'}</Text>
-          <Icons.Chevron />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+function modalidadInfo(fijo) {
+  return fijo
+    ? { shortLabel: 'FIJO', color: COLORS.fijo, bg: COLORS.fijoBg, border: COLORS.fijoBorder }
+    : { shortLabel: 'SUBASTA', color: COLORS.subasta, bg: COLORS.subastaBg, border: COLORS.subastaBorder };
 }
 
 // -------------------------------------------------------------------------
 // Pantalla principal
 // -------------------------------------------------------------------------
 export default function MisSolicitudesCliente() {
+  const { colors, isDark } = useTheme();
   const route = useRoute();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const usuario = route.params?.usuario;
   const clienteId = usuario?.idCliente;
@@ -379,13 +220,9 @@ export default function MisSolicitudesCliente() {
   };
 
   const handleVerDetalles = (item) => {
-    // Si está PENDIENTE y tiene ofertas, llevá al cliente directo a la
-    // pantalla donde puede comparar y aceptar ofertas (GET /cliente/ofertas/:idTrabajo).
-    // TODO: reemplazá 'OfertasRecibidasCliente' por el nombre real de esa pantalla en tu navigator.
     if (item.estado === 'PENDIENTE' && Number(item.cantidadOfertas) > 0) {
       navigation.navigate('OfertasRecibidasCliente', { idTrabajo: item.id, clienteId });
     } else {
-      // TODO: reemplazá 'DetalleSolicitudCliente' por el nombre real de esa pantalla.
       navigation.navigate('DetalleSolicitudCliente', { idTrabajo: item.id, clienteId });
     }
   };
@@ -401,6 +238,162 @@ export default function MisSolicitudesCliente() {
     const cantidad = solicitudesFiltradas.length;
     return `${cantidad} solicitud${cantidad === 1 ? '' : 'es'}`;
   }, [loading, error, solicitudesFiltradas.length]);
+
+  // Componentes movidos dentro del componente principal
+  const ModalidadBadge = ({ fijo }) => {
+    const info = modalidadInfo(fijo);
+    const Icon = fijo ? Icons.Etiqueta : Icons.Subasta;
+    return (
+      <View style={[styles.modBadge, { backgroundColor: info.bg, borderColor: info.border }]}>
+        <Icon color={info.color} size={11} />
+        <Text style={[styles.modBadgeText, { color: info.color }]}>{info.shortLabel}</Text>
+      </View>
+    );
+  };
+
+  const FiltrosBar = ({ filtro, setFiltro, solicitudes }) => {
+    const conteo = useMemo(() => {
+      const c = { TODAS: solicitudes.length, PENDIENTE: 0, 'EN PROCESO': 0, TERMINADO: 0, CANCELADO: 0 };
+      solicitudes.forEach((s) => {
+        if (c[s.estado] !== undefined) c[s.estado] += 1;
+      });
+      return c;
+    }, [solicitudes]);
+
+    return (
+      <View style={styles.filtrosWrap}>
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={FILTROS}
+          keyExtractor={(f) => f.key}
+          contentContainerStyle={styles.filtrosRow}
+          ItemSeparatorComponent={() => <View style={{ width: 8 }} />}
+          renderItem={({ item: f }) => {
+            const activo = filtro === f.key;
+            const cantidad = conteo[f.key] ?? 0;
+            return (
+              <TouchableOpacity
+                style={[styles.filtroChip, activo && styles.filtroChipActivo]}
+                activeOpacity={0.8}
+                onPress={() => setFiltro(f.key)}
+              >
+                <Text style={[styles.filtroChipText, activo && styles.filtroChipTextActivo]}>{f.label}</Text>
+                {cantidad > 0 && (
+                  <View style={[styles.filtroChipCount, activo && styles.filtroChipCountActivo]}>
+                    <Text style={[styles.filtroChipCountText, activo && styles.filtroChipCountTextActivo]}>
+                      {cantidad}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
+    );
+  };
+
+  const SolicitudCard = ({ item, onVerDetalles }) => {
+    const precio = formatMonto(item);
+    const categoriaLabel = item.categoria_nombre || item.servicio_nombre || 'Servicio';
+    const estadoInfo = estadoTrabajoInfo(item.estado);
+    const modInfo = modalidadInfo(item.fijo);
+    const trabajadorAsignado = item.idTrabajadorAsignado
+      ? `${item.trabajadorNombre || ''} ${item.trabajadorApellido || ''}`.trim()
+      : null;
+    const mostrarOfertas = item.estado === 'PENDIENTE' && Number(item.cantidadOfertas) > 0;
+
+    return (
+      <View style={[styles.card, { borderLeftColor: modInfo.color }, item.emergencia && styles.cardEmergency]}>
+        {item.emergencia && (
+          <View style={styles.emergencyStrip}>
+            <Icons.Alert color="#FFFFFF" size={13} />
+            <Text style={styles.emergencyStripText}>EMERGENCIA</Text>
+          </View>
+        )}
+
+        <View style={styles.cardBody}>
+          <View style={styles.cardHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.categoriaTitulo} numberOfLines={1}>
+                {categoriaLabel}
+              </Text>
+              <View style={styles.chipsRow}>
+                <ModalidadBadge fijo={item.fijo} />
+              </View>
+              {trabajadorAsignado ? (
+                <TouchableOpacity
+                  style={styles.trabajadorRow}
+                  onPress={() => navigation.navigate('PerfilTrabajadorParaCliente', { idTrabajador: item.idTrabajadorAsignado })}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.avatarChico}>
+                    <Text style={styles.avatarChicoText}>
+                      {iniciales(item.trabajadorNombre, item.trabajadorApellido)}
+                    </Text>
+                  </View>
+                  <Text style={styles.trabajadorNombre} numberOfLines={1}>
+                    {trabajadorAsignado}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={styles.sinAsignar}>Sin trabajador asignado</Text>
+              )}
+            </View>
+
+            <View style={[styles.estadoBadge, { backgroundColor: estadoInfo.bg }]}>
+              <Text style={[styles.estadoBadgeText, { color: estadoInfo.color }]}>{estadoInfo.label}</Text>
+            </View>
+          </View>
+
+          {!!item.descripcion && (
+            <Text style={styles.descripcion} numberOfLines={2}>
+              {item.descripcion}
+            </Text>
+          )}
+
+          <View style={styles.infoRow}>
+            <View style={styles.infoItem}>
+              <Icons.Clock />
+              <View>
+                <Text style={styles.infoLabel}>Horario</Text>
+                <Text style={styles.infoValor}>{formatHora(item.horario_requerido)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.infoDivider} />
+
+            <View style={styles.infoItem}>
+              <Icons.Cash color={modInfo.color} />
+              <View>
+                <Text style={styles.infoLabel}>{precio.label}</Text>
+                <Text style={styles.infoValor}>{precio.valor}</Text>
+              </View>
+            </View>
+          </View>
+
+          {mostrarOfertas && (
+            <View style={[styles.ofertasBanner, { backgroundColor: modInfo.bg }]}>
+              <Icons.Users color={modInfo.color} />
+              <Text style={[styles.ofertasBannerText, { color: modInfo.color }]}>
+                {item.cantidadOfertas} oferta{Number(item.cantidadOfertas) === 1 ? '' : 's'} esperando tu respuesta
+              </Text>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={styles.detalleBtn}
+            activeOpacity={0.85}
+            onPress={() => onVerDetalles(item)}
+          >
+            <Text style={styles.detalleBtnText}>{mostrarOfertas ? 'Ver ofertas' : 'Ver detalles'}</Text>
+            <Icons.Chevron />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -455,10 +448,10 @@ export default function MisSolicitudesCliente() {
 // -------------------------------------------------------------------------
 // Estilos
 // -------------------------------------------------------------------------
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: COLORS.bg,
+    backgroundColor: isDark ? colors.background : COLORS.bg,
   },
   header: {
     paddingHorizontal: 20,
@@ -468,12 +461,12 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 23,
     fontWeight: '800',
-    color: COLORS.text,
+    color: isDark ? colors.text : COLORS.text,
     letterSpacing: 0.2,
   },
   headerSubtitle: {
     fontSize: 13,
-    color: COLORS.textMuted,
+    color: isDark ? colors.textSecondary : COLORS.textMuted,
     marginTop: 3,
     fontWeight: '500',
   },
@@ -481,7 +474,7 @@ const styles = StyleSheet.create({
   // ---- Filtros ----
   filtrosWrap: {
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: isDark ? colors.border : COLORS.border,
     paddingBottom: 12,
     marginBottom: 4,
   },
@@ -494,9 +487,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 12,
-    backgroundColor: COLORS.card,
+    backgroundColor: isDark ? colors.card : COLORS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: isDark ? colors.border : COLORS.border,
   },
   filtroChipActivo: {
     backgroundColor: COLORS.blue,
@@ -505,7 +498,7 @@ const styles = StyleSheet.create({
   filtroChipText: {
     fontSize: 13,
     fontWeight: '700',
-    color: COLORS.textMuted,
+    color: isDark ? colors.textSecondary : COLORS.textMuted,
   },
   filtroChipTextActivo: {
     color: '#FFFFFF',
@@ -539,10 +532,10 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: COLORS.card,
+    backgroundColor: isDark ? colors.card : COLORS.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: isDark ? colors.border : COLORS.border,
     borderLeftWidth: 4,
     overflow: 'hidden',
     shadowColor: COLORS.shadow,
@@ -579,7 +572,7 @@ const styles = StyleSheet.create({
   categoriaTitulo: {
     fontSize: 15.5,
     fontWeight: '700',
-    color: COLORS.text,
+    color: isDark ? colors.text : COLORS.text,
   },
   chipsRow: {
     flexDirection: 'row',
@@ -625,12 +618,12 @@ const styles = StyleSheet.create({
   trabajadorNombre: {
     fontSize: 12.5,
     fontWeight: '600',
-    color: COLORS.textMuted,
+    color: isDark ? colors.textSecondary : COLORS.textMuted,
   },
   sinAsignar: {
     fontSize: 12.5,
     fontWeight: '500',
-    color: COLORS.textFaint,
+    color: isDark ? colors.textTertiary : COLORS.textFaint,
     marginTop: 8,
   },
 
@@ -646,7 +639,7 @@ const styles = StyleSheet.create({
 
   descripcion: {
     fontSize: 12.5,
-    color: COLORS.textMuted,
+    color: isDark ? colors.textSecondary : COLORS.textMuted,
     marginTop: 10,
     lineHeight: 17,
   },
@@ -655,7 +648,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 14,
-    backgroundColor: COLORS.bg,
+    backgroundColor: isDark ? colors.surfaceVariant : COLORS.bg,
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -669,17 +662,17 @@ const styles = StyleSheet.create({
   infoDivider: {
     width: 1,
     height: 26,
-    backgroundColor: COLORS.border,
+    backgroundColor: isDark ? colors.border : COLORS.border,
     marginHorizontal: 8,
   },
   infoLabel: {
     fontSize: 10.5,
-    color: COLORS.textFaint,
+    color: isDark ? colors.textTertiary : COLORS.textFaint,
     fontWeight: '600',
   },
   infoValor: {
     fontSize: 13,
-    color: COLORS.text,
+    color: isDark ? colors.text : COLORS.text,
     fontWeight: '700',
     marginTop: 1,
   },
@@ -724,12 +717,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 15.5,
     fontWeight: '800',
-    color: COLORS.text,
+    color: isDark ? colors.text : COLORS.text,
     marginTop: 8,
   },
   emptySubtitle: {
     fontSize: 13,
-    color: COLORS.textMuted,
+    color: isDark ? colors.textSecondary : COLORS.textMuted,
     textAlign: 'center',
     lineHeight: 18,
   },

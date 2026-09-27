@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
+import { useTheme } from '../ThemeContext';
 import Svg, { Path } from 'react-native-svg';
 
 // Header y BottomNavBar ya existen en el proyecto, solo los importamos y usamos
@@ -80,10 +81,14 @@ const OFERTAS = [
   },
 ];
 
-// --- Subcomponentes ---
+export default function MasOfertasScreen() {
+  const { colors, isDark } = useTheme();
+  const [seleccionadaId, setSeleccionadaId] = useState('o1');
 
-function IconoFiltro() {
-  return (
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
+  // Componentes movidos dentro del componente principal
+  const IconoFiltro = () => (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
       <Path
         d="M4 6h16M7 12h10M10 18h4"
@@ -93,10 +98,8 @@ function IconoFiltro() {
       />
     </Svg>
   );
-}
 
-function TituloConFiltro() {
-  return (
+  const TituloConFiltro = () => (
     <View style={styles.tituloFila}>
       <Text style={styles.tituloSeccion}>Ofertas cercanas:</Text>
       <TouchableOpacity style={styles.filtroBoton}>
@@ -104,10 +107,8 @@ function TituloConFiltro() {
       </TouchableOpacity>
     </View>
   );
-}
 
-function DatoOferta({ oferta, claro }) {
-  return (
+  const DatoOferta = ({ oferta, claro }) => (
     <View style={{ flex: 1, marginLeft: 12 }}>
       <Text style={[styles.ofertaNombre, claro && styles.textoClaro]}>{oferta.nombre}</Text>
 
@@ -145,19 +146,15 @@ function DatoOferta({ oferta, claro }) {
       </View>
     </View>
   );
-}
 
-function TarjetaEmergencia({ oferta }) {
-  return (
+  const TarjetaEmergencia = ({ oferta }) => (
     <View style={styles.emergenciaCard}>
       <Image source={{ uri: oferta.avatar }} style={styles.avatarClaro} />
       <DatoOferta oferta={oferta} />
     </View>
   );
-}
 
-function TarjetaOferta({ oferta, seleccionada, onPress }) {
-  return (
+  const TarjetaOferta = ({ oferta, seleccionada, onPress }) => (
     <TouchableOpacity
       activeOpacity={0.85}
       onPress={onPress}
@@ -167,12 +164,6 @@ function TarjetaOferta({ oferta, seleccionada, onPress }) {
       <DatoOferta oferta={oferta} claro={seleccionada} />
     </TouchableOpacity>
   );
-}
-
-// --- Componente principal ---
-
-export default function MasOfertasScreen() {
-  const [seleccionadaId, setSeleccionadaId] = useState('o1');
 
   return (
     <View style={styles.pantalla}>
@@ -205,16 +196,14 @@ export default function MasOfertasScreen() {
   );
 }
 
-// --- Estilos ---
-
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   pantalla: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background : '#FFFFFF',
   },
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background : '#FFFFFF',
     paddingHorizontal: 16,
   },
   tituloFila: {
@@ -269,7 +258,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   ofertaCardSeleccionada: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.card : '#FFFFFF',
     borderColor: '#1D3FBF',
   },
   avatarClaro: {
@@ -301,7 +290,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 13,
   },
-  // Cuando la tarjeta está seleccionada (fondo blanco), el texto pasa a oscuro
+  // Cuando la tarjeta está seleccionada (fondo claro), el texto pasa a oscuro
   textoClaro: {
     color: '#1D3FBF',
   },

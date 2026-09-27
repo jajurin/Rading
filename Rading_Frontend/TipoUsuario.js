@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Image, ScrollView, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from './ThemeContext';
 
 const BLUE      = '#1565D8';
 const BLUE_DARK = '#0D47A8';
@@ -10,8 +11,11 @@ const INK       = '#1A202C';
 const MUTED     = '#8A94A6';
 
 export default function TipoUsuario({ route, navigation }) {
+  const { colors, isDark } = useTheme();
   const { idUsuario, email } = route.params;
   const [seleccion, setSeleccion] = useState(null); // 'cliente' | 'trabajador' (solo feedback visual)
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const irA = (tipo, screen) => {
     setSeleccion(tipo);
@@ -78,16 +82,16 @@ export default function TipoUsuario({ route, navigation }) {
         </TouchableOpacity>
       </View>
 
-      <StatusBar style="light" />
+      <StatusBar style={colors.statusBar} />
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   // ====== ESTRUCTURA GENERAL ======
   container: {
     flex: 1,
-    backgroundColor: '#F3F5FA',
+    backgroundColor: colors.background,
   },
   cardsContainer: {
     paddingHorizontal: 16,
@@ -125,14 +129,14 @@ const styles = StyleSheet.create({
 
   // ====== TARJETAS DE SELECCIÓN (CARDS) ======
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 24,
     overflow: 'hidden',
     alignItems: 'center',
     paddingTop: 16,
     borderWidth: 1.5,
     borderColor: 'transparent',
-    shadowColor: BLUE_DARK,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.10,
     shadowRadius: 18,

@@ -30,8 +30,8 @@ import DetalleOfertaTrabajador from './Trabajador/DetalleOfertaTrabajador';
 import OfertaRecibidaOverlayCliente from './Cliente/OfertaRecibidaOverlayCliente';
 import ChatTrabajador from './Trabajador/Chattrabajador';
 import PreviaChatTrabajador from './Trabajador/PreviaChatTrabajador';
-import ConfirmarLlegadaCl from './Cliente/ConfirmarLlegadaCl'; 
-import ConfirmarLlegadaTr from './Trabajador/ConfirmarLlegadaTr'; // ✅ corregido
+import ConfirmarLlegadaCl from './Cliente/ConfirmarLlegadaCl';
+import ConfirmarLlegadaTr from './Trabajador/ConfirmarLlegadaTr';
 import ConfirmarTrabajoCl from './Cliente/ConfirmarTrabajoCl';
 import ConfirmarTrabajoTr from './Trabajador/ConfirmarTrabajoTr';
 import MisOfertasTrabajador from './Trabajador/Misofertastrabajador';
@@ -41,6 +41,9 @@ import CancelarTrabajoCl from './Trabajador/cancelarTrabajo';
 import Notificaciones from './Notificaciones';
 import EditarDatosPersonales from './EditarDatosPersonales';
 import ConfiguracionTrabajador from './Trabajador/ConfiguracionTrabajador';
+import PerfilTrabajadorParaCliente from './Cliente/PerfilTrabajador';
+import PerfilClienteParaTrabajador from './Trabajador/PerfilCliente';
+
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -49,50 +52,51 @@ export default function App() {
       <SafeAreaProvider>
         <NavigationContainer>
           <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
-               <Stack.Screen name="Login" component={Login} />
-           <Stack.Screen name="Notificaciones" component={Notificaciones} />
-           <Stack.Screen name="EditarDatosPersonales" component={EditarDatosPersonales} />
-           <Stack.Screen name="ConfiguracionTrabajador" component={ConfiguracionTrabajador} />
-           <Stack.Screen name="Configuracion" component={Configuracion} />
-           <Stack.Screen name="CancelarTrabajoCl" component={CancelarTrabajoCl} />
-           <Stack.Screen name="PerfilScreen" component={PerfilScreen} />
-                                  <Stack.Screen name="trabajadorclasifcar" component={ClasificarTrabajador} />
-                                  <Stack.Screen name="clasifcarcliente" component={CalificarClienteTrabajador} />
+            <Stack.Screen name="Login" component={Login} />
+            <Stack.Screen name="Notificaciones" component={Notificaciones} />
+            <Stack.Screen name="EditarDatosPersonales" component={EditarDatosPersonales} />
+            <Stack.Screen name="ConfiguracionTrabajador" component={ConfiguracionTrabajador} />
+            <Stack.Screen name="Configuracion" component={Configuracion} />
+            <Stack.Screen name="CancelarTrabajoCl" component={CancelarTrabajoCl} />
+            <Stack.Screen name="PerfilScreen" component={PerfilScreen} />
+            <Stack.Screen name="trabajadorclasifcar" component={ClasificarTrabajador} />
+            <Stack.Screen name="clasifcarcliente" component={CalificarClienteTrabajador} />
 
+            <Stack.Screen name="PerfilTrabajador" component={PerfilTrabajador} />
+            <Stack.Screen name="PerfilTrabajadorParaCliente" component={PerfilTrabajadorParaCliente} />
+            <Stack.Screen name="PerfilClienteParaTrabajador" component={PerfilClienteParaTrabajador} />
 
-              <Stack.Screen name="PerfilTrabajador" component={PerfilTrabajador} />
-     
-          <Stack.Screen name="MasOfertas" component={MasOfertasScreen} />
-          <Stack.Screen name="HomeTrabajador" component={HomeTrabajador} />
-          <Stack.Screen name="HomeCliente" component={HomeCliente} />
-          <Stack.Screen name="MisOfertasTrabajador" component={MisOfertasTrabajador} />
-          <Stack.Screen name="MisSolicitudesCliente" component={MisSolicitudesCliente} />
-              <Stack.Screen name="ConfirmarLlegadaCl" component={ConfirmarLlegadaCl} />
-              <Stack.Screen name="ConfirmarLlegadaTr" component={ConfirmarLlegadaTr} />
-              <Stack.Screen name="ConfirmarTrabajoCl" component={ConfirmarTrabajoCl} />
-              <Stack.Screen name="ConfirmarTrabajoTr" component={ConfirmarTrabajoTr} />
-          <Stack.Screen name="ChatsCliente" component={ChatsCliente} />
-          <Stack.Screen name="ChatCliente" component={ChatCliente} />
-          <Stack.Screen name="ChatTrabajador" component={ChatTrabajador} />
-<Stack.Screen name="PreviaChatTrabajador" component={PreviaChatTrabajador} />
-          <Stack.Screen name="RecibirOfertasScreen" component={RecibirOfertasScreen} />
-          <Stack.Screen name="ClasificarTrabajador" component={ClasificarTrabajador} />
-         
-          <Stack.Screen name="CrearSolicitud" component={CrearSolicitud} />
-          <Stack.Screen name="RecienteClientes" component={RecientesClientes} />
-<Stack.Screen name="OfertasCercanasTrabajador" component={OfertasCercanasTrabajador} />
-<Stack.Screen name="DetalleOfertaTrabajador" component={DetalleOfertaTrabajador} />
-          <Stack.Screen name="RegistrarseTrabajador" component={RegistrarseTrabajador} />
-          <Stack.Screen name="Registrarse" component={Registrarse} />
-          <Stack.Screen name="VerTrabajosRealizados" component={VerTrabajosRealizados} />
-          <Stack.Screen name="navegador" component={BottomNavBar} />
-          <Stack.Screen name="TipoUsuario" component={TipoUsuario} />
-          <Stack.Screen name="RegistrarseCliente" component={RegistrarseCliente} />
-          <Stack.Screen name="BuscadorCliente" component={BuscadorCliente} />
-          <Stack.Screen name="BuscadorTrabajador" component={BuscadorTrabajador} />
-          <Stack.Screen name="BottomNavBarTrabajador" component={BottomNavBarTrabajador} />
-          <Stack.Screen name="OfertaRecibidaOverlayCliente" component={OfertaRecibidaOverlayCliente} />
-        </Stack.Navigator>
+            <Stack.Screen name="MasOfertas" component={MasOfertasScreen} />
+            <Stack.Screen name="HomeTrabajador" component={HomeTrabajador} />
+            <Stack.Screen name="HomeCliente" component={HomeCliente} />
+            <Stack.Screen name="MisOfertasTrabajador" component={MisOfertasTrabajador} />
+            <Stack.Screen name="MisSolicitudesCliente" component={MisSolicitudesCliente} />
+            <Stack.Screen name="ConfirmarLlegadaCl" component={ConfirmarLlegadaCl} />
+            <Stack.Screen name="ConfirmarLlegadaTr" component={ConfirmarLlegadaTr} />
+            <Stack.Screen name="ConfirmarTrabajoCl" component={ConfirmarTrabajoCl} />
+            <Stack.Screen name="ConfirmarTrabajoTr" component={ConfirmarTrabajoTr} />
+            <Stack.Screen name="ChatsCliente" component={ChatsCliente} />
+            <Stack.Screen name="ChatCliente" component={ChatCliente} />
+            <Stack.Screen name="ChatTrabajador" component={ChatTrabajador} />
+            <Stack.Screen name="PreviaChatTrabajador" component={PreviaChatTrabajador} />
+            <Stack.Screen name="RecibirOfertasScreen" component={RecibirOfertasScreen} />
+            <Stack.Screen name="ClasificarTrabajador" component={ClasificarTrabajador} />
+
+            <Stack.Screen name="CrearSolicitud" component={CrearSolicitud} />
+            <Stack.Screen name="RecienteClientes" component={RecientesClientes} />
+            <Stack.Screen name="OfertasCercanasTrabajador" component={OfertasCercanasTrabajador} />
+            <Stack.Screen name="DetalleOfertaTrabajador" component={DetalleOfertaTrabajador} />
+            <Stack.Screen name="RegistrarseTrabajador" component={RegistrarseTrabajador} />
+            <Stack.Screen name="Registrarse" component={Registrarse} />
+            <Stack.Screen name="VerTrabajosRealizados" component={VerTrabajosRealizados} />
+            <Stack.Screen name="navegador" component={BottomNavBar} />
+            <Stack.Screen name="TipoUsuario" component={TipoUsuario} />
+            <Stack.Screen name="RegistrarseCliente" component={RegistrarseCliente} />
+            <Stack.Screen name="BuscadorCliente" component={BuscadorCliente} />
+            <Stack.Screen name="BuscadorTrabajador" component={BuscadorTrabajador} />
+            <Stack.Screen name="BottomNavBarTrabajador" component={BottomNavBarTrabajador} />
+            <Stack.Screen name="OfertaRecibidaOverlayCliente" component={OfertaRecibidaOverlayCliente} />
+          </Stack.Navigator>
         </NavigationContainer>
       </SafeAreaProvider>
     </ThemeProvider>

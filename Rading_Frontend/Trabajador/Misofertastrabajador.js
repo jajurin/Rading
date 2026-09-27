@@ -12,11 +12,11 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useTheme } from '../ThemeContext';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNavBarTrabajador from './Navegadortrabajador';
-// TODO: ajustá el path si tu estructura de carpetas es distinta.
 import API_URL from '../configS';
 
 // -------------------------------------------------------------------------
@@ -39,11 +39,9 @@ const COLORS = {
   greenBg: 'rgba(23,162,88,0.1)',
   red: '#E23744',
   redBg: 'rgba(226,55,68,0.1)',
-  // Fijo = postulación a precio ya definido por el cliente
   fijo: '#6D28D9',
   fijoBg: 'rgba(109,40,217,0.09)',
   fijoBorder: 'rgba(109,40,217,0.28)',
-  // Subasta = se compite por precio
   subasta: '#B4740E',
   subastaBg: 'rgba(217,142,10,0.12)',
   subastaBorder: 'rgba(217,142,10,0.32)',
@@ -117,7 +115,6 @@ const Icons = {
       <Line x1="18" y1="6" x2="6" y2="18" stroke={color} strokeWidth="2" strokeLinecap="round" />
     </Svg>
   ),
-  // Etiqueta = precio fijo, ya cerrado por el cliente
   Etiqueta: ({ color = COLORS.fijo, size = 13 }) => (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -129,7 +126,6 @@ const Icons = {
       <Circle cx="15.5" cy="8.5" r="1.6" stroke={color} strokeWidth="1.6" />
     </Svg>
   ),
-  // Rombo con martillo estilizado = subasta, se compite por precio
   Subasta: ({ color = COLORS.subasta, size = 13 }) => (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path d="M12 3L20.5 8V16L12 21L3.5 16V8L12 3Z" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />
@@ -176,10 +172,6 @@ function estadoOfertaInfo(estado) {
   }
 }
 
-// Fijo = el cliente ya puso el precio y vos te postulás a ese monto.
-// Subasta = compiten varios trabajadores ofertando precio, gana el que
-// el cliente elija (generalmente el más bajo). Paleta bien distinta
-// (violeta vs. dorado) para que se lea de un vistazo, incluso sin leer texto.
 function modalidadInfo(fijo) {
   return fijo
     ? { label: 'Precio fijo', shortLabel: 'FIJO', color: COLORS.fijo, bg: COLORS.fijoBg, border: COLORS.fijoBorder, Icon: Icons.Etiqueta }
@@ -187,307 +179,15 @@ function modalidadInfo(fijo) {
 }
 
 // -------------------------------------------------------------------------
-// Badge de modalidad (Fijo / Subasta) — reutilizable
-// -------------------------------------------------------------------------
-function ModalidadBadge({ fijo, compact = false }) {
-  const info = modalidadInfo(fijo);
-  const { Icon } = info;
-  return (
-    <View style={[styles.modBadge, { backgroundColor: info.bg, borderColor: info.border }]}>
-      <Icon color={info.color} size={compact ? 11 : 12.5} />
-      <Text style={[styles.modBadgeText, { color: info.color }]}>{info.shortLabel}</Text>
-    </View>
-  );
-}
-
-// -------------------------------------------------------------------------
-// Fila de filtros (scrolleable, con contador por estado)
-// -------------------------------------------------------------------------
-function FiltrosBar({ filtro, setFiltro, ofertas }) {
-  const conteo = useMemo(() => {
-    const c = { TODAS: ofertas.length, PENDIENTE: 0, ACEPTADA: 0, RECHAZADA: 0 };
-    ofertas.forEach((o) => {
-      if (c[o.estado] !== undefined) c[o.estado] += 1;
-    });
-    return c;
-  }, [ofertas]);
-
-  return (
-    <View style={styles.filtrosWrap}>
-      <FlatList
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        data={FILTROS}
-        keyExtractor={(f) => f.key}
-        contentContainerStyle={styles.filtrosRow}
-        ItemSeparatorComponent={() => <View style={{ width: 8 }} />}
-        renderItem={({ item: f }) => {
-          const activo = filtro === f.key;
-          const cantidad = conteo[f.key] ?? 0;
-          return (
-            <TouchableOpacity
-              style={[styles.filtroChip, activo && styles.filtroChipActivo]}
-              activeOpacity={0.8}
-              onPress={() => setFiltro(f.key)}
-            >
-              <Text style={[styles.filtroChipText, activo && styles.filtroChipTextActivo]}>{f.label}</Text>
-              {cantidad > 0 && (
-                <View style={[styles.filtroChipCount, activo && styles.filtroChipCountActivo]}>
-                  <Text style={[styles.filtroChipCountText, activo && styles.filtroChipCountTextActivo]}>
-                    {cantidad}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        }}
-      />
-    </View>
-  );
-}
-
-// -------------------------------------------------------------------------
-// Modal de edición de oferta
-// -------------------------------------------------------------------------
-function EditarOfertaModal({ visible, oferta, trabajadorId, onClose, onGuardado }) {
-  const [precio, setPrecio] = useState('');
-  const [mensaje, setMensaje] = useState('');
-  const [guardando, setGuardando] = useState(false);
-  const [error, setError] = useState(null);
-
-  React.useEffect(() => {
-    if (oferta) {
-      setPrecio(oferta.precio != null ? String(oferta.precio) : '');
-      setMensaje(oferta.mensaje || '');
-      setError(null);
-    }
-  }, [oferta]);
-
-  const handleGuardar = async () => {
-    const precioNum = Number(precio);
-    if (!precio || Number.isNaN(precioNum) || precioNum <= 0) {
-      setError('Ingresá un precio válido.');
-      return;
-    }
-    setGuardando(true);
-    setError(null);
-    try {
-      const resp = await fetch(`${API_URL}/trabajador/ofertas/${oferta.idOferta}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          idTrabajador: trabajadorId,
-          precio: precioNum,
-          costoExtraMin: oferta.costoExtraMin ?? null,
-          costoExtraMax: oferta.costoExtraMax ?? null,
-          mensaje: mensaje.trim() || null,
-        }),
-      });
-      const body = await resp.json().catch(() => ({}));
-      if (!resp.ok) {
-        throw new Error(body?.message || 'No pudimos actualizar tu oferta.');
-      }
-      onGuardado();
-    } catch (e) {
-      setError(e?.message || 'No pudimos actualizar tu oferta.');
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  if (!oferta) return null;
-
-  const info = modalidadInfo(oferta.fijo);
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <View style={styles.modalCard}>
-          <View style={[styles.modalAccentBar, { backgroundColor: info.color }]} />
-          <View style={styles.modalHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.modalTitle}>Editar oferta</Text>
-              <ModalidadBadge fijo={oferta.fijo} />
-            </View>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Icons.Close />
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.modalLabel}>Tu precio</Text>
-          <View style={styles.modalInputRow}>
-            <Text style={styles.modalInputPrefix}>$</Text>
-            <TextInput
-              style={styles.modalInputInline}
-              value={precio}
-              onChangeText={setPrecio}
-              keyboardType="numeric"
-              placeholder="0"
-              placeholderTextColor={COLORS.textFaint}
-            />
-          </View>
-
-          <Text style={styles.modalLabel}>Mensaje (opcional)</Text>
-          <TextInput
-            style={[styles.modalInput, styles.modalInputMultiline]}
-            value={mensaje}
-            onChangeText={setMensaje}
-            placeholder="Contale al cliente algo sobre tu oferta…"
-            placeholderTextColor={COLORS.textFaint}
-            multiline
-            numberOfLines={3}
-          />
-
-          {!!error && <Text style={styles.modalError}>{error}</Text>}
-
-          <TouchableOpacity
-            style={[styles.modalGuardarBtn, { backgroundColor: info.color }, guardando && { opacity: 0.7 }]}
-            activeOpacity={0.85}
-            onPress={handleGuardar}
-            disabled={guardando}
-          >
-            {guardando ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Text style={styles.modalGuardarBtnText}>Guardar cambios</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
-
-// -------------------------------------------------------------------------
-// Card
-// -------------------------------------------------------------------------
-function OfertaEnviadaCard({ item, onVerDetalles, onEditar }) {
-  const nombreCliente = `${item.nombre} ${item.apellido}`.trim();
-  const categoriaLabel = item.categoria_nombre || item.servicio_nombre || 'Servicio';
-  const estadoInfo = estadoOfertaInfo(item.estado);
-  const modInfo = modalidadInfo(item.fijo);
-  const esEditable = item.estado === 'PENDIENTE';
-
-  return (
-    <View
-      style={[
-        styles.card,
-        { borderLeftColor: modInfo.color },
-        item.emergencia && styles.cardEmergency,
-      ]}
-    >
-      {item.emergencia && (
-        <View style={styles.emergencyStrip}>
-          <Icons.Alert color="#FFFFFF" size={13} />
-          <Text style={styles.emergencyStripText}>EMERGENCIA</Text>
-        </View>
-      )}
-
-      <View style={styles.cardBody}>
-        <View style={styles.cardHeaderRow}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{iniciales(item.nombre, item.apellido)}</Text>
-          </View>
-
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.clienteNombre} numberOfLines={1}>
-              {nombreCliente || 'Cliente'}
-            </Text>
-            <View style={styles.chipsRow}>
-              <View style={styles.chip}>
-                <Text style={styles.chipText} numberOfLines={1}>
-                  {categoriaLabel}
-                </Text>
-              </View>
-              <ModalidadBadge fijo={item.fijo} compact />
-            </View>
-          </View>
-
-          <View style={[styles.estadoBadge, { backgroundColor: estadoInfo.bg }]}>
-            <Text style={[styles.estadoBadgeText, { color: estadoInfo.color }]}>{estadoInfo.label}</Text>
-          </View>
-        </View>
-
-        {!!item.descripcion && (
-          <Text style={styles.descripcion} numberOfLines={2}>
-            {item.descripcion}
-          </Text>
-        )}
-
-        {!!item.mensaje && (
-          <Text style={styles.mensaje} numberOfLines={2}>
-            “{item.mensaje}”
-          </Text>
-        )}
-
-        {/* Monto ofertado: bien visible, con botón de editar si sigue pendiente.
-            El color de fondo cambia según modalidad para reforzar el contexto. */}
-        <View style={[styles.ofertaBox, { backgroundColor: modInfo.bg, borderColor: modInfo.border }]}>
-          <View style={styles.ofertaBoxLeft}>
-            <View style={[styles.ofertaBoxIconWrap, { backgroundColor: '#FFFFFF' }]}>
-              <Icons.Cash color={modInfo.color} size={16} />
-            </View>
-            <View style={{ marginLeft: 10 }}>
-              <Text style={[styles.ofertaBoxLabel, { color: modInfo.color }]}>
-                {item.fijo ? 'Te postulaste por' : 'Tu oferta en subasta'}
-              </Text>
-              <Text style={styles.ofertaBoxMonto}>{formatMonto(item.precio)}</Text>
-            </View>
-          </View>
-
-          {esEditable && !item.fijo && (
-            <TouchableOpacity style={styles.editarBtn} activeOpacity={0.8} onPress={() => onEditar(item)}>
-              <Icons.Pencil color={modInfo.color} />
-              <Text style={[styles.editarBtnText, { color: modInfo.color }]}>Editar</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <View style={styles.infoRow}>
-          <View style={styles.infoItem}>
-            <Icons.Clock />
-            <View>
-              <Text style={styles.infoLabel}>Horario</Text>
-              <Text style={styles.infoValor}>{formatHora(item.horario_requerido)}</Text>
-            </View>
-          </View>
-
-          {!!item.fecha_creado && (
-            <>
-              <View style={styles.infoDivider} />
-              <View style={styles.infoItem}>
-                <View>
-                  <Text style={styles.infoLabel}>Enviada</Text>
-                  <Text style={styles.infoValor}>{formatFecha(item.fecha_creado)}</Text>
-                </View>
-              </View>
-            </>
-          )}
-        </View>
-
-        <TouchableOpacity
-          style={[styles.detalleBtn, { backgroundColor: COLORS.blue }]}
-          activeOpacity={0.85}
-          onPress={() => onVerDetalles(item)}
-        >
-          <Text style={styles.detalleBtnText}>Ver detalles</Text>
-          <Icons.Chevron />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-// -------------------------------------------------------------------------
 // Pantalla principal
 // -------------------------------------------------------------------------
 export default function MisOfertasTrabajador() {
+  const { colors, isDark } = useTheme();
   const route = useRoute();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const usuario = route.params?.usuario;
   const trabajadorId = usuario?.idTrabajador;
@@ -559,6 +259,288 @@ export default function MisOfertasTrabajador() {
     return `${cantidad} oferta${cantidad === 1 ? '' : 's'}`;
   }, [loading, error, ofertasFiltradas.length]);
 
+  // Componentes movidos dentro del componente principal
+  const ModalidadBadge = ({ fijo, compact = false }) => {
+    const info = modalidadInfo(fijo);
+    const { Icon } = info;
+    return (
+      <View style={[styles.modBadge, { backgroundColor: info.bg, borderColor: info.border }]}>
+        <Icon color={info.color} size={compact ? 11 : 12.5} />
+        <Text style={[styles.modBadgeText, { color: info.color }]}>{info.shortLabel}</Text>
+      </View>
+    );
+  };
+
+  const FiltrosBar = ({ filtro, setFiltro, ofertas }) => {
+    const conteo = useMemo(() => {
+      const c = { TODAS: ofertas.length, PENDIENTE: 0, ACEPTADA: 0, RECHAZADA: 0 };
+      ofertas.forEach((o) => {
+        if (c[o.estado] !== undefined) c[o.estado] += 1;
+      });
+      return c;
+    }, [ofertas]);
+
+    return (
+      <View style={styles.filtrosWrap}>
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={FILTROS}
+          keyExtractor={(f) => f.key}
+          contentContainerStyle={styles.filtrosRow}
+          ItemSeparatorComponent={() => <View style={{ width: 8 }} />}
+          renderItem={({ item: f }) => {
+            const activo = filtro === f.key;
+            const cantidad = conteo[f.key] ?? 0;
+            return (
+              <TouchableOpacity
+                style={[styles.filtroChip, activo && styles.filtroChipActivo]}
+                activeOpacity={0.8}
+                onPress={() => setFiltro(f.key)}
+              >
+                <Text style={[styles.filtroChipText, activo && styles.filtroChipTextActivo]}>{f.label}</Text>
+                {cantidad > 0 && (
+                  <View style={[styles.filtroChipCount, activo && styles.filtroChipCountActivo]}>
+                    <Text style={[styles.filtroChipCountText, activo && styles.filtroChipCountTextActivo]}>
+                      {cantidad}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
+    );
+  };
+
+  const EditarOfertaModal = ({ visible, oferta, trabajadorId, onClose, onGuardado }) => {
+    const [precio, setPrecio] = useState('');
+    const [mensaje, setMensaje] = useState('');
+    const [guardando, setGuardando] = useState(false);
+    const [error, setError] = useState(null);
+
+    React.useEffect(() => {
+      if (oferta) {
+        setPrecio(oferta.precio != null ? String(oferta.precio) : '');
+        setMensaje(oferta.mensaje || '');
+        setError(null);
+      }
+    }, [oferta]);
+
+    const handleGuardar = async () => {
+      const precioNum = Number(precio);
+      if (!precio || Number.isNaN(precioNum) || precioNum <= 0) {
+        setError('Ingresá un precio válido.');
+        return;
+      }
+      setGuardando(true);
+      setError(null);
+      try {
+        const resp = await fetch(`${API_URL}/trabajador/ofertas/${oferta.idOferta}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            idTrabajador: trabajadorId,
+            precio: precioNum,
+            costoExtraMin: oferta.costoExtraMin ?? null,
+            costoExtraMax: oferta.costoExtraMax ?? null,
+            mensaje: mensaje.trim() || null,
+          }),
+        });
+        const body = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          throw new Error(body?.message || 'No pudimos actualizar tu oferta.');
+        }
+        onGuardado();
+      } catch (e) {
+        setError(e?.message || 'No pudimos actualizar tu oferta.');
+      } finally {
+        setGuardando(false);
+      }
+    };
+
+    if (!oferta) return null;
+
+    const info = modalidadInfo(oferta.fijo);
+
+    return (
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalCard}>
+            <View style={[styles.modalAccentBar, { backgroundColor: info.color }]} />
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Editar oferta</Text>
+                <ModalidadBadge fijo={oferta.fijo} />
+              </View>
+              <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Icons.Close />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalLabel}>Tu precio</Text>
+            <View style={styles.modalInputRow}>
+              <Text style={styles.modalInputPrefix}>$</Text>
+              <TextInput
+                style={styles.modalInputInline}
+                value={precio}
+                onChangeText={setPrecio}
+                keyboardType="numeric"
+                placeholder="0"
+                placeholderTextColor={COLORS.textFaint}
+              />
+            </View>
+
+            <Text style={styles.modalLabel}>Mensaje (opcional)</Text>
+            <TextInput
+              style={[styles.modalInput, styles.modalInputMultiline]}
+              value={mensaje}
+              onChangeText={setMensaje}
+              placeholder="Contale al cliente algo sobre tu oferta…"
+              placeholderTextColor={COLORS.textFaint}
+              multiline
+              numberOfLines={3}
+            />
+
+            {!!error && <Text style={styles.modalError}>{error}</Text>}
+
+            <TouchableOpacity
+              style={[styles.modalGuardarBtn, { backgroundColor: info.color }, guardando && { opacity: 0.7 }]}
+              activeOpacity={0.85}
+              onPress={handleGuardar}
+              disabled={guardando}
+            >
+              {guardando ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.modalGuardarBtnText}>Guardar cambios</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+    );
+  };
+
+  const OfertaEnviadaCard = ({ item, onVerDetalles, onEditar }) => {
+    const nombreCliente = `${item.nombre} ${item.apellido}`.trim();
+    const categoriaLabel = item.categoria_nombre || item.servicio_nombre || 'Servicio';
+    const estadoInfo = estadoOfertaInfo(item.estado);
+    const modInfo = modalidadInfo(item.fijo);
+    const esEditable = item.estado === 'PENDIENTE';
+
+    return (
+      <View
+        style={[
+          styles.card,
+          { borderLeftColor: modInfo.color },
+          item.emergencia && styles.cardEmergency,
+        ]}
+      >
+        {item.emergencia && (
+          <View style={styles.emergencyStrip}>
+            <Icons.Alert color="#FFFFFF" size={13} />
+            <Text style={styles.emergencyStripText}>EMERGENCIA</Text>
+          </View>
+        )}
+
+        <View style={styles.cardBody}>
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{iniciales(item.nombre, item.apellido)}</Text>
+            </View>
+
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.clienteNombre} numberOfLines={1}>
+                {nombreCliente || 'Cliente'}
+              </Text>
+              <View style={styles.chipsRow}>
+                <View style={styles.chip}>
+                  <Text style={styles.chipText} numberOfLines={1}>
+                    {categoriaLabel}
+                  </Text>
+                </View>
+                <ModalidadBadge fijo={item.fijo} compact />
+              </View>
+            </View>
+
+            <View style={[styles.estadoBadge, { backgroundColor: estadoInfo.bg }]}>
+              <Text style={[styles.estadoBadgeText, { color: estadoInfo.color }]}>{estadoInfo.label}</Text>
+            </View>
+          </View>
+
+          {!!item.descripcion && (
+            <Text style={styles.descripcion} numberOfLines={2}>
+              {item.descripcion}
+            </Text>
+          )}
+
+          {!!item.mensaje && (
+            <Text style={styles.mensaje} numberOfLines={2}>
+              "{item.mensaje}"
+            </Text>
+          )}
+
+          <View style={[styles.ofertaBox, { backgroundColor: modInfo.bg, borderColor: modInfo.border }]}>
+            <View style={styles.ofertaBoxLeft}>
+              <View style={[styles.ofertaBoxIconWrap, { backgroundColor: '#FFFFFF' }]}>
+                <Icons.Cash color={modInfo.color} size={16} />
+              </View>
+              <View style={{ marginLeft: 10 }}>
+                <Text style={[styles.ofertaBoxLabel, { color: modInfo.color }]}>
+                  {item.fijo ? 'Te postulaste por' : 'Tu oferta en subasta'}
+                </Text>
+                <Text style={styles.ofertaBoxMonto}>{formatMonto(item.precio)}</Text>
+              </View>
+            </View>
+
+            {esEditable && !item.fijo && (
+              <TouchableOpacity style={styles.editarBtn} activeOpacity={0.8} onPress={() => onEditar(item)}>
+                <Icons.Pencil color={modInfo.color} />
+                <Text style={[styles.editarBtnText, { color: modInfo.color }]}>Editar</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={styles.infoRow}>
+            <View style={styles.infoItem}>
+              <Icons.Clock />
+              <View>
+                <Text style={styles.infoLabel}>Horario</Text>
+                <Text style={styles.infoValor}>{formatHora(item.horario_requerido)}</Text>
+              </View>
+            </View>
+
+            {!!item.fecha_creado && (
+              <>
+                <View style={styles.infoDivider} />
+                <View style={styles.infoItem}>
+                  <View>
+                    <Text style={styles.infoLabel}>Enviada</Text>
+                    <Text style={styles.infoValor}>{formatFecha(item.fecha_creado)}</Text>
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.detalleBtn, { backgroundColor: COLORS.blue }]}
+            activeOpacity={0.85}
+            onPress={() => onVerDetalles(item)}
+          >
+            <Text style={styles.detalleBtnText}>Ver detalles</Text>
+            <Icons.Chevron />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -606,7 +588,7 @@ export default function MisOfertasTrabajador() {
         />
       )}
 
- <EditarOfertaModal
+      <EditarOfertaModal
         visible={!!ofertaEditando}
         oferta={ofertaEditando}
         trabajadorId={trabajadorId}
@@ -622,10 +604,10 @@ export default function MisOfertasTrabajador() {
 // -------------------------------------------------------------------------
 // Estilos
 // -------------------------------------------------------------------------
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: COLORS.bg,
+    backgroundColor: isDark ? colors.background : COLORS.bg,
   },
   header: {
     paddingHorizontal: 20,
@@ -635,12 +617,12 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 23,
     fontWeight: '800',
-    color: COLORS.text,
+    color: isDark ? colors.text : COLORS.text,
     letterSpacing: 0.2,
   },
   headerSubtitle: {
     fontSize: 13,
-    color: COLORS.textMuted,
+    color: isDark ? colors.textSecondary : COLORS.textMuted,
     marginTop: 3,
     fontWeight: '500',
   },
@@ -648,7 +630,7 @@ const styles = StyleSheet.create({
   // ---- Filtros ----
   filtrosWrap: {
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: isDark ? colors.border : COLORS.border,
     paddingBottom: 12,
     marginBottom: 4,
   },
@@ -661,9 +643,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 12,
-    backgroundColor: COLORS.card,
+    backgroundColor: isDark ? colors.card : COLORS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: isDark ? colors.border : COLORS.border,
   },
   filtroChipActivo: {
     backgroundColor: COLORS.blue,
@@ -672,7 +654,7 @@ const styles = StyleSheet.create({
   filtroChipText: {
     fontSize: 13,
     fontWeight: '700',
-    color: COLORS.textMuted,
+    color: isDark ? colors.textSecondary : COLORS.textMuted,
   },
   filtroChipTextActivo: {
     color: '#FFFFFF',
@@ -706,10 +688,10 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: COLORS.card,
+    backgroundColor: isDark ? colors.card : COLORS.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: isDark ? colors.border : COLORS.border,
     borderLeftWidth: 4,
     overflow: 'hidden',
     shadowColor: COLORS.shadow,
@@ -759,7 +741,7 @@ const styles = StyleSheet.create({
   clienteNombre: {
     fontSize: 15.5,
     fontWeight: '700',
-    color: COLORS.text,
+    color: isDark ? colors.text : COLORS.text,
   },
   chipsRow: {
     flexDirection: 'row',
@@ -781,7 +763,7 @@ const styles = StyleSheet.create({
     color: COLORS.chipText,
   },
 
-  // ---- Badge de modalidad (Fijo / Subasta) ----
+  // ---- Badge de modalidad ----
   modBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -810,19 +792,18 @@ const styles = StyleSheet.create({
 
   descripcion: {
     fontSize: 12.5,
-    color: COLORS.textMuted,
+    color: isDark ? colors.textSecondary : COLORS.textMuted,
     marginTop: 10,
     lineHeight: 17,
   },
   mensaje: {
     fontSize: 12.5,
-    color: COLORS.text,
+    color: isDark ? colors.text : COLORS.text,
     fontStyle: 'italic',
     marginTop: 8,
     lineHeight: 17,
   },
 
-  // ---- Monto ofertado destacado ----
   ofertaBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -850,7 +831,7 @@ const styles = StyleSheet.create({
   },
   ofertaBoxMonto: {
     fontSize: 17,
-    color: COLORS.text,
+    color: isDark ? colors.text : COLORS.text,
     fontWeight: '800',
     marginTop: 1,
   },
@@ -858,9 +839,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: COLORS.card,
+    backgroundColor: isDark ? colors.card : COLORS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: isDark ? colors.border : COLORS.border,
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 10,
@@ -874,7 +855,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 10,
-    backgroundColor: COLORS.bg,
+    backgroundColor: isDark ? colors.surfaceVariant : COLORS.bg,
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -888,17 +869,17 @@ const styles = StyleSheet.create({
   infoDivider: {
     width: 1,
     height: 26,
-    backgroundColor: COLORS.border,
+    backgroundColor: isDark ? colors.border : COLORS.border,
     marginHorizontal: 8,
   },
   infoLabel: {
     fontSize: 10.5,
-    color: COLORS.textFaint,
+    color: isDark ? colors.textTertiary : COLORS.textFaint,
     fontWeight: '600',
   },
   infoValor: {
     fontSize: 13,
-    color: COLORS.text,
+    color: isDark ? colors.text : COLORS.text,
     fontWeight: '700',
     marginTop: 1,
   },
@@ -928,12 +909,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 15.5,
     fontWeight: '800',
-    color: COLORS.text,
+    color: isDark ? colors.text : COLORS.text,
     marginTop: 8,
   },
   emptySubtitle: {
     fontSize: 13,
-    color: COLORS.textMuted,
+    color: isDark ? colors.textSecondary : COLORS.textMuted,
     textAlign: 'center',
     lineHeight: 18,
   },
@@ -960,7 +941,7 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: '100%',
-    backgroundColor: COLORS.card,
+    backgroundColor: isDark ? colors.card : COLORS.card,
     borderRadius: 20,
     padding: 20,
     overflow: 'hidden',
@@ -982,45 +963,45 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: COLORS.text,
+    color: isDark ? colors.text : COLORS.text,
     marginBottom: 8,
   },
   modalLabel: {
     fontSize: 12.5,
     fontWeight: '700',
-    color: COLORS.textMuted,
+    color: isDark ? colors.textSecondary : COLORS.textMuted,
     marginBottom: 6,
     marginTop: 10,
   },
   modalInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.bg,
+    backgroundColor: isDark ? colors.inputBg : COLORS.bg,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: isDark ? colors.border : COLORS.border,
     paddingHorizontal: 12,
   },
   modalInputPrefix: {
     fontSize: 16,
     fontWeight: '700',
-    color: COLORS.textMuted,
+    color: isDark ? colors.textSecondary : COLORS.textMuted,
     marginRight: 4,
   },
   modalInput: {
     fontSize: 15,
-    color: COLORS.text,
+    color: isDark ? colors.text : COLORS.text,
     paddingVertical: 12,
-    backgroundColor: COLORS.bg,
+    backgroundColor: isDark ? colors.inputBg : COLORS.bg,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: isDark ? colors.border : COLORS.border,
     paddingHorizontal: 12,
   },
   modalInputInline: {
     flex: 1,
     fontSize: 15,
-    color: COLORS.text,
+    color: isDark ? colors.text : COLORS.text,
     paddingVertical: 12,
   },
   modalInputMultiline: {

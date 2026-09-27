@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, TextInput, TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { useTheme } from '../ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 
 const INDIGO = '#2A3FD6';
@@ -8,7 +9,10 @@ const BORDER = 'rgba(15,27,76,0.08)';
 const NAVY = '#0F1B4C';
 
 export default function Search({ onSearch }) {
+  const { colors, isDark } = useTheme();
   const [texto, setTexto] = useState('');
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const handleBuscar = () => {
     if (onSearch) onSearch(texto);
@@ -40,7 +44,7 @@ export default function Search({ onSearch }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   wrapper: {
     paddingHorizontal: 16,
     paddingVertical: 4,
@@ -48,12 +52,12 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: isDark ? colors.surface : '#ffffff',
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: isDark ? colors.border : BORDER,
     shadowColor: NAVY,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
@@ -63,7 +67,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: TEXT_DARK,
+    color: isDark ? colors.text : TEXT_DARK,
     paddingVertical: 8,
   },
   filterBtn: {

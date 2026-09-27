@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Image,
   View,
@@ -18,6 +18,7 @@ import { useNavigation } from '@react-navigation/native';
 import API_URL from './configS';
 import Logoicon from './assets/Logoicon.png';
 import AjustesOverlay from './AjustesOverlay';
+import { useTheme } from './ThemeContext';
 import {
   listarNotificaciones,
   mapearParaHeader,
@@ -25,15 +26,12 @@ import {
   navegarDesdeNotificacion,
 } from './Notificaciones';
 
-/* Mismos tokens que el resto de la app */
 const INDIGO = '#3D4EEA';
 const INDIGO_DEEP = '#2432B0';
-const NAVY = '#0A1230';
 const AMBER = '#F5A623';
 const DANGER = '#E5484D';
 const WHITE = '#FFFFFF';
 
-/* Pin de ubicación, mismo estilo lineal que el resto de los íconos de la app */
 const PinIcon = ({ color = WHITE, size = 13 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
@@ -46,26 +44,6 @@ const PinIcon = ({ color = WHITE, size = 13 }) => (
   </Svg>
 );
 
-/**
- * Props:
- * - usuario: objeto con al menos { email } (o { id }) del usuario logueado.
- *   El Header usa esto para pedirle la dirección real al backend.
- * - direccion: opcional, permite overridear/forzar una dirección sin pegarle
- *   a la API (por ejemplo si ya la tenés resuelta en la pantalla padre).
- * - tipoDireccion: texto del chip "Casa ⌄" (la tabla Usuario no tiene este
- *   campo todavía; si lo agregás a la DB, se puede traer igual que direccion).
- * - onCambiarDireccion, onLogo: callbacks de los botones
- * - onSettings: callback opcional adicional, se dispara ANTES de abrir el
- *   menú lateral de ajustes (por si querés loguear el evento, etc). No hace
- *   falta que abras nada vos: el Header ya maneja el overlay internamente.
- * - notificaciones: array opcional de notificaciones reales, formato:
- *     { id, nombre, mensaje, hora, leida }
- *   Si no se pasa, se usa una lista de ejemplo.
- * - onNotificaciones: callback opcional, se dispara al abrir el panel
- * - onVerNotificacion: callback opcional, se dispara al tocar un item (item) => void
- * - onPerfil, onNotifAjustes, onPrivacidad, onPagos, onTrabajadores,
- *   onCerrarSesion: callbacks de cada item del menú lateral de ajustes
- */
 export default function Header({
   direccion: direccionProp,
   tipoDireccion = 'Casa',
@@ -84,6 +62,7 @@ export default function Header({
   onCerrarSesion,
 }) {
   const navigation = useNavigation();
+  const { colors, isDark } = useTheme();
 
   const [direccionDb, setDireccionDb] = useState(null);
   const [cargandoDireccion, setCargandoDireccion] = useState(false);
@@ -107,26 +86,20 @@ export default function Header({
     }
   }, [usuario?.id]);
 
-  // Si la pantalla no pasa notificaciones por prop, el Header las pide solo.
   useEffect(() => {
     if (!notificaciones) cargarNotificacionesInternas();
   }, [notificaciones, cargarNotificacionesInternas]);
 
   const fetchDireccion = useCallback(async () => {
     if (!usuario?.email) return;
-
     try {
       setCargandoDireccion(true);
       setErrorDireccion(false);
-
       const url = `${API_URL}/usuario/buscar?email=${encodeURIComponent(usuario.email)}`;
       const resp = await fetch(url);
       if (!resp.ok) throw new Error(`Status ${resp.status}`);
-
       const data = await resp.json();
-      if (data?.direccion) {
-        setDireccionDb(data.direccion);
-      }
+      if (data?.direccion) setDireccionDb(data.direccion);
     } catch (err) {
       console.error('[Header] Error trayendo dirección:', err.message);
       setErrorDireccion(true);
@@ -135,15 +108,9 @@ export default function Header({
     }
   }, [usuario?.email]);
 
-  useEffect(() => {
-    fetchDireccion();
-  }, [fetchDireccion]);
+  useEffect(() => { fetchDireccion(); }, [fetchDireccion]);
 
-  // Prioridad: dirección pasada explícitamente por prop > la traída de la DB > placeholder
-  const direccion =
-    direccionProp ??
-    direccionDb ??
-    (errorDireccion ? 'No se pudo cargar' : 'Sin dirección');
+  const direccion = direccionProp ?? direccionDb ?? (errorDireccion ? 'No se pudo cargar' : 'Sin dirección');
 
   const irAHome = () => {
     onLogo?.();
@@ -151,14 +118,9 @@ export default function Header({
     navigation.navigate(destino, { usuario });
   };
 
-  /* Lista real si el padre la pasa; si no, la que trae el Header solo.
-     No hay más datos de ejemplo: si no hay notificaciones, se muestra vacío. */
   const notificacionesData = notificaciones ?? notificacionesInternas ?? [];
-
   const noLeidas = notificacionesData.filter((n) => !n.leida).length;
 
-  // Al abrir el panel las pendientes se descartan (BADGE): se marcan todas
-  // como leídas y se refresca la lista que muestra el panel.
   const abrirPanel = () => {
     setPanelVisible(true);
     if (usuario?.id) {
@@ -193,89 +155,53 @@ export default function Header({
     navigation.navigate('Configuracion', { usuario });
   };
 
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   return (
     <LinearGradient
-      colors={[INDIGO, INDIGO_DEEP]}
+      colors={isDark ? ['#1a1f3a', '#0d1117'] : [INDIGO, INDIGO_DEEP]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={styles.header}
     >
-      <StatusBar backgroundColor={INDIGO_DEEP} barStyle="light-content" />
+      <StatusBar backgroundColor={isDark ? '#0d1117' : INDIGO_DEEP} barStyle="light-content" />
       <View style={styles.glowTop} />
 
-      {/* Icono izquierdo — Ajustes */}
-      <TouchableOpacity
-        style={styles.iconBtn}
-        onPress={abrirAjustes}
-        activeOpacity={0.8}
-        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-      >
+      <TouchableOpacity style={styles.iconBtn} onPress={abrirAjustes} activeOpacity={0.8} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
         <Ionicons name="settings-outline" size={20} color={WHITE} />
       </TouchableOpacity>
 
-      {/* Dirección */}
-      <TouchableOpacity
-        style={styles.centerContainer}
-        onPress={onCambiarDireccion}
-        activeOpacity={0.8}
-      >
+      <TouchableOpacity style={styles.centerContainer} onPress={onCambiarDireccion} activeOpacity={0.8}>
         <View style={styles.eyebrowRow}>
           <PinIcon />
           <Text style={styles.eyebrow}>ENVIANDO A</Text>
         </View>
-
         {cargandoDireccion && !direccionProp ? (
           <ActivityIndicator size="small" color={WHITE} style={{ marginTop: 4 }} />
         ) : (
-          <Text style={styles.address} numberOfLines={1} ellipsizeMode="tail">
-            {direccion}
-          </Text>
+          <Text style={styles.address} numberOfLines={1} ellipsizeMode="tail">{direccion}</Text>
         )}
-
         <View style={styles.tipoChip}>
-          <Text style={styles.tipoChipText} numberOfLines={1}>
-            {tipoDireccion}
-          </Text>
+          <Text style={styles.tipoChipText} numberOfLines={1}>{tipoDireccion}</Text>
           <Ionicons name="chevron-down" size={13} color="rgba(255,255,255,0.85)" />
         </View>
       </TouchableOpacity>
 
-      {/* Iconos de la derecha — Notificaciones + Logo/Home */}
       <View style={styles.rightGroup}>
-        <TouchableOpacity
-          style={styles.iconBtn}
-          onPress={abrirPanel}
-          activeOpacity={0.8}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-        >
+        <TouchableOpacity style={styles.iconBtn} onPress={abrirPanel} activeOpacity={0.8} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
           <Ionicons name="notifications-outline" size={19} color={WHITE} />
           {noLeidas > 0 && (
             <View style={styles.notifBadge}>
-              <Text style={styles.notifBadgeText}>
-                {noLeidas > 9 ? '9+' : noLeidas}
-              </Text>
+              <Text style={styles.notifBadgeText}>{noLeidas > 9 ? '9+' : noLeidas}</Text>
             </View>
           )}
         </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.logoBtn}
-          onPress={irAHome}
-          activeOpacity={0.85}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-        >
+        <TouchableOpacity style={styles.logoBtn} onPress={irAHome} activeOpacity={0.85} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
           <Image source={Logoicon} style={styles.logoImg} resizeMode="contain" />
         </TouchableOpacity>
       </View>
 
-      {/* Panel desplegable de notificaciones */}
-      <Modal
-        visible={panelVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={cerrarPanel}
-        statusBarTranslucent
-      >
+      <Modal visible={panelVisible} transparent animationType="fade" onRequestClose={cerrarPanel} statusBarTranslucent>
         <Pressable style={styles.backdrop} onPress={cerrarPanel}>
           <Pressable style={styles.panelWrapper} onPress={() => {}}>
             <View style={styles.panelArrow} />
@@ -288,58 +214,33 @@ export default function Header({
                   </View>
                 )}
               </View>
-
               {notificacionesData.length === 0 ? (
                 <View style={styles.emptyState}>
-                  <Ionicons
-                    name="notifications-off-outline"
-                    size={26}
-                    color="rgba(10,18,48,0.28)"
-                  />
+                  <Ionicons name="notifications-off-outline" size={26} color={colors.textTertiary} />
                   <Text style={styles.emptyText}>No tenés notificaciones</Text>
                 </View>
               ) : (
-                <ScrollView
-                  style={styles.panelList}
-                  showsVerticalScrollIndicator={false}
-                  bounces={false}
-                >
+                <ScrollView style={styles.panelList} showsVerticalScrollIndicator={false} bounces={false}>
                   {notificacionesData.map((item, idx) => (
                     <TouchableOpacity
                       key={item.id}
-                      style={[
-                        styles.notifItem,
-                        idx === notificacionesData.length - 1 && {
-                          borderBottomWidth: 0,
-                        },
-                      ]}
+                      style={[styles.notifItem, idx === notificacionesData.length - 1 && { borderBottomWidth: 0 }]}
                       activeOpacity={0.7}
                       onPress={() => handleItemPress(item)}
                     >
                       <View style={styles.notifAvatar}>
-                        <Text style={styles.notifAvatarText}>
-                          {item.nombre?.charAt(0) ?? '?'}
-                        </Text>
+                        <Text style={styles.notifAvatarText}>{item.nombre?.charAt(0) ?? '?'}</Text>
                         {!item.leida && <View style={styles.unreadDot} />}
                       </View>
-
                       <View style={styles.notifBody}>
                         <View style={styles.notifTopRow}>
                           <Text style={styles.notifNombre} numberOfLines={1}>
                             {item.nombre}
-                            {item.rol ? (
-                              <Text style={styles.notifRol}> · {item.rol}</Text>
-                            ) : null}
+                            {item.rol ? <Text style={styles.notifRol}> · {item.rol}</Text> : null}
                           </Text>
                           <Text style={styles.notifHora}>{item.hora}</Text>
                         </View>
-                        <Text
-                          style={[
-                            styles.notifMensaje,
-                            !item.leida && styles.notifMensajeUnread,
-                          ]}
-                          numberOfLines={2}
-                        >
+                        <Text style={[styles.notifMensaje, !item.leida && styles.notifMensajeUnread]} numberOfLines={2}>
                           {item.mensaje}
                         </Text>
                       </View>
@@ -347,21 +248,15 @@ export default function Header({
                   ))}
                 </ScrollView>
               )}
-
-              <TouchableOpacity
-                style={styles.panelFooter}
-                activeOpacity={0.7}
-                onPress={verTodas}
-              >
+              <TouchableOpacity style={styles.panelFooter} activeOpacity={0.7} onPress={verTodas}>
                 <Text style={styles.panelFooterText}>Ver todas</Text>
-                <Ionicons name="arrow-forward" size={15} color={INDIGO} />
+                <Ionicons name="arrow-forward" size={15} color={colors.primary} />
               </TouchableOpacity>
             </View>
           </Pressable>
         </Pressable>
       </Modal>
 
-      {/* Menú lateral de ajustes */}
       <AjustesOverlay
         visible={ajustesVisible}
         onClose={() => setAjustesVisible(false)}
@@ -377,7 +272,7 @@ export default function Header({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   header: {
     height: 92,
     paddingHorizontal: 14,
@@ -386,7 +281,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     overflow: 'hidden',
-    shadowColor: NAVY,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.18,
     shadowRadius: 14,
@@ -412,30 +307,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  centerContainer: {
-    flex: 1,
-    alignItems: 'center',
-    marginHorizontal: 6,
-  },
-  eyebrowRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  eyebrow: {
-    color: 'rgba(255,255,255,0.68)',
-    fontSize: 9.5,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  address: {
-    color: WHITE,
-    fontSize: 14.5,
-    fontWeight: '800',
-    marginTop: 3,
-    maxWidth: '100%',
-    letterSpacing: -0.1,
-  },
+  centerContainer: { flex: 1, alignItems: 'center', marginHorizontal: 6 },
+  eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  eyebrow: { color: 'rgba(255,255,255,0.68)', fontSize: 9.5, fontWeight: '800', letterSpacing: 1 },
+  address: { color: WHITE, fontSize: 14.5, fontWeight: '800', marginTop: 3, maxWidth: '100%', letterSpacing: -0.1 },
   tipoChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -448,16 +323,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 3,
   },
-  tipoChipText: {
-    color: WHITE,
-    fontSize: 11.5,
-    fontWeight: '700',
-  },
-  rightGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  tipoChipText: { color: WHITE, fontSize: 11.5, fontWeight: '700' },
+  rightGroup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   notifBadge: {
     position: 'absolute',
     top: -4,
@@ -470,13 +337,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 3,
     borderWidth: 1.5,
-    borderColor: INDIGO,
+    borderColor: isDark ? '#1a1f3a' : INDIGO,
   },
-  notifBadgeText: {
-    color: WHITE,
-    fontSize: 8.5,
-    fontWeight: '900',
-  },
+  notifBadgeText: { color: WHITE, fontSize: 8.5, fontWeight: '900' },
   logoBtn: {
     width: 44,
     height: 44,
@@ -488,32 +351,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  logoImg: {
-    width: 30,
-    height: 30,
-  },
-
-  /* ---------- Panel de notificaciones ---------- */
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(10,18,48,0.35)',
-  },
-  panelWrapper: {
-    position: 'absolute',
-    top: 98,
-    right: 60,
-    width: 300,
-    alignItems: 'flex-end',
-  },
+  logoImg: { width: 30, height: 30 },
+  backdrop: { flex: 1, backgroundColor: colors.overlay },
+  panelWrapper: { position: 'absolute', top: 98, right: 60, width: 300, alignItems: 'flex-end' },
   panelArrow: {
     width: 14,
     height: 14,
-    backgroundColor: WHITE,
+    backgroundColor: colors.surface,
     transform: [{ rotate: '45deg' }],
     marginRight: 18,
     marginBottom: -7,
     borderRadius: 2,
-    shadowColor: NAVY,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
     shadowRadius: 4,
@@ -521,10 +370,10 @@ const styles = StyleSheet.create({
   panel: {
     width: '100%',
     maxHeight: 360,
-    backgroundColor: WHITE,
+    backgroundColor: colors.surface,
     borderRadius: 18,
     paddingVertical: 10,
-    shadowColor: NAVY,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.18,
     shadowRadius: 20,
@@ -537,48 +386,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(10,18,48,0.08)',
+    borderBottomColor: colors.divider,
   },
-  panelTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: NAVY,
-  },
-  panelCountPill: {
-    backgroundColor: 'rgba(61,78,234,0.1)',
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-  },
-  panelCountText: {
-    fontSize: 10.5,
-    fontWeight: '800',
-    color: INDIGO,
-  },
-  panelList: {
-    maxHeight: 320,
-  },
+  panelTitle: { fontSize: 15, fontWeight: '800', color: colors.text },
+  panelCountPill: { backgroundColor: colors.infoBg, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
+  panelCountText: { fontSize: 10.5, fontWeight: '800', color: colors.primary },
+  panelList: { maxHeight: 320 },
   notifItem: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(10,18,48,0.06)',
+    borderBottomColor: colors.divider,
     gap: 10,
   },
   notifAvatar: {
     width: 38,
     height: 38,
     borderRadius: 12,
-    backgroundColor: INDIGO,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  notifAvatarText: {
-    color: WHITE,
-    fontWeight: '800',
-    fontSize: 15,
-  },
+  notifAvatarText: { color: WHITE, fontWeight: '800', fontSize: 15 },
   unreadDot: {
     position: 'absolute',
     top: -2,
@@ -588,53 +418,17 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: AMBER,
     borderWidth: 1.5,
-    borderColor: WHITE,
+    borderColor: colors.surface,
   },
-  notifBody: {
-    flex: 1,
-  },
-  notifTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  notifNombre: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: NAVY,
-    flexShrink: 1,
-  },
-  notifRol: {
-    fontSize: 11.5,
-    fontWeight: '500',
-    color: 'rgba(10,18,48,0.45)',
-  },
-  notifHora: {
-    fontSize: 10.5,
-    color: 'rgba(10,18,48,0.4)',
-    marginLeft: 6,
-  },
-  notifMensaje: {
-    fontSize: 12.5,
-    color: 'rgba(10,18,48,0.55)',
-    lineHeight: 17,
-  },
-  notifMensajeUnread: {
-    color: NAVY,
-    fontWeight: '600',
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 30,
-    gap: 8,
-  },
-  emptyText: {
-    fontSize: 12.5,
-    color: 'rgba(10,18,48,0.4)',
-    fontWeight: '600',
-  },
+  notifBody: { flex: 1 },
+  notifTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
+  notifNombre: { fontSize: 13, fontWeight: '700', color: colors.text, flexShrink: 1 },
+  notifRol: { fontSize: 11.5, fontWeight: '500', color: colors.textTertiary },
+  notifHora: { fontSize: 10.5, color: colors.textTertiary, marginLeft: 6 },
+  notifMensaje: { fontSize: 12.5, color: colors.textSecondary, lineHeight: 17 },
+  notifMensajeUnread: { color: colors.text, fontWeight: '600' },
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 30, gap: 8 },
+  emptyText: { fontSize: 12.5, color: colors.textTertiary, fontWeight: '600' },
   panelFooter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -642,11 +436,7 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingVertical: 11,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(10,18,48,0.08)',
+    borderTopColor: colors.divider,
   },
-  panelFooterText: {
-    fontSize: 12.5,
-    fontWeight: '800',
-    color: INDIGO,
-  },
+  panelFooterText: { fontSize: 12.5, fontWeight: '800', color: colors.primary },
 });

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,24 +14,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import API_URL from './configS';
+import { useTheme } from './ThemeContext';
 
-/* ── Paleta (tokens de la app) ─────────────────────────────────────────── */
-const NAVY = '#0F1B4C';
 const INDIGO = '#3D4EEA';
 const INDIGO_DEEP = '#2432B0';
 const AMBER = '#F5A623';
 const DANGER = '#E5484D';
-const BG = '#F4F6FC';
-const CARD = '#FFFFFF';
-const TEXT_DARK = '#12172E';
-const TEXT_MUTED = '#828AA0';
-const BORDER = 'rgba(15,27,76,0.07)';
 const GREEN = '#22C55E';
-const BLUE_SOFT = '#5C6DF2';
 const VIOLET = '#6D28D9';
 const SKY = '#0EA5E9';
 
-/* ── Metadatos por tipo de notificación ────────────────────────────────── */
 export const META_TIPO = {
   OFERTA_NUEVA: { icono: 'cash-outline', color: AMBER, rotulo: 'Oferta recibida' },
   OFERTA_ACEPTADA: { icono: 'checkmark-circle', color: GREEN, rotulo: 'Oferta aceptada' },
@@ -45,9 +37,6 @@ export const META_TIPO = {
   TRABAJO_FINALIZADO: { icono: 'checkmark-done-circle', color: GREEN, rotulo: 'Trabajo finalizado' },
 };
 
-/* ── Helpers públicos (también los usa el Header) ─────────────────────── */
-
-// Formatea created_at a "hace X min / hace X h / Ayer / hace X d / fecha corta".
 export function formatearHora(createdAt) {
   if (!createdAt) return '';
   const fecha = new Date(createdAt);
@@ -63,8 +52,6 @@ export function formatearHora(createdAt) {
   return fecha.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
 }
 
-// Convierte una fila cruda de /notificacion/usuario/:id a la forma que
-// espera el panel del Header: { id, nombre, mensaje, hora, leida }.
 export function mapearParaHeader(row) {
   return {
     id: String(row?.id),
@@ -84,7 +71,6 @@ const peticion = async (url, opts) => {
   } catch (err) {
     throw new Error('No se pudo conectar con el servidor');
   }
-
   if (!resp.ok) {
     let detalle = `Error del servidor (HTTP ${resp.status})`;
     try {
@@ -93,7 +79,6 @@ const peticion = async (url, opts) => {
     } catch {}
     throw new Error(detalle);
   }
-
   const texto = await resp.text();
   try {
     return JSON.parse(texto);
@@ -122,9 +107,6 @@ export const marcarTodasLasLeidas = (idUsuario) =>
     body: JSON.stringify({ idUsuario }),
   });
 
-// Navega desde una notificación al lugar que corresponde.
-// MENSAJE → abre el chat directo (si se encuentra), si no la lista de chats.
-// Las demás → pantalla según el rol y el tipo.
 export const navegarDesdeNotificacion = async (item, usuario, navigation) => {
   if (!usuario?.id || !navigation) return;
   const esTrabajador = usuario?.tipo === 'trabajador';
@@ -190,9 +172,9 @@ export const navegarDesdeNotificacion = async (item, usuario, navigation) => {
   }
 };
 
-/* ── Pantalla ──────────────────────────────────────────────────────────── */
 export default function Notificaciones({ route, navigation }) {
   const usuario = route?.params?.usuario;
+  const { colors, isDark } = useTheme();
 
   const [notificaciones, setNotificaciones] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -216,8 +198,6 @@ export default function Notificaciones({ route, navigation }) {
     }
   }, [usuario?.id]);
 
-  // Al abrir la pantalla, las pendientes se descartan (marcadas como leídas)
-  // y la lista se recarga.
   const procesarAlAbrir = useCallback(async () => {
     if (usuario?.id) {
       try {
@@ -264,11 +244,7 @@ export default function Notificaciones({ route, navigation }) {
   const noLeidas = notificaciones.filter((n) => !n.leida).length;
 
   const renderItem = ({ item }) => {
-    const meta = META_TIPO[item.tipo] ?? {
-      icono: 'notifications-outline',
-      color: INDIGO,
-      rotulo: 'Notificación',
-    };
+    const meta = META_TIPO[item.tipo] ?? { icono: 'notifications-outline', color: INDIGO, rotulo: 'Notificación' };
     return (
       <TouchableOpacity
         style={[styles.item, !item.leida && styles.itemNoLeido]}
@@ -279,46 +255,34 @@ export default function Notificaciones({ route, navigation }) {
           <Ionicons name={meta.icono} size={19} color={meta.color} />
           {!item.leida && <View style={styles.dot} />}
         </View>
-
         <View style={styles.itemBody}>
           <View style={styles.itemTopRow}>
-            <Text style={styles.itemTitulo} numberOfLines={1}>
-              {item.nombre}
-            </Text>
+            <Text style={styles.itemTitulo} numberOfLines={1}>{item.nombre}</Text>
             <Text style={styles.itemHora}>{item.hora}</Text>
           </View>
-          <Text
-            style={[styles.itemMensaje, !item.leida && styles.itemMensajeNoLeido]}
-            numberOfLines={2}
-          >
+          <Text style={[styles.itemMensaje, !item.leida && styles.itemMensajeNoLeido]} numberOfLines={2}>
             {item.mensaje}
           </Text>
         </View>
-
-        <Ionicons name="chevron-forward" size={15} color="rgba(15,27,76,0.25)" />
+        <Ionicons name="chevron-forward" size={15} color={colors.textTertiary} />
       </TouchableOpacity>
     );
   };
 
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="light-content" backgroundColor={INDIGO_DEEP} />
-
+      <StatusBar barStyle="light-content" backgroundColor={isDark ? '#0d1117' : INDIGO_DEEP} />
       <LinearGradient
-        colors={[INDIGO, INDIGO_DEEP]}
+        colors={isDark ? ['#1a1f3a', '#0d1117'] : [INDIGO, INDIGO_DEEP]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.header}
       >
-        <TouchableOpacity
-          style={styles.headerBtn}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.8}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-        >
+        <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()} activeOpacity={0.8} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
           <Ionicons name="arrow-back" size={21} color="#fff" />
         </TouchableOpacity>
-
         <View style={styles.headerTituloWrap}>
           <Text style={styles.headerTitulo}>Notificaciones</Text>
           {noLeidas > 0 && (
@@ -327,29 +291,23 @@ export default function Notificaciones({ route, navigation }) {
             </View>
           )}
         </View>
-
-        <TouchableOpacity
-          style={styles.headerBtn}
-          onPress={marcarTodas}
-          activeOpacity={0.8}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-        >
+        <TouchableOpacity style={styles.headerBtn} onPress={marcarTodas} activeOpacity={0.8} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
           <Ionicons name="checkmark-done" size={21} color="#fff" />
         </TouchableOpacity>
       </LinearGradient>
 
       {!usuario?.id ? (
         <View style={styles.centro}>
-          <Ionicons name="notifications-off-outline" size={30} color="rgba(15,27,76,0.25)" />
+          <Ionicons name="notifications-off-outline" size={30} color={colors.textTertiary} />
           <Text style={styles.centroTexto}>No hay usuario logueado</Text>
         </View>
       ) : cargando ? (
         <View style={styles.centro}>
-          <ActivityIndicator color={INDIGO} />
+          <ActivityIndicator color={colors.primary} />
         </View>
       ) : notificaciones.length === 0 ? (
         <View style={styles.centro}>
-          <Ionicons name="notifications-off-outline" size={30} color="rgba(15,27,76,0.25)" />
+          <Ionicons name="notifications-off-outline" size={30} color={colors.textTertiary} />
           <Text style={styles.centroTexto}>No tenés notificaciones todavía</Text>
         </View>
       ) : (
@@ -359,9 +317,7 @@ export default function Notificaciones({ route, navigation }) {
           renderItem={renderItem}
           contentContainerStyle={styles.lista}
           showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refrescando} onRefresh={refrescar} tintColor={INDIGO} />
-          }
+          refreshControl={<RefreshControl refreshing={refrescando} onRefresh={refrescar} tintColor={colors.primary} />}
           ListHeaderComponent={
             <View style={styles.leyenda}>
               <Text style={styles.leyendaTexto}>Tocá una notificación para verla</Text>
@@ -373,16 +329,15 @@ export default function Notificaciones({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG },
-
+const createStyles = (colors, isDark) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 14,
-    shadowColor: NAVY,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.18,
     shadowRadius: 14,
@@ -400,30 +355,23 @@ const styles = StyleSheet.create({
   },
   headerTituloWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerTitulo: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  headerPill: {
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-  },
+  headerPill: { backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
   headerPillText: { color: '#fff', fontSize: 10.5, fontWeight: '800' },
-
   lista: { paddingHorizontal: 14, paddingBottom: 30 },
   leyenda: { paddingTop: 16, paddingBottom: 8 },
-  leyendaTexto: { color: TEXT_MUTED, fontSize: 12, fontWeight: '600' },
-
+  leyendaTexto: { color: colors.textTertiary, fontSize: 12, fontWeight: '600' },
   item: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CARD,
+    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: colors.border,
     gap: 12,
   },
-  itemNoLeido: { borderColor: 'rgba(61,78,234,0.4)' },
+  itemNoLeido: { borderColor: colors.border },
   itemIcono: {
     width: 44,
     height: 44,
@@ -441,20 +389,14 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: AMBER,
     borderWidth: 1.5,
-    borderColor: CARD,
+    borderColor: colors.card,
   },
   itemBody: { flex: 1 },
-  itemTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 3,
-  },
-  itemTitulo: { fontSize: 13.5, fontWeight: '800', color: TEXT_DARK, flexShrink: 1 },
-  itemHora: { fontSize: 10.5, color: TEXT_MUTED, marginLeft: 6 },
-  itemMensaje: { fontSize: 12.5, color: TEXT_MUTED, lineHeight: 17 },
-  itemMensajeNoLeido: { color: TEXT_DARK, fontWeight: '600' },
-
+  itemTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 },
+  itemTitulo: { fontSize: 13.5, fontWeight: '800', color: colors.text, flexShrink: 1 },
+  itemHora: { fontSize: 10.5, color: colors.textTertiary, marginLeft: 6 },
+  itemMensaje: { fontSize: 12.5, color: colors.textSecondary, lineHeight: 17 },
+  itemMensajeNoLeido: { color: colors.text, fontWeight: '600' },
   centro: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 40 },
-  centroTexto: { color: TEXT_MUTED, fontSize: 13, fontWeight: '600' },
+  centroTexto: { color: colors.textTertiary, fontSize: 13, fontWeight: '600' },
 });

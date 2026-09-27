@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { useTheme } from '../ThemeContext'
 
 const BLUE = '#1565D8'
 const LIGHTBLUE = '#7A9AE8'
@@ -14,9 +15,13 @@ const LIGHTBLUE = '#7A9AE8'
  *   (dispara onEditarFoto, ahí después enganchás tu image picker).
  */
 export default function Iniciales({ nombre, foto, size = 46, editable = false, onEditarFoto }) {
+  const { colors, isDark } = useTheme();
+
   const ini = nombre
     ? nombre.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
     : '??'
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   return (
     <View style={{ width: size, height: size }}>
@@ -44,7 +49,7 @@ export default function Iniciales({ nombre, foto, size = 46, editable = false, o
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   avatar: {
     backgroundColor: BLUE,
     alignItems: 'center',
@@ -61,10 +66,10 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.border,
   },
 })

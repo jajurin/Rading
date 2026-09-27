@@ -1,7 +1,8 @@
 // OfertaCard.jsx
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { useTheme } from '../ThemeContext'
 
 const COLORS = {
   blue:   '#1a3a8f',
@@ -21,38 +22,17 @@ const shadow = (elevation = 6) => ({
   elevation,
 })
 
-function Iniciales({ nombre, size = 48, bg = '#b0b8c8', ring }) {
-  const ini = nombre.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
-  return (
-    <View
-      style={[
-        { alignItems: 'center', justifyContent: 'center' },
-        ring && { borderWidth: 2.5, borderColor: ring, borderRadius: size / 2 + 3, padding: 2 },
-      ]}
-    >
-      <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: bg }]}>
-        <Text style={[styles.avatarText, { fontSize: size * 0.28 }]}>{ini}</Text>
-      </View>
-    </View>
-  )
+function formatearRestante(ms) {
+  if (ms <= 0) return 'Cerrando…'
+  const totalSeg = Math.floor(ms / 1000)
+  const h = Math.floor(totalSeg / 3600)
+  const m = Math.floor((totalSeg % 3600) / 60)
+  const s = totalSeg % 60
+  if (h > 0) return `${h}h ${m}m`
+  if (m > 0) return `${m}m ${s}s`
+  return `${s}s`
 }
 
-function Estrellas({ rating, size = 12 }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-      {[1, 2, 3, 4, 5].map(i => (
-        <Ionicons
-          key={i}
-          name={i <= Math.round(rating) ? 'star' : 'star-outline'}
-          size={size}
-          color={COLORS.yellow}
-        />
-      ))}
-    </View>
-  )
-}
-
-// ─── Contador regresivo para subastas ─────────────────────────────────────
 function useCountdown(targetDate) {
   const [msRestantes, setMsRestantes] = useState(() =>
     targetDate ? new Date(targetDate).getTime() - Date.now() : null
@@ -69,37 +49,60 @@ function useCountdown(targetDate) {
   return msRestantes
 }
 
-function formatearRestante(ms) {
-  if (ms <= 0) return 'Cerrando…'
-  const totalSeg = Math.floor(ms / 1000)
-  const h = Math.floor(totalSeg / 3600)
-  const m = Math.floor((totalSeg % 3600) / 60)
-  const s = totalSeg % 60
-  if (h > 0) return `${h}h ${m}m`
-  if (m > 0) return `${m}m ${s}s`
-  return `${s}s`
-}
-
-function CountdownBadge({ expiraEn }) {
-  const msRestantes = useCountdown(expiraEn)
-  if (msRestantes == null) return null
-
-  const cerrada = msRestantes <= 0
-  const urgente = !cerrada && msRestantes <= 15 * 60 * 1000
-
-  return (
-    <View style={[styles.countdownBadge, (urgente || cerrada) && styles.countdownBadgeUrgente]}>
-      <Ionicons name="time-outline" size={12} color={COLORS.white} />
-      <Text style={styles.countdownText}>
-        {cerrada ? 'Cerrando…' : formatearRestante(msRestantes)}
-      </Text>
-    </View>
-  )
-}
-
 export default function OfertaCard({ item, esMejor, onAceptar }) {
+  const { colors, isDark } = useTheme();
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const esSubasta = !item.fijo
   const mostrarMejor = esSubasta && esMejor
+
+  // Componentes movidos dentro del componente principal para acceder a styles
+  const Iniciales = ({ nombre, size = 48, bg = '#b0b8c8', ring }) => {
+    const ini = nombre.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+    return (
+      <View
+        style={[
+          { alignItems: 'center', justifyContent: 'center' },
+          ring && { borderWidth: 2.5, borderColor: ring, borderRadius: size / 2 + 3, padding: 2 },
+        ]}
+      >
+        <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: bg }]}>
+          <Text style={[styles.avatarText, { fontSize: size * 0.28 }]}>{ini}</Text>
+        </View>
+      </View>
+    )
+  }
+
+  const Estrellas = ({ rating, size = 12 }) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+      {[1, 2, 3, 4, 5].map(i => (
+        <Ionicons
+          key={i}
+          name={i <= Math.round(rating) ? 'star' : 'star-outline'}
+          size={size}
+          color={COLORS.yellow}
+        />
+      ))}
+    </View>
+  )
+
+  const CountdownBadge = ({ expiraEn }) => {
+    const msRestantes = useCountdown(expiraEn)
+    if (msRestantes == null) return null
+
+    const cerrada = msRestantes <= 0
+    const urgente = !cerrada && msRestantes <= 15 * 60 * 1000
+
+    return (
+      <View style={[styles.countdownBadge, (urgente || cerrada) && styles.countdownBadgeUrgente]}>
+        <Ionicons name="time-outline" size={12} color={COLORS.white} />
+        <Text style={styles.countdownText}>
+          {cerrada ? 'Cerrando…' : formatearRestante(msRestantes)}
+        </Text>
+      </View>
+    )
+  }
 
   return (
     <View style={[styles.card, mostrarMejor && styles.cardMejor]}>
@@ -179,7 +182,7 @@ export default function OfertaCard({ item, esMejor, onAceptar }) {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   card: {
     backgroundColor: COLORS.blue,
     borderRadius: 20,

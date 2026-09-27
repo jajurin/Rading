@@ -208,10 +208,20 @@ export function ThemeProvider({ children }) {
   );
 }
 
+// ★ CAMBIO: la key ya NO empieza con "@". SecureStore (usado por debajo
+// en asyncStorage.js) solo acepta caracteres alfanuméricos, ".", "-" y
+// "_" en las keys. El "@" hacía que guardar/leer tirara:
+//   "Invalid key provided to SecureStore. Keys must not be empty and
+//    contain only alphanumeric characters..."
+// y eso rompía el render de pantallas como Configuración.
+//
+// IMPORTANTE: si en Login.js, Registro.js o algún otro archivo se guarda
+// el id con la key vieja "@rading_user_id", hay que cambiarla ahí
+// también para que coincida con esta.
 async function getUserId() {
   try {
-    const { default: AsyncStorage } = await import('@react-native-async-storage/async-storage');
-    const id = await AsyncStorage.getItem('@rading_user_id');
+    const { default: AsyncStorage } = await import('./asyncStorage');
+    const id = await AsyncStorage.getItem('rading_user_id');
     return id ? Number(id) : null;
   } catch {
     return null;

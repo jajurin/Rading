@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
+import { useTheme } from '../ThemeContext';
 
 // import API_URL from '../configS';
 
@@ -108,7 +109,7 @@ const Icons = {
   ),
 };
 
-function ModalidadBadge({ fijo }) {
+function ModalidadBadge({ fijo, styles }) {
   const info = fijo
     ? { label: 'FIJO', color: FIJO, bg: FIJO_BG, border: FIJO_BORDER }
     : { label: 'SUBASTA', color: SUBASTA, bg: SUBASTA_BG, border: SUBASTA_BORDER };
@@ -122,7 +123,7 @@ function ModalidadBadge({ fijo }) {
 }
 
 // ── Selector grande de estrellas (calificación general) ─────────────────
-function EstrellasGrandes({ value, onChange }) {
+function EstrellasGrandes({ value, onChange, styles }) {
   return (
     <View style={styles.estrellasGrandesRow}>
       {[1, 2, 3, 4, 5].map((n) => (
@@ -168,6 +169,9 @@ function EstrellasChicas({ value, onChange }) {
 }
 
 export default function CalificarClienteTrabajador({ route, navigation }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const cliente = route?.params?.cliente ?? CLIENTE_MOCK;
   const trabajo = route?.params?.trabajo ?? TRABAJO_MOCK;
   const idTrabajo = route?.params?.idTrabajo ?? null;
@@ -224,7 +228,7 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="light-content" backgroundColor={NAVY} />
+      <StatusBar barStyle={colors.statusBar} backgroundColor={colors.statusBarBg} />
 
       {/* ── Header con back ────────────────────────────────────────── */}
       <View style={styles.topBar}>
@@ -280,6 +284,13 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
                 {trabajo.servicio_nombre} · {trabajo.fecha}
               </Text>
             </View>
+            <TouchableOpacity
+              style={styles.verPerfilBtn}
+              onPress={() => navigation.navigate('PerfilClienteParaTrabajador', { idCliente: cliente.id })}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.verPerfilBtnText}>Ver perfil</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.bannerInfoRow}>
@@ -296,7 +307,7 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
             </View>
             <View style={styles.bannerInfoDivider} />
             <View style={styles.bannerInfoItem}>
-              <ModalidadBadge fijo={trabajo.fijo} />
+              <ModalidadBadge fijo={trabajo.fijo} styles={styles} />
             </View>
           </View>
         </LinearGradient>
@@ -306,7 +317,7 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
           <Text style={styles.cardTitle}>¿Cómo fue tu experiencia con este cliente?</Text>
           <Text style={styles.cardSubtitle}>Tu opinión ayuda a otros trabajadores</Text>
 
-          <EstrellasGrandes value={general} onChange={setGeneral} />
+          <EstrellasGrandes value={general} onChange={setGeneral} styles={styles} />
 
           <Text style={styles.estrellasLabel}>
             {general > 0 ? LABELS_ESTRELLAS[general] : 'Tocá una estrella para calificar'}
@@ -466,8 +477,8 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: isDark ? colors.background : BG },
 
   topBar: {
     flexDirection: 'row',
@@ -509,6 +520,16 @@ const styles = StyleSheet.create({
   bannerAvatarFallbackText: { color: WHITE, fontWeight: '800', fontSize: 16 },
   bannerClienteNombre: { color: WHITE, fontSize: 17, fontWeight: '800' },
   bannerServicio: { color: 'rgba(255,255,255,0.75)', fontSize: 12.5, marginTop: 3 },
+  verPerfilBtn: {
+    marginLeft: 10,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  verPerfilBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
   bannerInfoRow: {
     flexDirection: 'row', alignItems: 'center', marginTop: 18,
@@ -528,12 +549,12 @@ const styles = StyleSheet.create({
   modBadgeText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
 
   card: {
-    backgroundColor: CARD, borderRadius: 22, marginHorizontal: 16, marginTop: 14,
-    padding: 18, borderWidth: 1, borderColor: BORDER,
+    backgroundColor: isDark ? colors.card : CARD, borderRadius: 22, marginHorizontal: 16, marginTop: 14,
+    padding: 18, borderWidth: 1, borderColor: isDark ? colors.border : BORDER,
     shadowColor: NAVY, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 2,
   },
-  cardTitle: { color: TEXT_DARK, fontSize: 15.5, fontWeight: '800' },
-  cardSubtitle: { color: TEXT_MUTED, fontSize: 12, marginTop: 3 },
+  cardTitle: { color: isDark ? colors.text : TEXT_DARK, fontSize: 15.5, fontWeight: '800' },
+  cardSubtitle: { color: isDark ? colors.textSecondary : TEXT_MUTED, fontSize: 12, marginTop: 3 },
 
   estrellasGrandesRow: {
     flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
@@ -552,38 +573,38 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(42,63,214,0.08)',
     alignItems: 'center', justifyContent: 'center',
   },
-  aspectoLabel: { color: TEXT_DARK, fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  aspectoLabel: { color: isDark ? colors.text : TEXT_DARK, fontSize: 13, fontWeight: '600', flexShrink: 1 },
 
   volveriaRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
   volveriaBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-    paddingVertical: 13, borderRadius: 14, borderWidth: 1.5, borderColor: BORDER,
-    backgroundColor: BG,
+    paddingVertical: 13, borderRadius: 14, borderWidth: 1.5, borderColor: isDark ? colors.border : BORDER,
+    backgroundColor: isDark ? colors.inputBg : BG,
   },
   volveriaBtnActivoSi: { backgroundColor: GREEN, borderColor: GREEN },
   volveriaBtnActivoNo: { backgroundColor: RED, borderColor: RED },
-  volveriaBtnText: { color: TEXT_DARK, fontWeight: '700', fontSize: 13 },
+  volveriaBtnText: { color: isDark ? colors.text : TEXT_DARK, fontWeight: '700', fontSize: 13 },
   volveriaBtnTextActivo: { color: WHITE },
 
   tagsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
   tagChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1.5, borderColor: BORDER, backgroundColor: BG,
+    borderWidth: 1.5, borderColor: isDark ? colors.border : BORDER, backgroundColor: isDark ? colors.inputBg : BG,
   },
   tagChipActive: { backgroundColor: INDIGO, borderColor: INDIGO },
-  tagChipText: { color: TEXT_MUTED, fontSize: 12.5, fontWeight: '600' },
+  tagChipText: { color: isDark ? colors.textSecondary : TEXT_MUTED, fontSize: 12.5, fontWeight: '600' },
   tagChipTextActive: { color: WHITE, fontWeight: '700' },
 
   comentarioInput: {
-    marginTop: 14, backgroundColor: BG, borderRadius: 14, borderWidth: 1, borderColor: BORDER,
-    padding: 14, minHeight: 96, color: TEXT_DARK, fontSize: 13.5, lineHeight: 19,
+    marginTop: 14, backgroundColor: isDark ? colors.inputBg : BG, borderRadius: 14, borderWidth: 1, borderColor: isDark ? colors.inputBorder : BORDER,
+    padding: 14, minHeight: 96, color: isDark ? colors.text : TEXT_DARK, fontSize: 13.5, lineHeight: 19,
   },
-  contadorChars: { textAlign: 'right', color: TEXT_MUTED, fontSize: 11, marginTop: 6 },
+  contadorChars: { textAlign: 'right', color: isDark ? colors.textTertiary : TEXT_MUTED, fontSize: 11, marginTop: 6 },
 
   footerBtns: { paddingHorizontal: 16, marginTop: 20, gap: 12 },
   omitirBtn: { alignItems: 'center', paddingVertical: 10 },
-  omitirBtnText: { color: TEXT_MUTED, fontWeight: '700', fontSize: 13.5 },
+  omitirBtnText: { color: isDark ? colors.textSecondary : TEXT_MUTED, fontWeight: '700', fontSize: 13.5 },
   enviarBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     paddingVertical: 16, borderRadius: 16,

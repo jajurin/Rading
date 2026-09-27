@@ -1,4 +1,4 @@
-  import React, { useState, useRef, useEffect } from "react";
+  import React, { useState, useRef, useEffect, useMemo } from "react";
   import {
     View,
     Text,
@@ -10,6 +10,7 @@
   } from "react-native";
   import Svg, { Path } from "react-native-svg";
   import API_URL from "../configS";
+  import { useTheme } from "../ThemeContext";
 
   const formatearDuracion = (minutos) => {
     if (minutos === null || minutos === undefined || Number.isNaN(minutos)) return "-";
@@ -27,6 +28,9 @@
     onConfirm = () => {},
     onClose = () => {},
   }) {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const [status, setStatus] = useState("idle"); // idle | loading | success | error | closing
     const [codigoInput, setCodigoInput] = useState("");
     const [errorMsg, setErrorMsg] = useState(null);
@@ -243,12 +247,12 @@
 
   const BLUE = "#0b2cd6";
 
-  const styles = StyleSheet.create({
-    overlay: { flex: 1, backgroundColor: "#0b1220", alignItems: "center", justifyContent: "center", padding: 24 },
+  const createStyles = (colors, isDark) => StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: isDark ? colors.overlay : "#0b1220", alignItems: "center", justifyContent: "center", padding: 24 },
     card: {
       width: "100%",
       maxWidth: 340,
-      backgroundColor: "#ffffff",
+      backgroundColor: isDark ? colors.card : "#ffffff",
       borderRadius: 28,
       padding: 24,
       paddingTop: 28,
@@ -265,7 +269,7 @@
       width: 30,
       height: 30,
       borderRadius: 999,
-      backgroundColor: "#f1f4ff",
+      backgroundColor: isDark ? colors.surfaceVariant : "#f1f4ff",
       alignItems: "center",
       justifyContent: "center",
       zIndex: 2,
@@ -283,21 +287,21 @@
       justifyContent: "center",
     },
     title: { textAlign: "center", color: BLUE, fontSize: 21, fontWeight: "800", marginBottom: 4 },
-    sub: { textAlign: "center", color: "#8a90a8", fontSize: 13.5, marginBottom: 20, lineHeight: 19 },
-    rows: { backgroundColor: "#f6f8ff", borderRadius: 18, paddingHorizontal: 16, marginBottom: 16 },
+    sub: { textAlign: "center", color: isDark ? colors.textSecondary : "#8a90a8", fontSize: 13.5, marginBottom: 20, lineHeight: 19 },
+    rows: { backgroundColor: isDark ? colors.surfaceVariant : "#f6f8ff", borderRadius: 18, paddingHorizontal: 16, marginBottom: 16 },
     row: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
       paddingVertical: 12,
       borderBottomWidth: 1,
-      borderBottomColor: "#e9edff",
+      borderBottomColor: isDark ? colors.divider : "#e9edff",
     },
     rowLast: { borderBottomWidth: 0 },
-    rowLabel: { color: "#8a90a8", fontSize: 13, fontWeight: "600" },
-    rowValue: { color: "#16193f", fontSize: 13.5, fontWeight: "700", textAlign: "right", maxWidth: "60%" },
+    rowLabel: { color: isDark ? colors.textSecondary : "#8a90a8", fontSize: 13, fontWeight: "600" },
+    rowValue: { color: isDark ? colors.text : "#16193f", fontSize: 13.5, fontWeight: "700", textAlign: "right", maxWidth: "60%" },
     codeInput: {
-      backgroundColor: "#f6f8ff",
+      backgroundColor: isDark ? colors.inputBg : "#f6f8ff",
       borderRadius: 14,
       paddingVertical: 14,
       paddingHorizontal: 16,
@@ -305,11 +309,11 @@
       fontWeight: "800",
       textAlign: "center",
       letterSpacing: 6,
-      color: "#16193f",
+      color: isDark ? colors.text : "#16193f",
       marginBottom: 14,
     },
-    errorBox: { backgroundColor: "#fdeceb", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 14 },
-    errorText: { color: "#c0392b", fontSize: 12.5, fontWeight: "600", textAlign: "center" },
+    errorBox: { backgroundColor: isDark ? colors.dangerBg : "#fdeceb", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 14 },
+    errorText: { color: isDark ? colors.danger : "#c0392b", fontSize: 12.5, fontWeight: "600", textAlign: "center" },
     btn: {
       width: "100%",
       borderRadius: 999,
@@ -343,5 +347,5 @@
       justifyContent: "center",
     },
     successTitle: { color: BLUE, fontSize: 19, fontWeight: "800", marginBottom: 6 },
-    successSub: { color: "#8a90a8", fontSize: 13.5, textAlign: "center" },
+    successSub: { color: isDark ? colors.textSecondary : "#8a90a8", fontSize: 13.5, textAlign: "center" },
   });

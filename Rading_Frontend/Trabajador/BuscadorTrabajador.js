@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View, Text, StyleSheet, FlatList,
   TouchableOpacity, ActivityIndicator, Image,
   Modal, ScrollView, TextInput,
 } from "react-native";
+import { useTheme } from "../ThemeContext";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,327 +29,14 @@ const BORDER      = 'rgba(15,27,76,0.08)';
 const AVATAR_CLIENTE = (nombre = '', apellido = '') =>
   `https://ui-avatars.com/api/?name=${nombre}+${apellido}&background=2A3FD6&color=fff&size=150`;
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
-
-const RatingBadge = ({ rating }) => (
-  <View style={styles.ratingBadge}>
-    <Ionicons name="star" size={11} color={AMBER} />
-    <Text style={styles.ratingText}>{Number(rating).toFixed(2)}</Text>
-  </View>
-);
-
-const SERVICIOS_MAP = {
-  1: 'Electricista', 2: 'Plomero', 3: 'Jardinero', 4: 'Gasista',
-  5: 'Limpieza', 6: 'Cerrajero', 7: 'Diseñador Gráfico', 8: 'Programador',
-  9: 'Redactor', 10: 'Editor de Video', 11: 'Community Manager',
-  12: 'Abogado', 13: 'Contador', 14: 'Arquitecto',
-  15: 'Médico', 16: 'Psicólogo', 17: 'Ingeniero',
-};
-
-const ClienteCard = ({ item, onPressChat }) => (
-  <View style={styles.card}>
-    <Image
-      source={{ uri: item.foto ?? AVATAR_CLIENTE(item.nombre, item.apellido) }}
-      style={styles.avatar}
-    />
-    <View style={styles.cardBody}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardName} numberOfLines={1}>{item.nombre} {item.apellido}</Text>
-        <RatingBadge rating={item.estrellas ?? 0} />
-      </View>
-
-      {(item.especialidad || item.servicio_id) ? (
-        <View style={styles.tagRow}>
-          <Ionicons name="construct-outline" size={12} color={INDIGO} />
-          <Text style={styles.cardTag}>
-            {item.especialidad ?? SERVICIOS_MAP[item.servicio_id] ?? 'Sin especialidad'}
-          </Text>
-        </View>
-      ) : null}
-
-      <View style={styles.metaRow}>
-        {item.horario_requerido ? (
-          <View style={styles.metaChip}>
-            <Ionicons name="time" size={10} color={TEXT_GRAY} />
-            <Text style={styles.metaChipText}>
-              {item.horario_requerido}{item.horario_finalizado ? ` – ${item.horario_finalizado}` : ''}
-            </Text>
-          </View>
-        ) : null}
-        {item.distancia != null ? (
-          <View style={styles.metaChip}>
-            <Ionicons name="location" size={10} color={TEXT_GRAY} />
-            <Text style={styles.metaChipText}>{item.distancia} km</Text>
-          </View>
-        ) : null}
-      </View>
-
-      <View style={styles.cardFooterRow}>
-        <View style={[styles.badge, item.fijo ? styles.badgeFijo : styles.badgeSubasta]}>
-          <Text style={[styles.badgeText, item.fijo && styles.badgeTextDark]}>
-            {item.fijo ? 'Fijo' : 'Subasta'}
-          </Text>
-        </View>
-        {item.fijo && item.precio != null && (
-          <View style={styles.badgePrecio}>
-            <Text style={styles.badgePrecioText}>${Number(item.precio).toLocaleString('es-AR')}</Text>
-          </View>
-        )}
-        {item.emergencia && (
-          <View style={styles.badgeEmergencia}>
-            <Ionicons name="flash" size={10} color="#fff" />
-            <Text style={styles.badgeText}>Urgente</Text>
-          </View>
-        )}
-      </View>
-    </View>
-    <TouchableOpacity style={styles.chatButton} onPress={() => onPressChat(item)} activeOpacity={0.85}>
-      <Ionicons name="chatbubble-ellipses" size={19} color={WHITE} />
-    </TouchableOpacity>
-  </View>
-);
-
-// ─── Star Rating Selector ─────────────────────────────────────────────────────
-
-const StarSelector = ({ value, onChange }) => (
-  <View style={styles.starsRow}>
-    {[1, 2, 3, 4, 5].map(n => (
-      <TouchableOpacity key={n} onPress={() => onChange(value === n ? null : n)} activeOpacity={0.7}>
-        <Ionicons
-          name={n <= (value ?? 0) ? 'star' : 'star-outline'}
-          size={27}
-          color={n <= (value ?? 0) ? AMBER : 'rgba(255,255,255,0.3)'}
-        />
-      </TouchableOpacity>
-    ))}
-    {value ? <Text style={styles.starLabel}>+{value} estrellas</Text> : null}
-  </View>
-);
-
-// ─── Time Picker ──────────────────────────────────────────────────────────────
-
-const TimePicker = ({ label, value, onChange }) => {
-  const minuteRef = React.useRef(null);
-  const [hour, minute] = value ? value.split(':') : ['', ''];
-
-  const setHour = (h) => {
-    const hh = h.replace(/[^0-9]/g, '').slice(0, 2);
-    if (hh === '' || (Number(hh) >= 0 && Number(hh) <= 23)) {
-      onChange(hh + ':' + (minute || '00'));
-      if (hh.length === 2) minuteRef.current?.focus();
-    }
-  };
-
-  const setMinute = (m) => {
-    const mm = m.replace(/[^0-9]/g, '').slice(0, 2);
-    if (mm === '' || (Number(mm) >= 0 && Number(mm) <= 59)) {
-      onChange((hour || '00') + ':' + mm);
-    }
-  };
-
-  return (
-    <View style={styles.timePickerRow}>
-      <Text style={styles.timeLabel}>{label}</Text>
-      <View style={styles.timeInputs}>
-        <TextInput
-          style={styles.timeInputBox}
-          value={hour}
-          onChangeText={setHour}
-          placeholder="HH"
-          placeholderTextColor="rgba(255,255,255,0.35)"
-          keyboardType="number-pad"
-          maxLength={2}
-          returnKeyType="next"
-          onSubmitEditing={() => minuteRef.current?.focus()}
-        />
-        <Text style={styles.timeSep}>:</Text>
-        <TextInput
-          ref={minuteRef}
-          style={styles.timeInputBox}
-          value={minute}
-          onChangeText={setMinute}
-          placeholder="MM"
-          placeholderTextColor="rgba(255,255,255,0.35)"
-          keyboardType="number-pad"
-          maxLength={2}
-        />
-      </View>
-    </View>
-  );
-};
-
-// ─── Filter Modal ─────────────────────────────────────────────────────────────
-
-const SERVICIOS = [
-  { id: 1,  nombre: 'Electricista' },
-  { id: 2,  nombre: 'Plomero' },
-  { id: 3,  nombre: 'Jardinero' },
-  { id: 4,  nombre: 'Gasista' },
-  { id: 5,  nombre: 'Limpieza' },
-  { id: 6,  nombre: 'Cerrajero' },
-  { id: 7,  nombre: 'Diseñador Gráfico' },
-  { id: 8,  nombre: 'Programador' },
-  { id: 9,  nombre: 'Redactor' },
-  { id: 10, nombre: 'Editor de Video' },
-  { id: 11, nombre: 'Community Manager' },
-  { id: 12, nombre: 'Abogado' },
-  { id: 13, nombre: 'Contador' },
-  { id: 14, nombre: 'Arquitecto' },
-  { id: 15, nombre: 'Médico' },
-  { id: 16, nombre: 'Psicólogo' },
-  { id: 17, nombre: 'Ingeniero' },
-];
-
-const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
-  const [estrellas,    setEstrellas]    = useState(initialFilters.estrellas    ?? null)
-  const [servicio_id,  setServicioId]   = useState(initialFilters.servicio_id  ?? null)
-  const [fijo,         setFijo]         = useState(initialFilters.fijo         ?? null)
-  const [emergencia,   setEmergencia]   = useState(initialFilters.emergencia   ?? null)
-  const [distanciaMax, setDistanciaMax] = useState(initialFilters.distanciaMax ?? null)
-  const [horarioDesde, setHorarioDesde] = useState(initialFilters.horarioDesde ?? '')
-  const [horarioHasta, setHorarioHasta] = useState(initialFilters.horarioHasta ?? '')
-  const [precioMin,    setPrecioMin]    = useState(initialFilters.precioMin    ?? '')
-  const [precioMax,    setPrecioMax]    = useState(initialFilters.precioMax    ?? '')
-
-  const handleReset = () => {
-    setEstrellas(null); setServicioId(null); setFijo(null)
-    setEmergencia(null); setDistanciaMax(null)
-    setHorarioDesde(''); setHorarioHasta('')
-    setPrecioMin(''); setPrecioMax('')
-  }
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
-          <View style={styles.sheetGrabber} />
-
-          <View style={styles.sheetHeader}>
-            <View>
-              <Text style={styles.sheetEyebrow}>FILTROS</Text>
-              <Text style={styles.sheetTitle}>Filtrar solicitudes</Text>
-            </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={20} color={WHITE} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-            <Text style={styles.filterLabel}>Rating del cliente</Text>
-            <StarSelector value={estrellas} onChange={setEstrellas} />
-
-            <Text style={[styles.filterLabel, { marginTop: 22 }]}>Servicio</Text>
-            <View style={styles.chipsWrap}>
-              {SERVICIOS.map(s => (
-                <TouchableOpacity
-                  key={s.id}
-                  style={[styles.chip, servicio_id === s.id && styles.chipActive]}
-                  onPress={() => setServicioId(servicio_id === s.id ? null : s.id)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.chipText, servicio_id === s.id && styles.chipTextActive]}>{s.nombre}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={[styles.filterLabel, { marginTop: 22 }]}>Tipo de trabajo</Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              {[{ label: 'Fijo', val: 'true' }, { label: 'Subasta', val: 'false' }].map(op => (
-                <TouchableOpacity
-                  key={op.val}
-                  style={[styles.chip, fijo === op.val && styles.chipActive]}
-                  onPress={() => setFijo(fijo === op.val ? null : op.val)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.chipText, fijo === op.val && styles.chipTextActive]}>{op.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={[styles.filterLabel, { marginTop: 22 }]}>Emergencia</Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              {[{ label: 'Solo emergencias', val: 'true', icon: 'flash' }, { label: 'No urgente', val: 'false', icon: 'checkmark-circle-outline' }].map(op => (
-                <TouchableOpacity
-                  key={op.val}
-                  style={[styles.chip, styles.chipIconRow, emergencia === op.val && styles.chipActive]}
-                  onPress={() => setEmergencia(emergencia === op.val ? null : op.val)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name={op.icon} size={13} color={emergencia === op.val ? WHITE : 'rgba(255,255,255,0.6)'} />
-                  <Text style={[styles.chipText, emergencia === op.val && styles.chipTextActive]}>{op.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={[styles.filterLabel, { marginTop: 22 }]}>Distancia máxima (km)</Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              {[5, 10, 20, 50].map(d => (
-                <TouchableOpacity
-                  key={d}
-                  style={[styles.chip, distanciaMax === String(d) && styles.chipActive]}
-                  onPress={() => setDistanciaMax(distanciaMax === String(d) ? null : String(d))}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.chipText, distanciaMax === String(d) && styles.chipTextActive]}>{d} km</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={[styles.filterLabel, { marginTop: 22 }]}>Horario requerido</Text>
-            <View style={styles.timePickers}>
-              <TimePicker label="Desde" value={horarioDesde} onChange={setHorarioDesde} />
-              <TimePicker label="Hasta" value={horarioHasta} onChange={setHorarioHasta} />
-            </View>
-
-            <Text style={[styles.filterLabel, { marginTop: 22 }]}>Rango de precio ($)</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <TextInput
-                style={[styles.timeInputBox, { width: 100, fontSize: 14 }]}
-                value={precioMin}
-                onChangeText={setPrecioMin}
-                placeholder="Mín"
-                placeholderTextColor="rgba(255,255,255,0.35)"
-                keyboardType="numeric"
-              />
-              <Text style={styles.timeSep}>—</Text>
-              <TextInput
-                style={[styles.timeInputBox, { width: 100, fontSize: 14 }]}
-                value={precioMax}
-                onChangeText={setPrecioMax}
-                placeholder="Máx"
-                placeholderTextColor="rgba(255,255,255,0.35)"
-                keyboardType="numeric"
-              />
-            </View>
-          </ScrollView>
-
-          <View style={styles.sheetFooter}>
-            <TouchableOpacity style={styles.resetBtn} onPress={handleReset} activeOpacity={0.8}>
-              <Text style={styles.resetBtnText}>Restablecer</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.applyBtn}
-              onPress={() => {
-                onApply({ estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta, precioMin, precioMax })
-                onClose()
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.applyBtnText}>Aplicar filtros</Text>
-              <Ionicons name="arrow-forward" size={16} color={WHITE} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  )
-};
-
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function BuscadorTrabajador({ route, navigation }) {
+  const { colors, isDark } = useTheme();
   const { usuario, textoInicial } = route.params;
   const idTrabajador = usuario.idTrabajador;
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const [showTrabajoActivo, setShowTrabajoActivo] = useState(false);
   const [clientes, setClientes]     = useState([]);
@@ -429,11 +117,325 @@ export default function BuscadorTrabajador({ route, navigation }) {
     fetchClientes(lastTexto, newFilters);
   };
 
+  // Componentes movidos dentro del componente principal
+  const RatingBadge = ({ rating }) => (
+    <View style={styles.ratingBadge}>
+      <Ionicons name="star" size={11} color={AMBER} />
+      <Text style={styles.ratingText}>{Number(rating).toFixed(2)}</Text>
+    </View>
+  );
+
+  const SERVICIOS_MAP = {
+    1: 'Electricista', 2: 'Plomero', 3: 'Jardinero', 4: 'Gasista',
+    5: 'Limpieza', 6: 'Cerrajero', 7: 'Diseñador Gráfico', 8: 'Programador',
+    9: 'Redactor', 10: 'Editor de Video', 11: 'Community Manager',
+    12: 'Abogado', 13: 'Contador', 14: 'Arquitecto',
+    15: 'Médico', 16: 'Psicólogo', 17: 'Ingeniero',
+  };
+
+    const ClienteCard = ({ item, onPressChat }) => (
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => navigation.navigate('PerfilClienteParaTrabajador', { idCliente: item.id })}
+      activeOpacity={0.7}
+    >
+      <Image
+        source={{ uri: item.foto ?? AVATAR_CLIENTE(item.nombre, item.apellido) }}
+        style={styles.avatar}
+      />
+      <View style={styles.cardBody}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardName} numberOfLines={1}>{item.nombre} {item.apellido}</Text>
+          <RatingBadge rating={item.estrellas ?? 0} />
+        </View>
+
+        {(item.especialidad || item.servicio_id) ? (
+          <View style={styles.tagRow}>
+            <Ionicons name="construct-outline" size={12} color={INDIGO} />
+            <Text style={styles.cardTag}>
+              {item.especialidad ?? SERVICIOS_MAP[item.servicio_id] ?? 'Sin especialidad'}
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={styles.metaRow}>
+          {item.horario_requerido ? (
+            <View style={styles.metaChip}>
+              <Ionicons name="time" size={10} color={TEXT_GRAY} />
+              <Text style={styles.metaChipText}>
+                {item.horario_requerido}{item.horario_finalizado ? ` – ${item.horario_finalizado}` : ''}
+              </Text>
+            </View>
+          ) : null}
+          {item.distancia != null ? (
+            <View style={styles.metaChip}>
+              <Ionicons name="location" size={10} color={TEXT_GRAY} />
+              <Text style={styles.metaChipText}>{item.distancia} km</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.cardFooterRow}>
+          <View style={[styles.badge, item.fijo ? styles.badgeFijo : styles.badgeSubasta]}>
+            <Text style={[styles.badgeText, item.fijo && styles.badgeTextDark]}>
+              {item.fijo ? 'Fijo' : 'Subasta'}
+            </Text>
+          </View>
+          {item.fijo && item.precio != null && (
+            <View style={styles.badgePrecio}>
+              <Text style={styles.badgePrecioText}>${Number(item.precio).toLocaleString('es-AR')}</Text>
+            </View>
+          )}
+          {item.emergencia && (
+            <View style={styles.badgeEmergencia}>
+              <Ionicons name="flash" size={10} color="#fff" />
+              <Text style={styles.badgeText}>Urgente</Text>
+            </View>
+          )}
+        </View>
+      </View>
+
+      <TouchableOpacity style={styles.chatButton} onPress={() => onPressChat(item)} activeOpacity={0.85}>
+        <Ionicons name="chatbubble-ellipses" size={19} color={WHITE} />
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
+
+  const StarSelector = ({ value, onChange }) => (
+    <View style={styles.starsRow}>
+      {[1, 2, 3, 4, 5].map(n => (
+        <TouchableOpacity key={n} onPress={() => onChange(value === n ? null : n)} activeOpacity={0.7}>
+          <Ionicons
+            name={n <= (value ?? 0) ? 'star' : 'star-outline'}
+            size={27}
+            color={n <= (value ?? 0) ? AMBER : 'rgba(255,255,255,0.3)'}
+          />
+        </TouchableOpacity>
+      ))}
+      {value ? <Text style={styles.starLabel}>+{value} estrellas</Text> : null}
+    </View>
+  );
+
+  const TimePicker = ({ label, value, onChange }) => {
+    const minuteRef = React.useRef(null);
+    const [hour, minute] = value ? value.split(':') : ['', ''];
+
+    const setHour = (h) => {
+      const hh = h.replace(/[^0-9]/g, '').slice(0, 2);
+      if (hh === '' || (Number(hh) >= 0 && Number(hh) <= 23)) {
+        onChange(hh + ':' + (minute || '00'));
+        if (hh.length === 2) minuteRef.current?.focus();
+      }
+    };
+
+    const setMinute = (m) => {
+      const mm = m.replace(/[^0-9]/g, '').slice(0, 2);
+      if (mm === '' || (Number(mm) >= 0 && Number(mm) <= 59)) {
+        onChange((hour || '00') + ':' + mm);
+      }
+    };
+
+    return (
+      <View style={styles.timePickerRow}>
+        <Text style={styles.timeLabel}>{label}</Text>
+        <View style={styles.timeInputs}>
+          <TextInput
+            style={styles.timeInputBox}
+            value={hour}
+            onChangeText={setHour}
+            placeholder="HH"
+            placeholderTextColor="rgba(255,255,255,0.35)"
+            keyboardType="number-pad"
+            maxLength={2}
+            returnKeyType="next"
+            onSubmitEditing={() => minuteRef.current?.focus()}
+          />
+          <Text style={styles.timeSep}>:</Text>
+          <TextInput
+            ref={minuteRef}
+            style={styles.timeInputBox}
+            value={minute}
+            onChangeText={setMinute}
+            placeholder="MM"
+            placeholderTextColor="rgba(255,255,255,0.35)"
+            keyboardType="number-pad"
+            maxLength={2}
+          />
+        </View>
+      </View>
+    );
+  };
+
+  const SERVICIOS = [
+    { id: 1,  nombre: 'Electricista' },
+    { id: 2,  nombre: 'Plomero' },
+    { id: 3,  nombre: 'Jardinero' },
+    { id: 4,  nombre: 'Gasista' },
+    { id: 5,  nombre: 'Limpieza' },
+    { id: 6,  nombre: 'Cerrajero' },
+    { id: 7,  nombre: 'Diseñador Gráfico' },
+    { id: 8,  nombre: 'Programador' },
+    { id: 9,  nombre: 'Redactor' },
+    { id: 10, nombre: 'Editor de Video' },
+    { id: 11, nombre: 'Community Manager' },
+    { id: 12, nombre: 'Abogado' },
+    { id: 13, nombre: 'Contador' },
+    { id: 14, nombre: 'Arquitecto' },
+    { id: 15, nombre: 'Médico' },
+    { id: 16, nombre: 'Psicólogo' },
+    { id: 17, nombre: 'Ingeniero' },
+  ];
+
+  const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
+    const [estrellas,    setEstrellas]    = useState(initialFilters.estrellas    ?? null)
+    const [servicio_id,  setServicioId]   = useState(initialFilters.servicio_id  ?? null)
+    const [fijo,         setFijo]         = useState(initialFilters.fijo         ?? null)
+    const [emergencia,   setEmergencia]   = useState(initialFilters.emergencia   ?? null)
+    const [distanciaMax, setDistanciaMax] = useState(initialFilters.distanciaMax ?? null)
+    const [horarioDesde, setHorarioDesde] = useState(initialFilters.horarioDesde ?? '')
+    const [horarioHasta, setHorarioHasta] = useState(initialFilters.horarioHasta ?? '')
+    const [precioMin,    setPrecioMin]    = useState(initialFilters.precioMin    ?? '')
+    const [precioMax,    setPrecioMax]    = useState(initialFilters.precioMax    ?? '')
+
+    const handleReset = () => {
+      setEstrellas(null); setServicioId(null); setFijo(null)
+      setEmergencia(null); setDistanciaMax(null)
+      setHorarioDesde(''); setHorarioHasta('')
+      setPrecioMin(''); setPrecioMax('')
+    }
+
+    return (
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <View style={styles.overlay}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetGrabber} />
+
+            <View style={styles.sheetHeader}>
+              <View>
+                <Text style={styles.sheetEyebrow}>FILTROS</Text>
+                <Text style={styles.sheetTitle}>Filtrar solicitudes</Text>
+              </View>
+              <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={20} color={WHITE} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+              <Text style={styles.filterLabel}>Rating del cliente</Text>
+              <StarSelector value={estrellas} onChange={setEstrellas} />
+
+              <Text style={[styles.filterLabel, { marginTop: 22 }]}>Servicio</Text>
+              <View style={styles.chipsWrap}>
+                {SERVICIOS.map(s => (
+                  <TouchableOpacity
+                    key={s.id}
+                    style={[styles.chip, servicio_id === s.id && styles.chipActive]}
+                    onPress={() => setServicioId(servicio_id === s.id ? null : s.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.chipText, servicio_id === s.id && styles.chipTextActive]}>{s.nombre}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.filterLabel, { marginTop: 22 }]}>Tipo de trabajo</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {[{ label: 'Fijo', val: 'true' }, { label: 'Subasta', val: 'false' }].map(op => (
+                  <TouchableOpacity
+                    key={op.val}
+                    style={[styles.chip, fijo === op.val && styles.chipActive]}
+                    onPress={() => setFijo(fijo === op.val ? null : op.val)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.chipText, fijo === op.val && styles.chipTextActive]}>{op.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.filterLabel, { marginTop: 22 }]}>Emergencia</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {[{ label: 'Solo emergencias', val: 'true', icon: 'flash' }, { label: 'No urgente', val: 'false', icon: 'checkmark-circle-outline' }].map(op => (
+                  <TouchableOpacity
+                    key={op.val}
+                    style={[styles.chip, styles.chipIconRow, emergencia === op.val && styles.chipActive]}
+                    onPress={() => setEmergencia(emergencia === op.val ? null : op.val)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name={op.icon} size={13} color={emergencia === op.val ? WHITE : 'rgba(255,255,255,0.6)'} />
+                    <Text style={[styles.chipText, emergencia === op.val && styles.chipTextActive]}>{op.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.filterLabel, { marginTop: 22 }]}>Distancia máxima (km)</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {[5, 10, 20, 50].map(d => (
+                  <TouchableOpacity
+                    key={d}
+                    style={[styles.chip, distanciaMax === String(d) && styles.chipActive]}
+                    onPress={() => setDistanciaMax(distanciaMax === String(d) ? null : String(d))}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.chipText, distanciaMax === String(d) && styles.chipTextActive]}>{d} km</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.filterLabel, { marginTop: 22 }]}>Horario requerido</Text>
+              <View style={styles.timePickers}>
+                <TimePicker label="Desde" value={horarioDesde} onChange={setHorarioDesde} />
+                <TimePicker label="Hasta" value={horarioHasta} onChange={setHorarioHasta} />
+              </View>
+
+              <Text style={[styles.filterLabel, { marginTop: 22 }]}>Rango de precio ($)</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <TextInput
+                  style={[styles.timeInputBox, { width: 100, fontSize: 14 }]}
+                  value={precioMin}
+                  onChangeText={setPrecioMin}
+                  placeholder="Mín"
+                  placeholderTextColor="rgba(255,255,255,0.35)"
+                  keyboardType="numeric"
+                />
+                <Text style={styles.timeSep}>—</Text>
+                <TextInput
+                  style={[styles.timeInputBox, { width: 100, fontSize: 14 }]}
+                  value={precioMax}
+                  onChangeText={setPrecioMax}
+                  placeholder="Máx"
+                  placeholderTextColor="rgba(255,255,255,0.35)"
+                  keyboardType="numeric"
+                />
+              </View>
+            </ScrollView>
+
+            <View style={styles.sheetFooter}>
+              <TouchableOpacity style={styles.resetBtn} onPress={handleReset} activeOpacity={0.8}>
+                <Text style={styles.resetBtnText}>Restablecer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.applyBtn}
+                onPress={() => {
+                  onApply({ estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta, precioMin, precioMax })
+                  onClose()
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.applyBtnText}>Aplicar filtros</Text>
+                <Ionicons name="arrow-forward" size={16} color={WHITE} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    )
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
 
       <LinearGradient
-        colors={[INDIGO, NAVY]}
+        colors={isDark ? ['#1a1f4e', '#0d1230'] : [INDIGO, NAVY]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.header}
@@ -535,10 +537,10 @@ export default function BuscadorTrabajador({ route, navigation }) {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─── Styles ──────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F4F6FC' },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: isDark ? colors.background : '#F4F6FC' },
 
   header: { paddingTop: 8, paddingBottom: 30, paddingHorizontal: 20, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
@@ -576,22 +578,22 @@ const styles = StyleSheet.create({
 
   card: {
     flexDirection: 'row', alignItems: 'flex-start',
-    backgroundColor: WHITE, borderRadius: 18,
+    backgroundColor: isDark ? colors.card : WHITE, borderRadius: 18,
     marginBottom: 10, padding: 12, gap: 12,
-    borderWidth: 1, borderColor: BORDER,
+    borderWidth: 1, borderColor: isDark ? colors.border : BORDER,
     shadowColor: NAVY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 3,
   },
   avatar: { width: 58, height: 58, borderRadius: 29, borderWidth: 2, borderColor: INDIGO_SOFT },
   cardBody: { flex: 1, gap: 4 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  cardName: { color: TEXT_DARK, fontWeight: '800', fontSize: 15, flexShrink: 1 },
+  cardName: { color: isDark ? colors.text : TEXT_DARK, fontWeight: '800', fontSize: 15, flexShrink: 1 },
   tagRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   cardTag:  { color: INDIGO, fontSize: 12.5, fontWeight: '700' },
 
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 1 },
   metaChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#F4F6FC', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3,
+    backgroundColor: isDark ? colors.surfaceVariant : '#F4F6FC', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3,
   },
   metaChipText: { color: TEXT_GRAY, fontSize: 10.5, fontWeight: '600' },
 
@@ -599,7 +601,7 @@ const styles = StyleSheet.create({
   badge:          { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 10 },
   badgeFijo:      { backgroundColor: INDIGO_SOFT },
   badgeSubasta:   { backgroundColor: NAVY },
-  badgeEmergencia:{
+  badgeEmergencia: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
     backgroundColor: RED, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 10,
   },

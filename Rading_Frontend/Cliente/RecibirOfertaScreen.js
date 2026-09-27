@@ -7,6 +7,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
+import { useTheme } from '../ThemeContext'
 import OfertaCard from './OfertaCard'
 import API_URL from '../configS'
 import Header from '../Header'
@@ -22,11 +23,9 @@ const COLORS = {
   ink:    '#1a1a2e',
   green:  '#22c55e',
   red:    '#e23744',
-  // Subasta = se compite por precio, gana el que el cliente elija
   subasta: '#B4740E',
   subastaBg: 'rgba(217,142,10,0.12)',
   subastaBorder: 'rgba(217,142,10,0.32)',
-  // Fijo = postulaciones a un precio que vos ya definiste
   fijo: '#6D28D9',
   fijoBg: 'rgba(109,40,217,0.10)',
   fijoBorder: 'rgba(109,40,217,0.28)',
@@ -40,221 +39,11 @@ const shadow = (elevation = 6) => ({
   elevation,
 })
 
-function Iniciales({ nombre, size = 48, bg = '#b0b8c8' }) {
-  const ini = nombre.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
-  return (
-    <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: bg }]}>
-      <Text style={[styles.avatarText, { fontSize: size * 0.28 }]}>{ini}</Text>
-    </View>
-  )
-}
-
-function Estrellas({ rating, size = 12 }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-      {[1, 2, 3, 4, 5].map(i => (
-        <Ionicons
-          key={i}
-          name={i <= Math.round(rating) ? 'star' : 'star-outline'}
-          size={size}
-          color={COLORS.yellow}
-        />
-      ))}
-    </View>
-  )
-}
-
-// ─── Chips de solicitudes activas (General + una por servicio) ───────────
-function SolicitudesChips({ solicitudes, seleccionada, onSeleccionar }) {
-  if (solicitudes.length <= 1) return null
-
-  const totalOfertas = solicitudes.reduce((acc, s) => acc + Number(s.cantidadOfertas ?? 0), 0)
-
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={styles.chipsScroll}
-      contentContainerStyle={styles.chipsContent}
-    >
-      <TouchableOpacity
-        style={[styles.chip, seleccionada === null && styles.chipActive]}
-        onPress={() => onSeleccionar(null)}
-        activeOpacity={0.8}
-      >
-        <Ionicons
-          name="apps"
-          size={13}
-          color={seleccionada === null ? COLORS.white : COLORS.gray}
-        />
-        <Text style={[styles.chipText, seleccionada === null && styles.chipTextActive]}>
-          General
-        </Text>
-        <Text style={[styles.chipCount, seleccionada === null && styles.chipCountActive]}>
-          {totalOfertas}
-        </Text>
-      </TouchableOpacity>
-
-      {solicitudes.map(s => {
-        const activo = seleccionada === s.idTrabajo
-        return (
-          <TouchableOpacity
-            key={s.idTrabajo}
-            style={[styles.chip, activo && styles.chipActive]}
-            onPress={() => onSeleccionar(s.idTrabajo)}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[styles.chipText, activo && styles.chipTextActive]}
-              numberOfLines={1}
-            >
-              {s.servicio_nombre ?? 'Servicio'}
-            </Text>
-            <Text style={[styles.chipCount, activo && styles.chipCountActive]}>
-              {s.cantidadOfertas}
-            </Text>
-          </TouchableOpacity>
-        )
-      })}
-    </ScrollView>
-  )
-}
-
-// ─── Selector de tipo: Subasta / Fijos / Urgentes ─────────────────────────
-// Separa las ofertas por naturaleza: en subasta se compite por precio (con
-// reloj, dorado), en fijo el trabajador se postula al precio ya fijado por
-// el cliente (violeta), y "Urgentes" es un corte transversal (emergencia =
-// true, rojo) que puede traer ofertas de ambos tipos. Tres colores bien
-// distintos para leer el estado de un vistazo.
 const TIPOS = [
   { key: 'subasta',  label: 'Subasta',   icon: 'hammer-outline',        color: COLORS.subasta },
   { key: 'fijo',      label: 'Fijos',     icon: 'pricetag-outline',      color: COLORS.fijo },
   { key: 'urgente',   label: 'Urgentes',  icon: 'alert-circle-outline',  color: COLORS.red },
 ]
-
-function TipoSelector({ tipo, onSeleccionar, conteos }) {
-  return (
-    <View style={styles.tipoRow}>
-      {TIPOS.map(t => {
-        const activo = tipo === t.key
-        const conteo = conteos[t.key] ?? 0
-        return (
-          <TouchableOpacity
-            key={t.key}
-            style={[
-              styles.tipoBtn,
-              activo && { backgroundColor: t.color },
-              !activo && { borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' },
-            ]}
-            onPress={() => onSeleccionar(t.key)}
-            activeOpacity={0.85}
-          >
-            <Ionicons
-              name={t.icon}
-              size={15}
-              color={activo ? COLORS.white : t.color}
-            />
-            <Text style={[
-              styles.tipoBtnText,
-              activo && styles.tipoBtnTextActivo,
-              !activo && { color: t.color },
-            ]}>
-              {t.label}
-            </Text>
-            {conteo > 0 && (
-              <View style={[styles.tipoBadge, activo && styles.tipoBadgeActivo]}>
-                <Text style={[styles.tipoBadgeText, activo && styles.tipoBadgeTextActivo, !activo && { color: t.color }]}>
-                  {conteo}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        )
-      })}
-    </View>
-  )
-}
-
-// 👇 recibe navigation/usuario/idCliente para poder navegar al chat real
-function ModalOfertaAceptada({ oferta, servicioNombre, onClose, navigation, usuario, idCliente }) {
-  if (!oferta) return null
-  return (
-    <Modal transparent animationType="slide" visible={!!oferta} statusBarTranslucent>
-      <View style={styles.modalOverlay}>
-        <TouchableOpacity style={styles.modalDismiss} onPress={onClose} activeOpacity={1} />
-        <View style={styles.modalCard}>
-
-          <View style={styles.modalHandle} />
-
-          <View style={styles.modalHeaderRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.modalChip}>TRABAJO EN CURSO</Text>
-              <Text style={styles.modalTitulo}>{servicioNombre || 'Servicio'}</Text>
-            </View>
-            <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={18} color={COLORS.blue} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.modalWorkerRow}>
-            <Iniciales nombre={oferta.nombre} size={72} bg={COLORS.blue} />
-            <View style={styles.modalWorkerInfo}>
-              <Text style={styles.modalNombre}>{oferta.nombre}</Text>
-              <View style={styles.modalMetaRow}>
-                <Estrellas rating={oferta.rating} size={14} />
-                <Text style={styles.modalRating}>{Number(oferta.rating ?? 0).toFixed(1)}</Text>
-              </View>
-              {oferta.distancia != null && (
-                <Text style={styles.modalDistancia}>{oferta.distancia} km de distancia</Text>
-              )}
-            </View>
-          </View>
-
-          <View style={styles.modalDivider} />
-
-          <View style={styles.modalPrecioRow}>
-            <View>
-              <Text style={styles.modalPrecioLabel}>Precio acordado</Text>
-              <Text style={styles.modalPrecio}>${Number(oferta.precio).toLocaleString()}</Text>
-            </View>
-            <View>
-              <Text style={styles.modalPrecioLabel}>Costo extra posible</Text>
-              <Text style={styles.modalExtra}>
-                ${Number(oferta.costoExtraMin ?? 0).toLocaleString()} – ${Number(oferta.costoExtraMax ?? 0).toLocaleString()}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.modalAvisoCard}>
-            <Ionicons name="lock-closed-outline" size={15} color={COLORS.gray} style={{ marginTop: 1 }} />
-            <Text style={styles.modalAvisoTexto}>
-              El pago queda retenido en la app hasta que confirmes que el trabajo fue completado
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            style={styles.chatBtn}
-            activeOpacity={0.85}
-            onPress={() => {
-              onClose() // cierra el modal
-              navigation.navigate('ChatCliente', {
-                usuario,
-                idCliente,
-                idTrabajador: oferta.idTrabajador,
-                contacto: { idTrabajador: oferta.idTrabajador, nombre: oferta.nombre },
-                // sin chatId — todavía puede no existir, ChatCliente lo resuelve
-              })
-            }}
-          >
-            <Ionicons name="chatbubble-ellipses" size={20} color={COLORS.white} />
-            <Text style={styles.chatBtnText}>Abrir chat</Text>
-          </TouchableOpacity>
-
-        </View>
-      </View>
-    </Modal>
-  )
-}
 
 const mapearOfertas = (data, idTrabajo, servicioNombreOverride = null) =>
   (Array.isArray(data) ? data : []).map(o => ({
@@ -274,16 +63,17 @@ const mapearOfertas = (data, idTrabajo, servicioNombreOverride = null) =>
   }))
 
 export default function RecibirOfertasScreen({ route, navigation }) {
+  const { colors, isDark } = useTheme();
   const { idTrabajo: idTrabajoInicial, servicioNombre, tituloSolicitud, usuario } = route?.params || {}
   const idCliente = usuario?.idCliente
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const [solicitudes, setSolicitudes] = useState([])
   const [loadingSolicitudes, setLoadingSolicitudes] = useState(true)
 
-  // idTrabajo seleccionado: null = "General" (todas), o un id puntual
   const [seleccionada, setSeleccionada] = useState(idTrabajoInicial ?? null)
 
-  // tipo seleccionado: 'subasta' | 'fijo' | 'urgente'
   const [tipo, setTipo] = useState('subasta')
 
   const [ofertas, setOfertas] = useState([])
@@ -305,8 +95,6 @@ export default function RecibirOfertasScreen({ route, navigation }) {
       const lista = Array.isArray(data) ? data : []
       setSolicitudes(lista)
 
-      // si la solicitud seleccionada ya no está en la lista (ej: se le acaba de
-      // aceptar un trabajador), volvemos a "General"
       setSeleccionada(prev => {
         if (prev == null) return null
         const sigueActiva = lista.some(s => s.idTrabajo === prev)
@@ -370,25 +158,24 @@ export default function RecibirOfertasScreen({ route, navigation }) {
     }, [fetchOfertas, loadingSolicitudes])
   )
 
-  // 👇 ahora pide confirmación antes de pegarle al backend
   const handleAceptar = (item) => {
-  if (Platform.OS === 'web') {
-    const confirmado = window.confirm(
-      `Vas a contratar a ${item.nombre} por $${Number(item.precio).toLocaleString()}. Esta acción no se puede deshacer.`
-    )
-    if (confirmado) confirmarAceptar(item)
-    return
-  }
+    if (Platform.OS === 'web') {
+      const confirmado = window.confirm(
+        `Vas a contratar a ${item.nombre} por $${Number(item.precio).toLocaleString()}. Esta acción no se puede deshacer.`
+      )
+      if (confirmado) confirmarAceptar(item)
+      return
+    }
 
-  Alert.alert(
-    '¿Aceptar esta oferta?',
-    `Vas a contratar a ${item.nombre} por $${Number(item.precio).toLocaleString()}. Esta acción no se puede deshacer.`,
-    [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Aceptar', onPress: () => confirmarAceptar(item) },
-    ]
-  )
-}
+    Alert.alert(
+      '¿Aceptar esta oferta?',
+      `Vas a contratar a ${item.nombre} por $${Number(item.precio).toLocaleString()}. Esta acción no se puede deshacer.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Aceptar', onPress: () => confirmarAceptar(item) },
+      ]
+    )
+  }
 
   const confirmarAceptar = async (item) => {
     try {
@@ -400,8 +187,6 @@ export default function RecibirOfertasScreen({ route, navigation }) {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
-        // 👇 si perdimos la carrera contra el cierre automático, el
-        // mensaje del backend ya lo explica claro
         throw new Error(errData.message ?? `Error ${res.status} al aceptar la oferta`)
       }
 
@@ -409,38 +194,32 @@ export default function RecibirOfertasScreen({ route, navigation }) {
     } catch (err) {
       console.error('Error al aceptar oferta:', err)
       Alert.alert('Error', err.message ?? 'No se pudo aceptar la oferta. Intentá de nuevo.')
-      // 👇 nuevo: refresca por si la solicitud ya no está disponible
-      // (se cerró mientras el cliente decidía)
       fetchSolicitudes()
     } finally {
       setAceptando(false)
     }
   }
 
-  // la "mejor oferta" se calcula POR solicitud (idTrabajo), no globalmente,
-  // y solo tiene sentido en subastas (en fijo todas valen lo mismo)
   const mejoresPorTrabajo = useMemo(() => {
     const mapa = new Map()
     ofertas.forEach(o => {
-      if (o.fijo) return // precio fijo: no hay "mejor oferta", decide el cliente
+      if (o.fijo) return
       const actual = mapa.get(o.idTrabajo)
       if (!actual || o.precio < actual.precio) mapa.set(o.idTrabajo, o)
     })
     return mapa
   }, [ofertas])
 
-  // conteos para los badges del selector de tipo
   const conteosPorTipo = useMemo(() => ({
     subasta: ofertas.filter(o => !o.fijo).length,
     fijo: ofertas.filter(o => o.fijo).length,
     urgente: ofertas.filter(o => o.emergencia).length,
   }), [ofertas])
 
-  // ofertas ya filtradas por el tipo elegido en el selector
   const ofertasFiltradas = useMemo(() => {
     if (tipo === 'urgente') return ofertas.filter(o => o.emergencia)
     if (tipo === 'fijo') return ofertas.filter(o => o.fijo)
-    return ofertas.filter(o => !o.fijo) // 'subasta'
+    return ofertas.filter(o => !o.fijo)
   }, [ofertas, tipo])
 
   const tituloHeader = useMemo(() => {
@@ -457,9 +236,207 @@ export default function RecibirOfertasScreen({ route, navigation }) {
 
   const colorSeccion = tipo === 'urgente' ? COLORS.red : tipo === 'fijo' ? COLORS.fijo : COLORS.subasta
 
+  // Componentes movidos dentro del componente principal
+  const Iniciales = ({ nombre, size = 48, bg = '#b0b8c8' }) => {
+    const ini = nombre.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+    return (
+      <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: bg }]}>
+        <Text style={[styles.avatarText, { fontSize: size * 0.28 }]}>{ini}</Text>
+      </View>
+    )
+  }
+
+  const Estrellas = ({ rating, size = 12 }) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+      {[1, 2, 3, 4, 5].map(i => (
+        <Ionicons
+          key={i}
+          name={i <= Math.round(rating) ? 'star' : 'star-outline'}
+          size={size}
+          color={COLORS.yellow}
+        />
+      ))}
+    </View>
+  )
+
+  const SolicitudesChips = ({ solicitudes, seleccionada, onSeleccionar }) => {
+    if (solicitudes.length <= 1) return null
+
+    const totalOfertas = solicitudes.reduce((acc, s) => acc + Number(s.cantidadOfertas ?? 0), 0)
+
+    return (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipsScroll}
+        contentContainerStyle={styles.chipsContent}
+      >
+        <TouchableOpacity
+          style={[styles.chip, seleccionada === null && styles.chipActive]}
+          onPress={() => onSeleccionar(null)}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name="apps"
+            size={13}
+            color={seleccionada === null ? COLORS.white : COLORS.gray}
+          />
+          <Text style={[styles.chipText, seleccionada === null && styles.chipTextActive]}>
+            General
+          </Text>
+          <Text style={[styles.chipCount, seleccionada === null && styles.chipCountActive]}>
+            {totalOfertas}
+          </Text>
+        </TouchableOpacity>
+
+        {solicitudes.map(s => {
+          const activo = seleccionada === s.idTrabajo
+          return (
+            <TouchableOpacity
+              key={s.idTrabajo}
+              style={[styles.chip, activo && styles.chipActive]}
+              onPress={() => onSeleccionar(s.idTrabajo)}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[styles.chipText, activo && styles.chipTextActive]}
+                numberOfLines={1}
+              >
+                {s.servicio_nombre ?? 'Servicio'}
+              </Text>
+              <Text style={[styles.chipCount, activo && styles.chipCountActive]}>
+                {s.cantidadOfertas}
+              </Text>
+            </TouchableOpacity>
+          )
+        })}
+      </ScrollView>
+    )
+  }
+
+  const TipoSelector = ({ tipo, onSeleccionar, conteos }) => (
+    <View style={styles.tipoRow}>
+      {TIPOS.map(t => {
+        const activo = tipo === t.key
+        const conteo = conteos[t.key] ?? 0
+        return (
+          <TouchableOpacity
+            key={t.key}
+            style={[
+              styles.tipoBtn,
+              activo && { backgroundColor: t.color },
+              !activo && { borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' },
+            ]}
+            onPress={() => onSeleccionar(t.key)}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name={t.icon}
+              size={15}
+              color={activo ? COLORS.white : t.color}
+            />
+            <Text style={[
+              styles.tipoBtnText,
+              activo && styles.tipoBtnTextActivo,
+              !activo && { color: t.color },
+            ]}>
+              {t.label}
+            </Text>
+            {conteo > 0 && (
+              <View style={[styles.tipoBadge, activo && styles.tipoBadgeActivo]}>
+                <Text style={[styles.tipoBadgeText, activo && styles.tipoBadgeTextActivo, !activo && { color: t.color }]}>
+                  {conteo}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        )
+      })}
+    </View>
+  )
+
+  const ModalOfertaAceptada = ({ oferta, servicioNombre, onClose, navigation, usuario, idCliente }) => {
+    if (!oferta) return null
+    return (
+      <Modal transparent animationType="slide" visible={!!oferta} statusBarTranslucent>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalDismiss} onPress={onClose} activeOpacity={1} />
+          <View style={styles.modalCard}>
+
+            <View style={styles.modalHandle} />
+
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalChip}>TRABAJO EN CURSO</Text>
+                <Text style={styles.modalTitulo}>{servicioNombre || 'Servicio'}</Text>
+              </View>
+              <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={18} color={COLORS.blue} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalWorkerRow}>
+              <Iniciales nombre={oferta.nombre} size={72} bg={COLORS.blue} />
+              <View style={styles.modalWorkerInfo}>
+                <Text style={styles.modalNombre}>{oferta.nombre}</Text>
+                <View style={styles.modalMetaRow}>
+                  <Estrellas rating={oferta.rating} size={14} />
+                  <Text style={styles.modalRating}>{Number(oferta.rating ?? 0).toFixed(1)}</Text>
+                </View>
+                {oferta.distancia != null && (
+                  <Text style={styles.modalDistancia}>{oferta.distancia} km de distancia</Text>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.modalDivider} />
+
+            <View style={styles.modalPrecioRow}>
+              <View>
+                <Text style={styles.modalPrecioLabel}>Precio acordado</Text>
+                <Text style={styles.modalPrecio}>${Number(oferta.precio).toLocaleString()}</Text>
+              </View>
+              <View>
+                <Text style={styles.modalPrecioLabel}>Costo extra posible</Text>
+                <Text style={styles.modalExtra}>
+                  ${Number(oferta.costoExtraMin ?? 0).toLocaleString()} – ${Number(oferta.costoExtraMax ?? 0).toLocaleString()}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.modalAvisoCard}>
+              <Ionicons name="lock-closed-outline" size={15} color={COLORS.gray} style={{ marginTop: 1 }} />
+              <Text style={styles.modalAvisoTexto}>
+                El pago queda retenido en la app hasta que confirmes que el trabajo fue completado
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.chatBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                onClose()
+                navigation.navigate('ChatCliente', {
+                  usuario,
+                  idCliente,
+                  idTrabajador: oferta.idTrabajador,
+                  contacto: { idTrabajador: oferta.idTrabajador, nombre: oferta.nombre },
+                })
+              }}
+            >
+              <Ionicons name="chatbubble-ellipses" size={20} color={COLORS.white} />
+              <Text style={styles.chatBtnText}>Abrir chat</Text>
+            </TouchableOpacity>
+
+          </View>
+        </View>
+      </Modal>
+    )
+  }
+
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? colors.statusBarBg : COLORS.white} />
 
       <Header usuario={usuario} />
 
@@ -560,7 +537,7 @@ export default function RecibirOfertasScreen({ route, navigation }) {
         idCliente={idCliente}
         onClose={() => {
           setOfertaAceptada(null)
-          fetchSolicitudes() // corrige la selección si hace falta (ver fetchSolicitudes)
+          fetchSolicitudes()
         }}
       />
 
@@ -569,24 +546,24 @@ export default function RecibirOfertasScreen({ route, navigation }) {
   )
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.bg },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: isDark ? colors.background : COLORS.bg },
 
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 14, backgroundColor: COLORS.white,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border,
+    paddingHorizontal: 20, paddingVertical: 14, backgroundColor: isDark ? colors.surface : COLORS.white,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: isDark ? colors.border : COLORS.border,
   },
-  headerSub:    { fontSize: 11, color: COLORS.grayLight, marginBottom: 1 },
+  headerSub:    { fontSize: 11, color: isDark ? colors.textTertiary : COLORS.grayLight, marginBottom: 1 },
   headerTitulo: { fontSize: 16, fontWeight: '600', color: COLORS.blue },
-  headerBtn:    { width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center' },
+  headerBtn:    { width: 34, height: 34, borderRadius: 17, backgroundColor: isDark ? colors.surfaceVariant : COLORS.bg, alignItems: 'center', justifyContent: 'center' },
 
   chipsScroll: {
     flexGrow: 0,
     height: 54,
-    backgroundColor: COLORS.white,
+    backgroundColor: isDark ? colors.surface : COLORS.white,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: isDark ? colors.border : COLORS.border,
   },
   chipsContent: {
     paddingHorizontal: 16,
@@ -596,25 +573,25 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: 14, backgroundColor: COLORS.bg,
+    borderRadius: 14, backgroundColor: isDark ? colors.surfaceVariant : COLORS.bg,
     marginRight: 8,
     height: 34,
   },
   chipActive: { backgroundColor: COLORS.blue },
-  chipText: { fontSize: 12.5, fontWeight: '600', color: COLORS.ink, maxWidth: 110 },
+  chipText: { fontSize: 12.5, fontWeight: '600', color: isDark ? colors.text : COLORS.ink, maxWidth: 110 },
   chipTextActive: { color: COLORS.white },
-  chipCount: { fontSize: 11, fontWeight: '700', color: COLORS.grayLight },
+  chipCount: { fontSize: 11, fontWeight: '700', color: isDark ? colors.textTertiary : COLORS.grayLight },
   chipCountActive: { color: 'rgba(255,255,255,0.75)' },
 
-  // ── Selector de tipo (Subasta / Fijos / Urgentes) ──
+  // ── Selector de tipo ──
   tipoRow: {
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: COLORS.white,
+    backgroundColor: isDark ? colors.surface : COLORS.white,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: isDark ? colors.border : COLORS.border,
   },
   tipoBtn: {
     flex: 1,
@@ -624,9 +601,9 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingVertical: 9,
     borderRadius: 12,
-    backgroundColor: COLORS.bg,
+    backgroundColor: isDark ? colors.surfaceVariant : COLORS.bg,
   },
-  tipoBtnText: { fontSize: 12.5, fontWeight: '700', color: COLORS.gray },
+  tipoBtnText: { fontSize: 12.5, fontWeight: '700', color: isDark ? colors.textSecondary : COLORS.gray },
   tipoBtnTextActivo: { color: COLORS.white },
   tipoBadge: {
     backgroundColor: 'rgba(0,0,0,0.08)',
@@ -638,7 +615,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   tipoBadgeActivo: { backgroundColor: 'rgba(255,255,255,0.25)' },
-  tipoBadgeText: { fontSize: 10, fontWeight: '700', color: COLORS.ink },
+  tipoBadgeText: { fontSize: 10, fontWeight: '700', color: isDark ? colors.text : COLORS.ink },
   tipoBadgeTextActivo: { color: COLORS.white },
 
   servicioTag: {
@@ -652,7 +629,7 @@ const styles = StyleSheet.create({
   errorText: { color: '#E53E3E', fontSize: 14, textAlign: 'center' },
   retryBtn: { marginTop: 4, backgroundColor: COLORS.blue, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 28 },
   retryText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  emptyText: { color: COLORS.grayLight, fontSize: 15, textAlign: 'center' },
+  emptyText: { color: isDark ? colors.textTertiary : COLORS.grayLight, fontSize: 15, textAlign: 'center' },
 
   overlayLoading: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
@@ -666,8 +643,8 @@ const styles = StyleSheet.create({
   contadorPill: { borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
   contadorText: { fontSize: 11, fontWeight: '700', color: COLORS.white },
 
-  avisoCard:  { flexDirection: 'row', gap: 10, alignItems: 'flex-start', backgroundColor: '#e9ecf0', borderRadius: 14, padding: 14, marginTop: 4 },
-  avisoTexto: { flex: 1, fontSize: 12, color: COLORS.gray, lineHeight: 18 },
+  avisoCard:  { flexDirection: 'row', gap: 10, alignItems: 'flex-start', backgroundColor: isDark ? colors.surfaceVariant : '#e9ecf0', borderRadius: 14, padding: 14, marginTop: 4 },
+  avisoTexto: { flex: 1, fontSize: 12, color: isDark ? colors.textSecondary : COLORS.gray, lineHeight: 18 },
 
   avatar:     { alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: COLORS.white, fontWeight: '600' },
@@ -675,35 +652,35 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, justifyContent: 'flex-end' },
   modalDismiss: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
   modalCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: isDark ? colors.card : COLORS.white,
     borderTopLeftRadius: 28, borderTopRightRadius: 28,
     padding: 24,
     paddingBottom: Platform.OS === 'ios' ? 40 : 28,
     ...shadow(10),
   },
-  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.border, alignSelf: 'center', marginBottom: 20 },
+  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: isDark ? colors.border : COLORS.border, alignSelf: 'center', marginBottom: 20 },
 
   modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
   modalChip:    { fontSize: 10, fontWeight: '700', color: COLORS.blue, letterSpacing: 0.8, marginBottom: 4 },
-  modalTitulo:  { fontSize: 17, fontWeight: '600', color: COLORS.ink },
-  modalCloseBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center' },
+  modalTitulo:  { fontSize: 17, fontWeight: '600', color: isDark ? colors.text : COLORS.ink },
+  modalCloseBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? colors.surfaceVariant : COLORS.bg, alignItems: 'center', justifyContent: 'center' },
 
   modalWorkerRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 20 },
   modalWorkerInfo: { flex: 1 },
-  modalNombre: { fontSize: 18, fontWeight: '600', color: COLORS.ink, marginBottom: 4 },
+  modalNombre: { fontSize: 18, fontWeight: '600', color: isDark ? colors.text : COLORS.ink, marginBottom: 4 },
   modalMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
-  modalRating: { fontSize: 13, color: COLORS.gray },
-  modalDistancia: { fontSize: 12, color: COLORS.gray },
+  modalRating: { fontSize: 13, color: isDark ? colors.textSecondary : COLORS.gray },
+  modalDistancia: { fontSize: 12, color: isDark ? colors.textSecondary : COLORS.gray },
 
-  modalDivider: { height: StyleSheet.hairlineWidth, backgroundColor: COLORS.border, marginBottom: 18 },
+  modalDivider: { height: StyleSheet.hairlineWidth, backgroundColor: isDark ? colors.border : COLORS.border, marginBottom: 18 },
 
   modalPrecioRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
-  modalPrecioLabel: { fontSize: 11, color: COLORS.grayLight, marginBottom: 4 },
-  modalPrecio: { fontSize: 26, fontWeight: '700', color: COLORS.ink },
-  modalExtra: { fontSize: 14, fontWeight: '600', color: COLORS.gray },
+  modalPrecioLabel: { fontSize: 11, color: isDark ? colors.textTertiary : COLORS.grayLight, marginBottom: 4 },
+  modalPrecio: { fontSize: 26, fontWeight: '700', color: isDark ? colors.text : COLORS.ink },
+  modalExtra: { fontSize: 14, fontWeight: '600', color: isDark ? colors.textSecondary : COLORS.gray },
 
-  modalAvisoCard: { flexDirection: 'row', gap: 9, alignItems: 'flex-start', backgroundColor: COLORS.bg, borderRadius: 14, padding: 13, marginBottom: 20 },
-  modalAvisoTexto: { flex: 1, fontSize: 11.5, color: COLORS.gray, lineHeight: 17 },
+  modalAvisoCard: { flexDirection: 'row', gap: 9, alignItems: 'flex-start', backgroundColor: isDark ? colors.surfaceVariant : COLORS.bg, borderRadius: 14, padding: 13, marginBottom: 20 },
+  modalAvisoTexto: { flex: 1, fontSize: 11.5, color: isDark ? colors.textSecondary : COLORS.gray, lineHeight: 17 },
 
   chatBtn: {
     backgroundColor: COLORS.blue, borderRadius: 14, paddingVertical: 15,

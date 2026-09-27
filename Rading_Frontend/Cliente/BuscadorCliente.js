@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View, Text, StyleSheet, SafeAreaView, ScrollView,
 } from 'react-native';
 
+import { useTheme } from '../ThemeContext';
 import BuscadorTrabajadorWidget from './Buscadortrabajadorwidget';
 import BottomNavBar from './NavegadorCliente';
 
@@ -14,7 +15,10 @@ import BottomNavBar from './NavegadorCliente';
 // TrabajoActivoWidget.js y ya no se renderiza acá.
 
 export default function BuscadorTrabajador({ route, navigation }) {
+  const { colors, isDark } = useTheme();
   const { usuario } = route.params;
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -43,8 +47,8 @@ export default function BuscadorTrabajador({ route, navigation }) {
 const WHITE = '#ffffff';
 const BLUE  = '#1565D8';
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F4F6FB' },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: isDark ? colors.background : '#F4F6FB' },
 
   header: { backgroundColor: BLUE, paddingTop: 50, paddingBottom: 16, paddingHorizontal: 20 },
   headerTitle: { color: WHITE, fontSize: 24, fontWeight: '800', marginBottom: 2 },

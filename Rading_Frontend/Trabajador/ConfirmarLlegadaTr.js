@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import Svg, { Path, Circle } from "react-native-svg";
 import API_URL from "../configS";
+import { useTheme } from "../ThemeContext";
 
 export default function ConfirmarLlegadaTr({
   idTrabajo,
@@ -19,6 +20,9 @@ export default function ConfirmarLlegadaTr({
   onConfirm = () => {},
   onClose = () => {},
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const [status, setStatus] = useState("idle");
   const [codigoInput, setCodigoInput] = useState("");
   const [errorMsg, setErrorMsg] = useState(null);
@@ -91,42 +95,42 @@ export default function ConfirmarLlegadaTr({
         if (!res.ok) return;
         const estado = await res.json();
         if (estado.llegada_trabajador_at || estado.trabajo_iniciado_en) {
-  goToSuccess(estado);
-}
+          goToSuccess(estado);
+        }
       } catch (e) {
         console.error("Error consultando estado (trabajador-llegada):", e);
       }
     }, 4000);
   };
 
- const handleConfirm = async () => {
-  if (status !== "idle" && status !== "error") return;
+  const handleConfirm = async () => {
+    if (status !== "idle" && status !== "error") return;
 
-  const codigoLimpio = codigoInput.trim();
-  if (!codigoLimpio) {
-    setErrorMsg("Ingresá el código de 4 dígitos que te dio el cliente");
-    setStatus("error");
-    return;
-  }
+    const codigoLimpio = codigoInput.trim();
+    if (!codigoLimpio) {
+      setErrorMsg("Ingresá el código de 4 dígitos que te dio el cliente");
+      setStatus("error");
+      return;
+    }
 
-  setStatus("loading");
-  setErrorMsg(null);
-  try {
-    const res = await fetch(`${API_URL}/trabajo/${idTrabajo}/confirmar-codigo-llegada`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ codigo: codigoLimpio }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || "No se pudo confirmar la llegada");
+    setStatus("loading");
+    setErrorMsg(null);
+    try {
+      const res = await fetch(`${API_URL}/trabajo/${idTrabajo}/confirmar-codigo-llegada`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigo: codigoLimpio }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "No se pudo confirmar la llegada");
 
-    goToSuccess(data);
-  } catch (err) {
-    console.error("Error al confirmar llegada (trabajador):", err);
-    setErrorMsg(err.message || "Ocurrió un error. Probá de nuevo.");
-    setStatus("error");
-  }
-};
+      goToSuccess(data);
+    } catch (err) {
+      console.error("Error al confirmar llegada (trabajador):", err);
+      setErrorMsg(err.message || "Ocurrió un error. Probá de nuevo.");
+      setStatus("error");
+    }
+  };
 
   const animateClose = () => {
     setStatus("closing");
@@ -260,12 +264,12 @@ export default function ConfirmarLlegadaTr({
 
 const BLUE = "#0b2cd6";
 
-const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: "#0b1220", alignItems: "center", justifyContent: "center", padding: 24 },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: isDark ? colors.overlay : "#0b1220", alignItems: "center", justifyContent: "center", padding: 24 },
   card: {
     width: "100%",
     maxWidth: 340,
-    backgroundColor: "#ffffff",
+    backgroundColor: isDark ? colors.card : "#ffffff",
     borderRadius: 28,
     padding: 24,
     paddingTop: 28,
@@ -282,7 +286,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 999,
-    backgroundColor: "#f1f4ff",
+    backgroundColor: isDark ? colors.surfaceVariant : "#f1f4ff",
     alignItems: "center",
     justifyContent: "center",
     zIndex: 2,
@@ -300,21 +304,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   title: { textAlign: "center", color: BLUE, fontSize: 21, fontWeight: "800", marginBottom: 4 },
-  sub: { textAlign: "center", color: "#8a90a8", fontSize: 13.5, marginBottom: 20, lineHeight: 19 },
-  rows: { backgroundColor: "#f6f8ff", borderRadius: 18, paddingHorizontal: 16, marginBottom: 16 },
+  sub: { textAlign: "center", color: isDark ? colors.textSecondary : "#8a90a8", fontSize: 13.5, marginBottom: 20, lineHeight: 19 },
+  rows: { backgroundColor: isDark ? colors.surfaceVariant : "#f6f8ff", borderRadius: 18, paddingHorizontal: 16, marginBottom: 16 },
   row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#e9edff",
+    borderBottomColor: isDark ? colors.divider : "#e9edff",
   },
   rowLast: { borderBottomWidth: 0 },
-  rowLabel: { color: "#8a90a8", fontSize: 13, fontWeight: "600" },
-  rowValue: { color: "#16193f", fontSize: 13.5, fontWeight: "700", textAlign: "right", maxWidth: "60%" },
+  rowLabel: { color: isDark ? colors.textSecondary : "#8a90a8", fontSize: 13, fontWeight: "600" },
+  rowValue: { color: isDark ? colors.text : "#16193f", fontSize: 13.5, fontWeight: "700", textAlign: "right", maxWidth: "60%" },
   codeInput: {
-    backgroundColor: "#f6f8ff",
+    backgroundColor: isDark ? colors.inputBg : "#f6f8ff",
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 16,
@@ -322,11 +326,11 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "center",
     letterSpacing: 6,
-    color: "#16193f",
+    color: isDark ? colors.text : "#16193f",
     marginBottom: 14,
   },
-  errorBox: { backgroundColor: "#fdeceb", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 14 },
-  errorText: { color: "#c0392b", fontSize: 12.5, fontWeight: "600", textAlign: "center" },
+  errorBox: { backgroundColor: isDark ? colors.dangerBg : "#fdeceb", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 14 },
+  errorText: { color: isDark ? colors.danger : "#c0392b", fontSize: 12.5, fontWeight: "600", textAlign: "center" },
   btn: {
     width: "100%",
     borderRadius: 999,
@@ -378,7 +382,7 @@ const styles = StyleSheet.create({
     borderTopColor: "#fff",
   },
   successTitle: { color: BLUE, fontSize: 19, fontWeight: "800", marginBottom: 6 },
-  successSub: { color: "#8a90a8", fontSize: 13.5, textAlign: "center" },
+  successSub: { color: isDark ? colors.textSecondary : "#8a90a8", fontSize: 13.5, textAlign: "center" },
   waitingTitle: { color: BLUE, fontSize: 19, fontWeight: "800", marginBottom: 6 },
-  waitingSub: { color: "#8a90a8", fontSize: 13.5, textAlign: "center" },
+  waitingSub: { color: isDark ? colors.textSecondary : "#8a90a8", fontSize: 13.5, textAlign: "center" },
 });

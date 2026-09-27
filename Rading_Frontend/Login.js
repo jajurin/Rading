@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   StyleSheet, Text, View, TextInput, TouchableOpacity,
@@ -8,7 +8,9 @@ import {
 import Svg, { Path } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useForm, Controller } from 'react-hook-form';
+import AsyncStorage from './asyncStorage';
 import API_URL from './configS';
+import { useTheme } from './ThemeContext';
 
 // ─── Paleta ────────────────────────────────────────────────────────────
 // Tinta profunda + dos azules de marca + hielo de fondo. El dorado se usa
@@ -27,7 +29,8 @@ const COLORS = {
 };
 
 // ─── Ícono de input con foco animado ───────────────────────────────────
-function CampoInput({ icono, placeholder, value, onChangeText, onBlur, secureTextEntry, verBtn, keyboardType, autoCapitalize = 'none', error }) {
+function CampoInput({ icono, placeholder, value, onChangeText, onBlur, secureTextEntry, verBtn, keyboardType, autoCapitalize = 'none', error, styles }) {
+  const { colors } = useTheme();
   const [enfocado, setEnfocado] = useState(false);
   const borderAnim = useRef(new Animated.Value(0)).current;
 
@@ -38,24 +41,22 @@ function CampoInput({ icono, placeholder, value, onChangeText, onBlur, secureTex
   const handleBlur = () => {
     setEnfocado(false);
     Animated.timing(borderAnim, { toValue: 0, duration: 160, useNativeDriver: false }).start();
-    // 👇 le avisamos a react-hook-form que el campo perdió el foco
-    // (lo necesita para modos de validación tipo "onBlur"/"onTouched").
     if (onBlur) onBlur();
   };
 
   const borderColor = borderAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [error ? COLORS.danger : COLORS.border, error ? COLORS.danger : COLORS.blueSoft],
+    outputRange: [error ? COLORS.danger : colors.inputBorder, error ? COLORS.danger : COLORS.blueSoft],
   });
 
   return (
     <View style={{ width: '100%', marginBottom: 14 }}>
       <Animated.View style={[styles.inputWrapper, { borderColor }]}>
-        <Ionicons name={icono} size={18} color={enfocado ? COLORS.blueSoft : COLORS.textMuted} />
+        <Ionicons name={icono} size={18} color={enfocado ? COLORS.blueSoft : colors.textTertiary} />
         <TextInput
           style={styles.input}
           placeholder={placeholder}
-          placeholderTextColor="#A9B4C7"
+          placeholderTextColor={colors.inputPlaceholder}
           autoCapitalize={autoCapitalize}
           keyboardType={keyboardType}
           secureTextEntry={secureTextEntry}
@@ -66,13 +67,13 @@ function CampoInput({ icono, placeholder, value, onChangeText, onBlur, secureTex
         />
         {verBtn}
       </Animated.View>
-      {/* 👇 mensaje de error de react-hook-form, debajo de cada campo */}
       {error && <Text style={styles.fieldError}>{error}</Text>}
     </View>
   );
 }
 
 export default function Login({ navigation }) {
+  const { colors, isDark, syncUsuario } = useTheme();
   const [loading, setLoading] = useState(false);
   const [verContrasena, setVerContrasena] = useState(false);
 
@@ -88,6 +89,8 @@ export default function Login({ navigation }) {
     defaultValues: { identificador: '', contrasena: '' },
     mode: 'onSubmit',
   });
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   // 👇 Misma lógica de siempre: recibe los datos YA validados por RHF
   // (identificador y contrasena garantizados no vacíos) y hace exactamente
@@ -110,6 +113,10 @@ export default function Login({ navigation }) {
 
       const { usuario } = data;
       console.log('tipo de usuario:', usuario.tipo);
+
+      // Guardar user ID y sincronizar tema con el usuario
+      await AsyncStorage.setItem('@rading_user_id', String(usuario.id));
+      syncUsuario(usuario.id);
 
       if (usuario.tipo === 'trabajador') {
         navigation.navigate('HomeTrabajador', { usuario });
@@ -159,7 +166,7 @@ export default function Login({ navigation }) {
           >
             <Path
               d="M0,20 C 80,50 160,0 240,14 C 300,24 340,6 400,18 L400,46 L0,46 Z"
-              fill={COLORS.ice}
+              fill={colors.background}
             />
           </Svg>
         </View>
@@ -197,6 +204,7 @@ export default function Login({ navigation }) {
                 onChangeText={onChange}
                 onBlur={onBlur}
                 error={errors.identificador?.message}
+                styles={styles}
               />
             )}
           />
@@ -216,12 +224,13 @@ export default function Login({ navigation }) {
                 onBlur={onBlur}
                 secureTextEntry={!verContrasena}
                 error={errors.contrasena?.message}
+                styles={styles}
                 verBtn={
                   <TouchableOpacity onPress={() => setVerContrasena(!verContrasena)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <Ionicons
                       name={verContrasena ? 'eye-off-outline' : 'eye-outline'}
                       size={18}
-                      color={COLORS.textMuted}
+                      color={colors.textTertiary}
                     />
                   </TouchableOpacity>
                 }
@@ -262,14 +271,14 @@ export default function Login({ navigation }) {
           </Text>
         </View>
 
-        <StatusBar style="light" />
+        <StatusBar style={colors.statusBar} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.ice },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
 
   header: {
     backgroundColor: COLORS.blue,
@@ -304,12 +313,12 @@ const styles = StyleSheet.create({
   wave: { marginTop: 22, marginBottom: -1 },
 
   card: {
-    backgroundColor: COLORS.white,
+    backgroundColor: colors.card,
     marginHorizontal: 22,
     marginTop: -1,
     borderRadius: 26,
     padding: 26,
-    shadowColor: COLORS.ink,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 14 },
     shadowOpacity: 0.14,
     shadowRadius: 24,
@@ -318,7 +327,7 @@ const styles = StyleSheet.create({
 
   googleButton: {
     flexDirection: 'row',
-    backgroundColor: COLORS.ice,
+    backgroundColor: colors.inputBg,
     width: '100%',
     paddingVertical: 13,
     borderRadius: 16,
@@ -326,26 +335,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
   },
   googleGlyph: {
     width: 20, height: 20, borderRadius: 10,
-    backgroundColor: COLORS.white,
+    backgroundColor: colors.card,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: COLORS.border,
+    borderWidth: 1, borderColor: colors.border,
   },
   googleGlyphText: { fontSize: 12, fontWeight: '800', color: COLORS.blueSoft },
-  googleText: { color: COLORS.ink, fontWeight: '700', fontSize: 14 },
+  googleText: { color: colors.text, fontWeight: '700', fontSize: 14 },
 
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 20 },
-  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: COLORS.border },
-  dividerText: { fontSize: 11.5, color: COLORS.textMuted, fontWeight: '600' },
+  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.divider },
+  dividerText: { fontSize: 11.5, color: colors.textTertiary, fontWeight: '600' },
 
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: COLORS.ice,
+    backgroundColor: colors.inputBg,
     width: '100%',
     borderRadius: 16,
     paddingHorizontal: 16,
@@ -354,7 +363,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 14.5,
-    color: COLORS.ink,
+    color: colors.text,
     paddingVertical: Platform.OS === 'ios' ? 13 : 11,
   },
   fieldError: {
@@ -367,7 +376,7 @@ const styles = StyleSheet.create({
 
   linkRowRight: { alignSelf: 'flex-end', marginBottom: 22 },
   linkRowCenter: { marginTop: 18, alignItems: 'center' },
-  linkTextDark: { color: COLORS.textMuted, fontSize: 13, fontWeight: '500' },
+  linkTextDark: { color: colors.textTertiary, fontSize: 13, fontWeight: '500' },
   linkBold: { color: COLORS.blueSoft, fontWeight: '800' },
 
   loginButton: {

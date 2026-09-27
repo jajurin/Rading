@@ -1,8 +1,9 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList,
   TouchableOpacity, ActivityIndicator, Alert,
 } from 'react-native';
+import { useTheme } from '../ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -31,113 +32,12 @@ const formatDate = (dateStr) => {
   });
 };
 
-const RatingBadge = ({ estrellas }) => {
-  const calificado = estrellas != null;
-  return (
-    <View style={[styles.ratingBadge, calificado ? styles.ratingBadgeDone : styles.ratingBadgePending]}>
-      {calificado ? (
-        <>
-          <Ionicons name="star" size={12} color="#3B6D11" />
-          <Text style={styles.ratingBadgeTextDone}>Calificado · {Number(estrellas).toFixed(1)}</Text>
-        </>
-      ) : (
-        <>
-          <Ionicons name="time-outline" size={12} color="#B45309" />
-          <Text style={styles.ratingBadgeTextPending}>Pendiente de calificar</Text>
-        </>
-      )}
-    </View>
-  );
-};
-
-const TrabajadorRecienteCard = ({ item, onPress }) => {
-  const terminado = item.estado && item.estado !== 'EN PROCESO';
-  const initials = getInitials(item.nombre, item.apellido);
-  const avatarColor = getAvatarColor(item.nombre);
-
-  return (
-    <TouchableOpacity
-      style={styles.card}
-      activeOpacity={0.85}
-      onPress={() => onPress?.(item)}
-    >
-      {/* Header */}
-      <View style={styles.cardHeader}>
-        <View style={styles.avatarWrapper}>
-          {item.foto ? (
-            <View style={[styles.avatarCircle, { backgroundColor: avatarColor.bg }]}>
-              <Text style={[styles.avatarText, { color: avatarColor.text }]}>{initials}</Text>
-            </View>
-          ) : (
-            <View style={[styles.avatarCircle, { backgroundColor: avatarColor.bg }]}>
-              <Text style={[styles.avatarText, { color: avatarColor.text }]}>{initials}</Text>
-            </View>
-          )}
-          <View style={[
-            styles.statusDot,
-            { backgroundColor: terminado ? '#22c55e' : '#f59e0b' },
-          ]} />
-        </View>
-
-        <View style={styles.cardMeta}>
-          <Text style={styles.cardName} numberOfLines={1}>
-            {item.nombre} {item.apellido}
-          </Text>
-          <View style={styles.servicioRow}>
-            <Ionicons name="calendar-outline" size={11} color="#94A3B8" />
-            <Text style={styles.servicioText} numberOfLines={1}>
-              Último trabajo: {formatDate(item.fecha_iniciado)}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.precioBox}>
-          <Text style={styles.precioValue}>
-            {item.precio != null ? `$${Number(item.precio).toLocaleString('es-AR')}` : '-'}
-          </Text>
-        </View>
-      </View>
-
-      <RatingBadge estrellas={item.estrellasCliente} />
-
-      {/* Footer */}
-      <View style={styles.cardFooter}>
-        <View style={styles.metaItem}>
-          <Text style={styles.metaLabel}>INICIO</Text>
-          <Text style={styles.metaValue}>{formatDate(item.fecha_iniciado)}</Text>
-        </View>
-
-        <View style={styles.metaDivider} />
-
-        <View style={styles.metaItem}>
-          <Text style={styles.metaLabel}>FIN</Text>
-          <Text style={[
-            styles.metaValue,
-            !item.fecha_acabado && { color: '#CBD5E1' },
-          ]}>
-            {formatDate(item.fecha_acabado)}
-          </Text>
-        </View>
-
-        <View style={styles.metaDivider} />
-
-        <View style={styles.metaItem}>
-          <Text style={styles.metaLabel}>ESTADO</Text>
-          <Text style={[
-            styles.metaValue,
-            { color: terminado ? '#3B6D11' : '#854F0B' },
-          ]}>
-            {item.estado ?? '-'}
-          </Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-};
-
 export default function RecientesClientes({ route, navigation }) {
+  const { colors, isDark } = useTheme();
   const usuario = route?.params?.usuario;
   const idCliente = usuario?.idCliente;
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const [recientes, setRecientes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -165,8 +65,6 @@ export default function RecientesClientes({ route, navigation }) {
     }
   }, [idCliente]);
 
-  // 👇 NUEVO: se refresca cada vez que la pantalla vuelve a tener foco
-  // (por ejemplo, al volver de ClasificarTrabajador después de calificar)
   useFocusEffect(
     useCallback(() => {
       fetchRecientes();
@@ -179,6 +77,111 @@ export default function RecientesClientes({ route, navigation }) {
       return;
     }
     navigation?.navigate('ClasificarTrabajador', { trabajo: trabajador, usuario });
+  };
+
+  // Componentes movidos dentro del componente principal para acceder a styles
+  const RatingBadge = ({ estrellas }) => {
+    const calificado = estrellas != null;
+    return (
+      <View style={[styles.ratingBadge, calificado ? styles.ratingBadgeDone : styles.ratingBadgePending]}>
+        {calificado ? (
+          <>
+            <Ionicons name="star" size={12} color="#3B6D11" />
+            <Text style={styles.ratingBadgeTextDone}>Calificado · {Number(estrellas).toFixed(1)}</Text>
+          </>
+        ) : (
+          <>
+            <Ionicons name="time-outline" size={12} color="#B45309" />
+            <Text style={styles.ratingBadgeTextPending}>Pendiente de calificar</Text>
+          </>
+        )}
+      </View>
+    );
+  };
+
+  const TrabajadorRecienteCard = ({ item, onPress }) => {
+    const terminado = item.estado && item.estado !== 'EN PROCESO';
+    const initials = getInitials(item.nombre, item.apellido);
+    const avatarColor = getAvatarColor(item.nombre);
+
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.85}
+        onPress={() => onPress?.(item)}
+      >
+        {/* Header */}
+        <View style={styles.cardHeader}>
+          <View style={styles.avatarWrapper}>
+            {item.foto ? (
+              <View style={[styles.avatarCircle, { backgroundColor: avatarColor.bg }]}>
+                <Text style={[styles.avatarText, { color: avatarColor.text }]}>{initials}</Text>
+              </View>
+            ) : (
+              <View style={[styles.avatarCircle, { backgroundColor: avatarColor.bg }]}>
+                <Text style={[styles.avatarText, { color: avatarColor.text }]}>{initials}</Text>
+              </View>
+            )}
+            <View style={[
+              styles.statusDot,
+              { backgroundColor: terminado ? '#22c55e' : '#f59e0b' },
+            ]} />
+          </View>
+
+          <View style={styles.cardMeta}>
+            <Text style={styles.cardName} numberOfLines={1}>
+              {item.nombre} {item.apellido}
+            </Text>
+            <View style={styles.servicioRow}>
+              <Ionicons name="calendar-outline" size={11} color="#94A3B8" />
+              <Text style={styles.servicioText} numberOfLines={1}>
+                Último trabajo: {formatDate(item.fecha_iniciado)}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.precioBox}>
+            <Text style={styles.precioValue}>
+              {item.precio != null ? `$${Number(item.precio).toLocaleString('es-AR')}` : '-'}
+            </Text>
+          </View>
+        </View>
+
+        <RatingBadge estrellas={item.estrellasCliente} />
+
+        {/* Footer */}
+        <View style={styles.cardFooter}>
+          <View style={styles.metaItem}>
+            <Text style={styles.metaLabel}>INICIO</Text>
+            <Text style={styles.metaValue}>{formatDate(item.fecha_iniciado)}</Text>
+          </View>
+
+          <View style={styles.metaDivider} />
+
+          <View style={styles.metaItem}>
+            <Text style={styles.metaLabel}>FIN</Text>
+            <Text style={[
+              styles.metaValue,
+              !item.fecha_acabado && { color: '#CBD5E1' },
+            ]}>
+              {formatDate(item.fecha_acabado)}
+            </Text>
+          </View>
+
+          <View style={styles.metaDivider} />
+
+          <View style={styles.metaItem}>
+            <Text style={styles.metaLabel}>ESTADO</Text>
+            <Text style={[
+              styles.metaValue,
+              { color: terminado ? '#3B6D11' : '#854F0B' },
+            ]}>
+              {item.estado ?? '-'}
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   return (
@@ -234,10 +237,10 @@ export default function RecientesClientes({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background : '#F1F5F9',
   },
 
   headerRow: {
@@ -249,8 +252,8 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   backBtn: { padding: 4 },
-  headerTitle: { color: '#1E293B', fontSize: 20, fontWeight: '800' },
-  headerSub: { color: '#94A3B8', fontSize: 13 },
+  headerTitle: { color: isDark ? colors.text : '#1E293B', fontSize: 20, fontWeight: '800' },
+  headerSub: { color: isDark ? colors.textTertiary : '#94A3B8', fontSize: 13 },
 
   centerBox: {
     flex: 1,
@@ -268,7 +271,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
   },
   retryText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  emptyText: { color: '#94A3B8', fontSize: 15 },
+  emptyText: { color: isDark ? colors.textTertiary : '#94A3B8', fontSize: 15 },
 
   listContent: {
     paddingHorizontal: 16,
@@ -276,7 +279,7 @@ const styles = StyleSheet.create({
     paddingBottom: 140,
   },
   resultCount: {
-    color: '#94A3B8',
+    color: isDark ? colors.textTertiary : '#94A3B8',
     fontSize: 11,
     fontWeight: '700',
     marginBottom: 10,
@@ -285,12 +288,12 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: isDark ? colors.card : '#fff',
     borderRadius: 14,
     marginBottom: 10,
     overflow: 'hidden',
     borderWidth: 0.5,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border : '#E2E8F0',
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -332,7 +335,7 @@ const styles = StyleSheet.create({
     height: 14,
     borderRadius: 7,
     borderWidth: 2.5,
-    borderColor: '#fff',
+    borderColor: isDark ? colors.card : '#fff',
   },
   cardMeta: {
     flex: 1,
@@ -342,7 +345,7 @@ const styles = StyleSheet.create({
   cardName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0F172A',
+    color: isDark ? colors.text : '#0F172A',
   },
   servicioRow: {
     flexDirection: 'row',
@@ -351,7 +354,7 @@ const styles = StyleSheet.create({
   },
   servicioText: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: isDark ? colors.textTertiary : '#94A3B8',
     fontWeight: '500',
   },
   precioBox: {
@@ -383,10 +386,10 @@ const styles = StyleSheet.create({
   cardFooter: {
     flexDirection: 'row',
     borderTopWidth: 0.5,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: isDark ? colors.border : '#F1F5F9',
     paddingVertical: 11,
     paddingHorizontal: 14,
-    backgroundColor: '#FAFBFD',
+    backgroundColor: isDark ? colors.surfaceVariant : '#FAFBFD',
   },
   metaItem: {
     flex: 1,
@@ -395,18 +398,18 @@ const styles = StyleSheet.create({
   },
   metaLabel: {
     fontSize: 9,
-    color: '#94A3B8',
+    color: isDark ? colors.textTertiary : '#94A3B8',
     letterSpacing: 0.8,
     fontWeight: '700',
   },
   metaValue: {
     fontSize: 13,
-    color: '#1E293B',
+    color: isDark ? colors.text : '#1E293B',
     fontWeight: '600',
   },
   metaDivider: {
     width: 0.5,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.border : '#E2E8F0',
     marginHorizontal: 4,
     alignSelf: 'stretch',
   },

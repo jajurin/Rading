@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker'
 import { useForm, Controller } from 'react-hook-form'
 import API_URL from './configS'
 import { subirFoto } from './subirFoto'
+import { useTheme } from './ThemeContext'
 
 const BLUE = '#1565D8'
 const BLUE_DARK = '#0d4bb8'
@@ -39,6 +40,7 @@ const VALORES_POR_DEFECTO = {
 }
 
 export default function EditarDatosPersonales({ route, navigation }) {
+  const { colors, isDark } = useTheme()
   const tipo = route?.params?.tipo ?? 'cliente' // 'cliente' | 'trabajador'
   const usuario = route?.params?.usuario ?? {}
   const idPerfil = tipo === 'trabajador' ? usuario?.idTrabajador : usuario?.idCliente
@@ -65,6 +67,8 @@ export default function EditarDatosPersonales({ route, navigation }) {
 
   const nombreWatch = watch('nombre')
   const apellidoWatch = watch('apellido')
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark])
 
   useEffect(() => {
     if (idPerfil == null) {
@@ -180,7 +184,7 @@ export default function EditarDatosPersonales({ route, navigation }) {
             value={value}
             onChangeText={onChange}
             placeholder={placeholder}
-            placeholderTextColor="#A0A7B8"
+            placeholderTextColor={colors.inputPlaceholder}
             keyboardType={keyboardType}
             multiline={multiline}
           />
@@ -366,24 +370,24 @@ export default function EditarDatosPersonales({ route, navigation }) {
   )
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.background },
 
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: LINE,
+    borderBottomColor: colors.border,
   },
   backBtn: { marginRight: 12 },
-  topTitulo: { fontSize: 17, fontWeight: '800', color: '#1A2233' },
-  topSub: { fontSize: 11.5, color: GRAY, fontWeight: '600', marginTop: 1 },
+  topTitulo: { fontSize: 17, fontWeight: '800', color: colors.text },
+  topSub: { fontSize: 11.5, color: colors.textTertiary, fontWeight: '600', marginTop: 1 },
 
   centerBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
-  centerText: { color: GRAY, fontSize: 13.5 },
+  centerText: { color: colors.textTertiary, fontSize: 13.5 },
 
   scrollContent: { padding: 16 },
 
@@ -391,7 +395,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#FDECEC',
+    backgroundColor: isDark ? 'rgba(176,0,32,0.15)' : '#FDECEC',
     borderRadius: 12,
     padding: 12,
     marginBottom: 14,
@@ -407,7 +411,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
-    borderColor: '#fff',
+    borderColor: colors.card,
   },
   avatarVacio: { backgroundColor: '#7A9AE8' },
   avatarIniciales: { color: '#fff', fontSize: 30, fontWeight: '800' },
@@ -422,37 +426,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: colors.card,
   },
   cambiarFoto: { color: BLUE, fontWeight: '700', fontSize: 13 },
 
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 18,
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#0d4bb8',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 2,
   },
-  seccionTitulo: { fontSize: 14.5, fontWeight: '800', color: '#1A2233', marginBottom: 10 },
+  seccionTitulo: { fontSize: 14.5, fontWeight: '800', color: colors.text, marginBottom: 10 },
 
   campo: { marginBottom: 12 },
   label: { fontSize: 12, fontWeight: '700', color: BLUE_DARK, marginBottom: 5 },
   input: {
-    backgroundColor: FIELD_BG,
+    backgroundColor: colors.inputBg,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: LINE,
+    borderColor: colors.inputBorder,
     paddingHorizontal: 14,
     paddingVertical: 11,
     fontSize: 14,
-    color: '#1A2233',
+    color: colors.text,
   },
   inputMultiline: { minHeight: 90, textAlignVertical: 'top' },
-  inputError: { borderColor: DANGER, backgroundColor: '#FDF1F1' },
+  inputError: { borderColor: DANGER, backgroundColor: isDark ? 'rgba(176,0,32,0.15)' : '#FDF1F1' },
   campoErrorRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 },
   campoErrorTexto: { color: DANGER, fontSize: 11.5, fontWeight: '500' },
 
@@ -474,8 +478,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 10,
     borderWidth: 1,
-    borderColor: LINE,
-    backgroundColor: '#fff',
+    borderColor: colors.border,
+    backgroundColor: colors.card,
   },
-  cancelarTexto: { color: GRAY, fontWeight: '700', fontSize: 14 },
+  cancelarTexto: { color: colors.textTertiary, fontWeight: '700', fontSize: 14 },
 })

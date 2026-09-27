@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useMemo } from "react";
 import { TouchableOpacity, View, Text, StyleSheet, Animated } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useTheme } from "../ThemeContext";
 
 /* Mismos tokens que el resto de la app (Home del trabajador) */
 const INDIGO = "#3D4EEA";
@@ -26,6 +27,9 @@ export default function TrabajoActivoTrabajador({
   expanded = false,
   onPress,
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   // Punto "en vivo" pulsante — refuerza que el trabajo está activo ahora mismo
   const pulse = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -85,7 +89,7 @@ export default function TrabajoActivoTrabajador({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   wrap: {
     width: "100%",
     marginBottom: 30,
@@ -100,7 +104,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     overflow: "hidden",
-    shadowColor: NAVY,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.32,
     shadowRadius: 16,

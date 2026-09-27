@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useTheme } from '../ThemeContext';
 import Header from '../Header';
 import BottomNavBarTrabajador from './Navegadortrabajador';
 import API_URL from '../configS';
@@ -85,7 +86,9 @@ const formatearPreviaMensaje = (item) => {
   }
 };
 
-export default function PreviaChatTrabajador({ route, navigation }) {  const usuario = route?.params?.usuario;
+export default function PreviaChatTrabajador({ route, navigation }) {
+  const { colors, isDark } = useTheme();
+  const usuario = route?.params?.usuario;
 
   const [chats, setChats] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -137,6 +140,8 @@ const res = await fetch(`${API_BASE_URL}/chat/trabajador/${usuario.idTrabajador}
       listaResto: chatsFiltrados.filter((c) => !c.trabajoActivo),
     };
   }, [chatsFiltrados, priorizarActivos]);
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const abrirChat = (contacto) => {
     navigation.navigate('ChatTrabajador', {
@@ -356,17 +361,17 @@ const res = await fetch(`${API_BASE_URL}/chat/trabajador/${usuario.idTrabajador}
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
 
-  cabeceraFija: { width: '100%', backgroundColor: BG },
+  cabeceraFija: { width: '100%', backgroundColor: colors.background },
 
   listaScroll: { flex: 1, width: '100%' },
   scrollContent: { paddingBottom: 230, flexGrow: 1 },
 
   tituloRow: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 4 },
-  titulo: { fontSize: 20, fontWeight: '800', color: '#1A202C' },
-  subtitulo: { fontSize: 13, color: '#8A94A6', marginTop: 2 },
+  titulo: { fontSize: 20, fontWeight: '800', color: colors.text },
+  subtitulo: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
 
   statCard: {
     flexDirection: 'row',
@@ -411,21 +416,21 @@ const styles = StyleSheet.create({
   buscadorWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     marginHorizontal: 16,
     borderRadius: 16,
     paddingHorizontal: 14,
     height: 46,
     gap: 8,
     borderWidth: 1,
-    borderColor: 'rgba(21,101,216,0.08)',
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 6,
     elevation: 1,
   },
-  buscadorInput: { flex: 1, fontSize: 14, color: '#1A202C' },
+  buscadorInput: { flex: 1, fontSize: 14, color: colors.text },
 
   sectionLabel: {
     marginTop: 22,
@@ -433,7 +438,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontSize: 12,
     fontWeight: '800',
-    color: '#8A94A6',
+    color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -441,10 +446,10 @@ const styles = StyleSheet.create({
   listaCard: {
     marginTop: 14,
     marginHorizontal: 16,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(21,101,216,0.06)',
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.05,
@@ -454,7 +459,7 @@ const styles = StyleSheet.create({
   },
   separador: {
     height: 1,
-    backgroundColor: 'rgba(21,101,216,0.06)',
+    backgroundColor: colors.border,
     marginLeft: 78,
   },
 
@@ -485,14 +490,14 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     backgroundColor: '#3ECF6E',
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: colors.card,
   },
 
   filaChatCentro: { flex: 1 },
   filaChatTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   nombreRow: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8, gap: 6 },
-  nombreChat: { fontSize: 14.5, fontWeight: '700', color: '#2D3748', flexShrink: 1 },
-  textoNoLeido: { color: '#1A202C', fontWeight: '800' },
+  nombreChat: { fontSize: 14.5, fontWeight: '700', color: colors.text, flexShrink: 1 },
+  textoNoLeido: { color: colors.text, fontWeight: '800' },
   tagActivo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -505,7 +510,7 @@ const styles = StyleSheet.create({
   tagActivoDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: BLUE },
   tagActivoText: { color: BLUE_DARK, fontSize: 9.5, fontWeight: '800' },
 
-  horaChat: { fontSize: 11.5, color: '#A0AEC0', fontWeight: '600' },
+  horaChat: { fontSize: 11.5, color: colors.textTertiary, fontWeight: '600' },
   horaNoLeida: { color: BLUE, fontWeight: '800' },
 
   filaChatBottomRow: {
@@ -515,7 +520,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   previewRow: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 },
-  mensajeChat: { fontSize: 12.5, color: '#8A94A6', flexShrink: 1 },
+  mensajeChat: { fontSize: 12.5, color: colors.textSecondary, flexShrink: 1 },
 
   badgeNoLeidos: {
     minWidth: 20,
@@ -529,7 +534,7 @@ const styles = StyleSheet.create({
   badgeNoLeidosText: { color: '#fff', fontSize: 11, fontWeight: '800' },
 
   emptyWrap: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
-  emptyText: { marginTop: 10, color: '#8A94A6', fontSize: 13, textAlign: 'center' },
+  emptyText: { marginTop: 10, color: colors.textSecondary, fontSize: 13, textAlign: 'center' },
   reintentarBtn: {
     marginTop: 14,
     backgroundColor: BLUE,

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import Svg, { Path, Circle } from "react-native-svg";
 import API_URL from "../configS";
 import Header from "../Header";
 import BottomNavBar from "./NavegadorCliente";
+import { useTheme } from "../ThemeContext";
 
 // ── Paleta (misma que CalificarClienteTrabajador) ───────────────────────
 const NAVY = "#0F1B4C";
@@ -100,7 +101,7 @@ const Icons = {
 };
 
 // ── Selector grande de estrellas (calificación general) ─────────────────
-function EstrellasGrandes({ value, onChange }) {
+function EstrellasGrandes({ value, onChange, styles }) {
   return (
     <View style={styles.estrellasGrandesRow}>
       {[1, 2, 3, 4, 5].map((n) => (
@@ -123,7 +124,7 @@ function EstrellasGrandes({ value, onChange }) {
 }
 
 // ── Dropdown genérico reutilizable (razón y motivo de reporte) ──────────
-function OptionPicker({ value, onChange, options = REASONS, title = "Razón de la calificación" }) {
+function OptionPicker({ value, onChange, options = REASONS, title = "Razón de la calificación", styles }) {
   const [open, setOpen] = useState(false);
   const selected = options.find((r) => r.value === value) || options[0];
 
@@ -163,7 +164,7 @@ function OptionPicker({ value, onChange, options = REASONS, title = "Razón de l
 }
 
 // ── Modal: comentario obligatorio cuando la calificación es baja ────────
-function LowReviewModal({ visible, onClose, onSubmit }) {
+function LowReviewModal({ visible, onClose, onSubmit, styles }) {
   const [text, setText] = useState("");
 
   const handleSubmit = () => {
@@ -213,7 +214,7 @@ function LowReviewModal({ visible, onClose, onSubmit }) {
 }
 
 // ── Modal de reporte: motivo + descripción, independiente de la calificación ──
-function ReportModal({ visible, onClose, reason, onReasonChange, description, onDescriptionChange, onSubmit, enviando }) {
+function ReportModal({ visible, onClose, reason, onReasonChange, description, onDescriptionChange, onSubmit, enviando, styles }) {
   return (
     <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
@@ -229,7 +230,7 @@ function ReportModal({ visible, onClose, reason, onReasonChange, description, on
           </Text>
 
           <Text style={styles.fieldLabel}>Motivo</Text>
-          <OptionPicker value={reason} onChange={onReasonChange} options={REPORT_REASONS} title="Motivo del reporte" />
+          <OptionPicker value={reason} onChange={onReasonChange} options={REPORT_REASONS} title="Motivo del reporte" styles={styles} />
 
           <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Descripción</Text>
           <TextInput
@@ -257,6 +258,9 @@ function ReportModal({ visible, onClose, reason, onReasonChange, description, on
 }
 
 export default function ClasificarTrabajador({ route, navigation }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const { trabajo, usuario } = route?.params || {};
 
   const nombreCompleto = trabajo ? `${trabajo.nombre ?? ""} ${trabajo.apellido ?? ""}`.trim() : "";
@@ -389,7 +393,7 @@ export default function ClasificarTrabajador({ route, navigation }) {
   return (
     <>
       <Header usuario={usuario} />
-      <StatusBar barStyle="light-content" backgroundColor={NAVY} />
+      <StatusBar barStyle={colors.statusBar} backgroundColor={colors.statusBarBg} />
 
       <ScrollView
         style={styles.screen}
@@ -442,6 +446,13 @@ export default function ClasificarTrabajador({ route, navigation }) {
                 {servicioNombre || "Servicio"}
               </Text>
             </View>
+            <TouchableOpacity
+              style={styles.verPerfilBtn}
+              onPress={() => navigation.navigate('PerfilTrabajadorParaCliente', { idTrabajador: trabajo.idTrabajador })}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.verPerfilBtnText}>Ver perfil</Text>
+            </TouchableOpacity>
           </View>
         </LinearGradient>
 
@@ -450,7 +461,7 @@ export default function ClasificarTrabajador({ route, navigation }) {
           <Text style={styles.cardTitle}>¿Cómo lo calificás?</Text>
           <Text style={styles.cardSubtitle}>Tu opinión ayuda a otros clientes</Text>
 
-          <EstrellasGrandes value={rating} onChange={handleRate} />
+          <EstrellasGrandes value={rating} onChange={handleRate} styles={styles} />
 
           <Text style={styles.estrellasLabel}>
             {rating > 0 ? RATING_LABELS[rating] : "Tocá una estrella para calificar"}
@@ -462,7 +473,7 @@ export default function ClasificarTrabajador({ route, navigation }) {
           <Text style={styles.cardTitle}>Razón</Text>
           <Text style={styles.cardSubtitle}>Elegí lo que mejor describe el trabajo</Text>
           <View style={{ marginTop: 14 }}>
-            <OptionPicker value={reason} onChange={setReason} options={REASONS} title="Razón de la calificación" />
+            <OptionPicker value={reason} onChange={setReason} options={REASONS} title="Razón de la calificación" styles={styles} />
           </View>
         </View>
 
@@ -533,7 +544,7 @@ export default function ClasificarTrabajador({ route, navigation }) {
         </View>
       </ScrollView>
 
-      <LowReviewModal visible={showLowModal} onClose={() => setShowLowModal(false)} onSubmit={handleLowSubmit} />
+      <LowReviewModal visible={showLowModal} onClose={() => setShowLowModal(false)} onSubmit={handleLowSubmit} styles={styles} />
 
       <ReportModal
         visible={showReportModal}
@@ -544,6 +555,7 @@ export default function ClasificarTrabajador({ route, navigation }) {
         onDescriptionChange={setReportDescription}
         onSubmit={handleReportSubmit}
         enviando={enviandoReporte}
+        styles={styles}
       />
 
       <BottomNavBar usuario={usuario} />
@@ -551,8 +563,8 @@ export default function ClasificarTrabajador({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: BG },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: isDark ? colors.background : BG },
 
   banner: {
     margin: 16,
@@ -606,23 +618,33 @@ const styles = StyleSheet.create({
   bannerAvatarFallbackText: { color: WHITE, fontWeight: "800", fontSize: 16 },
   bannerClienteNombre: { color: WHITE, fontSize: 17, fontWeight: "800" },
   bannerServicio: { color: "rgba(255,255,255,0.75)", fontSize: 12.5, marginTop: 3 },
+  verPerfilBtn: {
+    marginLeft: 10,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  verPerfilBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
   card: {
-    backgroundColor: CARD,
+    backgroundColor: isDark ? colors.card : CARD,
     borderRadius: 22,
     marginHorizontal: 16,
     marginTop: 14,
     padding: 18,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: isDark ? colors.border : BORDER,
     shadowColor: NAVY,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.05,
     shadowRadius: 14,
     elevation: 2,
   },
-  cardTitle: { color: TEXT_DARK, fontSize: 15.5, fontWeight: "800" },
-  cardSubtitle: { color: TEXT_MUTED, fontSize: 12, marginTop: 3 },
+  cardTitle: { color: isDark ? colors.text : TEXT_DARK, fontSize: 15.5, fontWeight: "800" },
+  cardSubtitle: { color: isDark ? colors.textSecondary : TEXT_MUTED, fontSize: 12, marginTop: 3 },
 
   estrellasGrandesRow: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: 18 },
   estrellasLabel: { textAlign: "center", marginTop: 12, color: INDIGO, fontWeight: "800", fontSize: 14 },
@@ -631,31 +653,31 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: BG,
+    backgroundColor: isDark ? colors.inputBg : BG,
     borderRadius: 14,
     borderWidth: 1.5,
-    borderColor: BORDER,
+    borderColor: isDark ? colors.inputBorder : BORDER,
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  pickerText: { flex: 1, fontSize: 14.5, color: TEXT_DARK },
-  pickerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+  pickerText: { flex: 1, fontSize: 14.5, color: isDark ? colors.text : TEXT_DARK },
+  pickerOverlay: { flex: 1, backgroundColor: isDark ? colors.overlay : "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
   pickerDropdown: {
-    backgroundColor: CARD,
+    backgroundColor: isDark ? colors.card : CARD,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 20,
     paddingHorizontal: 20,
     paddingBottom: 36,
   },
-  pickerDropdownTitle: { fontSize: 16, fontWeight: "800", color: TEXT_DARK, marginBottom: 16 },
+  pickerDropdownTitle: { fontSize: 16, fontWeight: "800", color: isDark ? colors.text : TEXT_DARK, marginBottom: 16 },
   pickerOption: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    borderBottomColor: isDark ? colors.divider : BORDER,
   },
   pickerOptionActive: {
     backgroundColor: "rgba(42,63,214,0.06)",
@@ -664,24 +686,24 @@ const styles = StyleSheet.create({
     borderBottomColor: "transparent",
     borderRadius: 12,
   },
-  pickerOptionText: { flex: 1, fontSize: 14.5, color: TEXT_DARK },
+  pickerOptionText: { flex: 1, fontSize: 14.5, color: isDark ? colors.text : TEXT_DARK },
   pickerOptionTextActive: { color: INDIGO, fontWeight: "700" },
 
   comentarioInput: {
     marginTop: 14,
-    backgroundColor: BG,
+    backgroundColor: isDark ? colors.inputBg : BG,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: isDark ? colors.inputBorder : BORDER,
     padding: 14,
     minHeight: 96,
-    color: TEXT_DARK,
+    color: isDark ? colors.text : TEXT_DARK,
     fontSize: 13.5,
     lineHeight: 19,
   },
-  contadorChars: { textAlign: "right", color: TEXT_MUTED, fontSize: 11, marginTop: 6 },
+  contadorChars: { textAlign: "right", color: isDark ? colors.textTertiary : TEXT_MUTED, fontSize: 11, marginTop: 6 },
 
-  fieldLabel: { fontSize: 11.5, fontWeight: "700", color: TEXT_MUTED, letterSpacing: 0.3, textTransform: "uppercase" },
+  fieldLabel: { fontSize: 11.5, fontWeight: "700", color: isDark ? colors.textSecondary : TEXT_MUTED, letterSpacing: 0.3, textTransform: "uppercase" },
 
   blockRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   checkbox: {
@@ -689,14 +711,14 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: BORDER,
+    borderColor: isDark ? colors.border : BORDER,
     alignItems: "center",
     justifyContent: "center",
   },
   checkboxChecked: { backgroundColor: RED, borderColor: RED },
-  blockLabel: { fontSize: 14, fontWeight: "700", color: TEXT_DARK, marginBottom: 2 },
+  blockLabel: { fontSize: 14, fontWeight: "700", color: isDark ? colors.text : TEXT_DARK, marginBottom: 2 },
   blockLabelActive: { color: RED },
-  blockSub: { fontSize: 11.5, color: TEXT_MUTED },
+  blockSub: { fontSize: 11.5, color: isDark ? colors.textSecondary : TEXT_MUTED },
 
   reportLink: {
     flexDirection: "row",
@@ -706,13 +728,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginTop: 12,
     borderTopWidth: 1,
-    borderTopColor: BORDER,
+    borderTopColor: isDark ? colors.divider : BORDER,
   },
   reportLinkText: { color: RED, fontWeight: "700", fontSize: 13 },
 
   footerBtns: { paddingHorizontal: 16, marginTop: 20, gap: 12 },
   omitirBtn: { alignItems: "center", paddingVertical: 10 },
-  omitirBtnText: { color: TEXT_MUTED, fontWeight: "700", fontSize: 13.5 },
+  omitirBtnText: { color: isDark ? colors.textSecondary : TEXT_MUTED, fontWeight: "700", fontSize: 13.5 },
   enviarBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -728,22 +750,22 @@ const styles = StyleSheet.create({
   },
   enviarBtnText: { color: WHITE, fontWeight: "800", fontSize: 15.5 },
 
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
-  modalCard: { backgroundColor: CARD, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 28, paddingBottom: 40 },
+  modalOverlay: { flex: 1, backgroundColor: isDark ? colors.overlay : "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  modalCard: { backgroundColor: isDark ? colors.card : CARD, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 28, paddingBottom: 40 },
   modalHeader: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
-  modalTitle: { flex: 1, fontSize: 19, fontWeight: "800", color: TEXT_DARK },
-  modalClose: { width: 32, height: 32, borderRadius: 16, backgroundColor: BG, alignItems: "center", justifyContent: "center" },
-  modalCloseIcon: { fontSize: 14, color: TEXT_MUTED, fontWeight: "700" },
-  modalSubtitle: { fontSize: 13.5, color: TEXT_MUTED, marginBottom: 20, lineHeight: 19 },
+  modalTitle: { flex: 1, fontSize: 19, fontWeight: "800", color: isDark ? colors.text : TEXT_DARK },
+  modalClose: { width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? colors.surfaceVariant : BG, alignItems: "center", justifyContent: "center" },
+  modalCloseIcon: { fontSize: 14, color: isDark ? colors.textSecondary : TEXT_MUTED, fontWeight: "700" },
+  modalSubtitle: { fontSize: 13.5, color: isDark ? colors.textSecondary : TEXT_MUTED, marginBottom: 20, lineHeight: 19 },
   modalInput: {
-    backgroundColor: BG,
+    backgroundColor: isDark ? colors.inputBg : BG,
     borderRadius: 14,
     padding: 14,
     fontSize: 14,
-    color: TEXT_DARK,
+    color: isDark ? colors.text : TEXT_DARK,
     minHeight: 110,
     marginBottom: 6,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: isDark ? colors.inputBorder : BORDER,
   },
 });

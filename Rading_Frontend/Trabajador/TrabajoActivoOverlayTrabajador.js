@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Modal, View, Text, Image, TouchableOpacity,
   StyleSheet, ScrollView, ActivityIndicator,
@@ -7,11 +7,12 @@ import { Ionicons } from "@expo/vector-icons";
 import API_URL from '../configS';
 import ConfirmarLlegadaTr from './ConfirmarLlegadaTr';
 import ConfirmarTrabajoTr from './ConfirmarTrabajoTr';
+import { useTheme } from "../ThemeContext";
 
 const AVATAR_CLIENTE = (nombre = '', apellido = '') =>
   `https://ui-avatars.com/api/?name=${nombre}+${apellido}&background=0D47C7&color=fff&size=150`;
 
-const TrabajoItem = ({ trabajo, onSelect, isSelected }) => (
+const TrabajoItem = ({ trabajo, onSelect, isSelected, styles }) => (
   <TouchableOpacity
     style={[styles.item, isSelected && styles.itemSelected]}
     onPress={() => onSelect(trabajo)}
@@ -44,7 +45,7 @@ const TrabajoItem = ({ trabajo, onSelect, isSelected }) => (
   </TouchableOpacity>
 );
 
-const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar }) => {
+const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar, styles, navigation }) => {
   const yaLlego = !!trabajo.trabajo_iniciado_en;
   const yaTermino = trabajo.estado === 'TERMINADO';
 
@@ -56,7 +57,12 @@ const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar }) => {
           style={styles.detalleAvatar}
         />
         <View style={styles.detalleWorkerInfo}>
-          <Text style={styles.detalleNombre}>{trabajo.nombre} {trabajo.apellido}</Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('PerfilClienteParaTrabajador', { idCliente: trabajo.id })}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.detalleNombre}>{trabajo.nombre} {trabajo.apellido}</Text>
+          </TouchableOpacity>
           <View style={styles.ratingRow}>
             <Ionicons name="star" size={14} color="#c87000" />
             <Text style={styles.rating}>{Number(trabajo.estrellas ?? 0).toFixed(2)}</Text>
@@ -160,6 +166,9 @@ const esIdValido = (id) => {
 };
 
 export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onChat, idTrabajador, navigation }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const [trabajos, setTrabajos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [trabajoSeleccionado, setTrabajoSeleccionado] = useState(null);
@@ -267,6 +276,7 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
                     trabajo={trabajo}
                     onSelect={handleSelect}
                     isSelected={trabajoSeleccionado?.id === trabajo.id}
+                    styles={styles}
                   />
                   {trabajoSeleccionado?.id === trabajo.id && (
                     <TrabajoDetalle
@@ -274,6 +284,8 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
                       onChat={onChat}
                       onIniciar={(t) => setConfirmacion({ tipo: 'llegada', trabajo: t })}
                       onFinalizar={(t) => setConfirmacion({ tipo: 'fin', trabajo: t })}
+                      styles={styles}
+                      navigation={navigation}
                     />
                   )}
                 </View>
@@ -311,10 +323,10 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
   );
 }
 
-const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" },
-  container: { width: "92%", maxHeight: "85%", backgroundColor: "#0d2a6e", borderRadius: 20, overflow: "hidden" },
-  header: { paddingHorizontal: 16, paddingVertical: 14, flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.15)" },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: isDark ? colors.overlay : "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" },
+  container: { width: "92%", maxHeight: "85%", backgroundColor: isDark ? colors.surface : "#0d2a6e", borderRadius: 20, overflow: "hidden" },
+  header: { paddingHorizontal: 16, paddingVertical: 14, flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, borderBottomColor: isDark ? colors.divider : "rgba(255,255,255,0.15)" },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
   iconCircle: { width: 34, height: 34, borderRadius: 17, backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center" },
   headerLabel: { fontSize: 9, fontWeight: "800", color: "rgba(255,255,255,0.6)", letterSpacing: 1 },
@@ -325,12 +337,12 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 14, color: "rgba(255,255,255,0.7)", fontWeight: "600", marginTop: 6 },
   lista: { maxHeight: 500 },
   listaContent: { paddingBottom: 8 },
-  item: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.1)" },
+  item: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: isDark ? colors.divider : "rgba(255,255,255,0.1)" },
   itemSelected: { backgroundColor: "#1565D8" },
   itemLeft: { flexDirection: "row", alignItems: "center", flex: 1, gap: 12 },
   itemAvatar: { width: 46, height: 46, borderRadius: 23, borderWidth: 2, borderColor: "rgba(255,255,255,0.3)" },
   itemInfo: { flex: 1, gap: 3 },
-  tabs: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.15)" },
+  tabs: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: isDark ? colors.divider : "rgba(255,255,255,0.15)" },
   tabActive: { paddingVertical: 6, paddingHorizontal: 14, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 20 },
   tabTextActive: { color: "#fff", fontSize: 13, fontWeight: "800" },
   tabBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: 14, borderWidth: 1.5, borderColor: "#FFD000", borderRadius: 20 },
@@ -342,21 +354,21 @@ const styles = StyleSheet.create({
   estadoText: { color: "#FFD000", fontSize: 9, fontWeight: "800", letterSpacing: 0.5 },
   itemRight: { alignItems: "flex-end", gap: 6 },
   itemPrecio: { fontSize: 15, fontWeight: "900", color: "#fff" },
-  detalle: { backgroundColor: "#e8f0fe", paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "rgba(0,0,0,0.08)" },
+  detalle: { backgroundColor: isDark ? colors.surfaceVariant : "#e8f0fe", paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: isDark ? colors.divider : "rgba(0,0,0,0.08)" },
   detalleWorkerRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
   detalleAvatar: { width: 56, height: 56, borderRadius: 28, borderWidth: 3, borderColor: "#1565D8" },
   detalleWorkerInfo: { flex: 1 },
-  detalleNombre: { fontSize: 17, fontWeight: "800", color: "#0d2a6e", marginBottom: 4 },
+  detalleNombre: { fontSize: 17, fontWeight: "800", color: isDark ? colors.text : "#0d2a6e", marginBottom: 4 },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  rating: { fontSize: 13, fontWeight: "700", color: "#0d2a6e" },
-  ratingDot: { color: "#0d2a6e", fontSize: 14 },
-  distanciaText: { fontSize: 12, color: "#0d2a6e", fontWeight: "500" },
-  separador: { height: 1, backgroundColor: "rgba(0,0,0,0.08)", marginBottom: 14 },
+  rating: { fontSize: 13, fontWeight: "700", color: isDark ? colors.text : "#0d2a6e" },
+  ratingDot: { color: isDark ? colors.text : "#0d2a6e", fontSize: 14 },
+  distanciaText: { fontSize: 12, color: isDark ? colors.text : "#0d2a6e", fontWeight: "500" },
+  separador: { height: 1, backgroundColor: isDark ? colors.divider : "rgba(0,0,0,0.08)", marginBottom: 14 },
   infoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
-  infoCard: { backgroundColor: "#c7d9ff", borderRadius: 12, padding: 10, minWidth: "47%", flex: 1, gap: 4 },
+  infoCard: { backgroundColor: isDark ? colors.surfaceVariant : "#c7d9ff", borderRadius: 12, padding: 10, minWidth: "47%", flex: 1, gap: 4 },
   infoCardWide: { minWidth: "100%" },
-  infoLabel: { fontSize: 9, fontWeight: "700", color: "#0d2a6e", letterSpacing: 0.5, textTransform: "uppercase" },
-  infoValue: { fontSize: 14, fontWeight: "800", color: "#0d2a6e" },
+  infoLabel: { fontSize: 9, fontWeight: "700", color: isDark ? colors.text : "#0d2a6e", letterSpacing: 0.5, textTransform: "uppercase" },
+  infoValue: { fontSize: 14, fontWeight: "800", color: isDark ? colors.text : "#0d2a6e" },
   chatButton: { backgroundColor: "#1565D8", borderRadius: 12, paddingVertical: 13, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   chatText: { color: "#fff", fontSize: 14, fontWeight: "700" },
   llegadaButton: { backgroundColor: "#FFD000", borderRadius: 12, paddingVertical: 13, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10 },

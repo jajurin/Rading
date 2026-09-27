@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,18 +14,17 @@ import {
   Linking,
   Image,
 } from 'react-native';
+import { useTheme } from '../ThemeContext';
 import Svg, { Path, Circle, Line, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// TODO: ajustá el path a tu archivo de config real (mismo que usás en
-// OfertasCercanasTrabajador.js)
 import API_URL from '../configS';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
 // -------------------------------------------------------------------------
-// Paleta (misma línea que OfertasCercanasTrabajador para mantener identidad)
+// Paleta
 // -------------------------------------------------------------------------
 const COLORS = {
   bg: '#F3F6FB',
@@ -44,11 +43,9 @@ const COLORS = {
   success: '#1E9E6B',
   shadow: '#0d47a8',
   imagePlaceholder: '#DCE4F0',
-  // Fijo = postulación a precio ya definido por el cliente
   fijo: '#6D28D9',
   fijoBg: 'rgba(109,40,217,0.09)',
   fijoBorder: 'rgba(109,40,217,0.28)',
-  // Subasta = se compite por precio
   subasta: '#B4740E',
   subastaBg: 'rgba(217,142,10,0.12)',
   subastaBorder: 'rgba(217,142,10,0.32)',
@@ -61,7 +58,7 @@ function modalidadInfo(fijo) {
 }
 
 // -------------------------------------------------------------------------
-// Iconos lineales (mismo estilo que la pantalla de listado)
+// Iconos lineales
 // -------------------------------------------------------------------------
 const Icons = {
   Back: ({ color = COLORS.text, size = 22 }) => (
@@ -201,100 +198,15 @@ function iniciales(nombre = '', apellido = '') {
 }
 
 // -------------------------------------------------------------------------
-// Badge de modalidad (Fijo / Subasta) — con descripción opcional
-// -------------------------------------------------------------------------
-function ModalidadBadge({ fijo, withDescription = false }) {
-  const info = modalidadInfo(fijo);
-  const Icon = fijo ? Icons.Etiqueta : Icons.Subasta;
-  return (
-    <View style={{ alignSelf: 'flex-start' }}>
-      <View style={[styles.modBadge, { backgroundColor: info.bg, borderColor: info.border }]}>
-        <Icon color={info.color} size={13} />
-        <Text style={[styles.modBadgeText, { color: info.color }]}>{info.shortLabel}</Text>
-      </View>
-      {withDescription && <Text style={styles.modBadgeDesc}>{info.desc}</Text>}
-    </View>
-  );
-}
-
-// -------------------------------------------------------------------------
-// Carrusel de imágenes
-// -------------------------------------------------------------------------
-function ImageCarousel({ imagenes = [] }) {
-  const [pagina, setPagina] = useState(0);
-
-  if (!imagenes || imagenes.length === 0) {
-    return (
-      <View style={styles.heroPlaceholder}>
-        <Icons.Image />
-        <Text style={styles.heroPlaceholderText}>El cliente no adjuntó fotos</Text>
-      </View>
-    );
-  }
-
-  const onScroll = (e) => {
-    const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
-    setPagina(idx);
-  };
-
-  return (
-    <View>
-      <FlatList
-        data={imagenes}
-        keyExtractor={(item) => String(item.id ?? item.url)}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={onScroll}
-        renderItem={({ item }) => (
-          <Image source={{ uri: item.url }} style={styles.heroImage} resizeMode="cover" />
-        )}
-      />
-      {/* degradé inferior para que el badge de página se lea bien */}
-      <Svg width={SCREEN_W} height={70} style={styles.heroGradient}>
-        <Defs>
-          <LinearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#000000" stopOpacity="0" />
-            <Stop offset="1" stopColor="#000000" stopOpacity="0.38" />
-          </LinearGradient>
-        </Defs>
-        <Rect x="0" y="0" width={SCREEN_W} height="70" fill="url(#fade)" />
-      </Svg>
-      {imagenes.length > 1 && (
-        <View style={styles.dotsRow}>
-          {imagenes.map((_, i) => (
-            <View key={i} style={[styles.dot, i === pagina && styles.dotActive]} />
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
-
-// -------------------------------------------------------------------------
-// Bloques reutilizables
-// -------------------------------------------------------------------------
-function SectionTitle({ children }) {
-  return <Text style={styles.sectionTitle}>{children}</Text>;
-}
-
-function InfoTile({ icon, label, value }) {
-  return (
-    <View style={styles.infoTile}>
-      {icon}
-      <Text style={styles.infoTileLabel}>{label}</Text>
-      <Text style={styles.infoTileValue} numberOfLines={1}>{value}</Text>
-    </View>
-  );
-}
-
-// -------------------------------------------------------------------------
 // Pantalla principal
 // -------------------------------------------------------------------------
 export default function DetalleOfertaTrabajador() {
+  const { colors, isDark } = useTheme();
   const route = useRoute();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -339,10 +251,6 @@ export default function DetalleOfertaTrabajador() {
   };
 
   const [mostrarModalOferta, setMostrarModalOferta] = useState(false);
-  // 👇 NUEVO: modal propio para confirmar la postulación en precio fijo.
-  // Antes esto usaba Alert.alert(), que es una API nativa y en Expo Web /
-  // react-native-web no muestra nada (falla en silencio). Usar un <Modal>
-  // en el árbol de RN hace que funcione igual en web, iOS y Android.
   const [mostrarModalConfirmarFijo, setMostrarModalConfirmarFijo] = useState(false);
   const [ofertaPrecio, setOfertaPrecio] = useState('');
   const [ofertaCostoMin, setOfertaCostoMin] = useState('');
@@ -350,16 +258,10 @@ export default function DetalleOfertaTrabajador() {
   const [ofertaMensaje, setOfertaMensaje] = useState('');
   const [enviandoOferta, setEnviandoOferta] = useState(false);
   const [errorEnvioOferta, setErrorEnvioOferta] = useState(null);
-  const [resultadoOferta, setResultadoOferta] = useState(null); // { modo, subastaTermina } al confirmar
+  const [resultadoOferta, setResultadoOferta] = useState(null);
 
-  // 👇 Precio fijo ahora también es una POSTULACIÓN: el trabajador no toma
-  // el trabajo directo, queda como oferta PENDIENTE hasta que el cliente
-  // elija con quién trabajar (igual que en la subasta, ver aceptarOferta
-  // en cliente-repositories.js). El backend (enviarOferta) ya no asigna
-  // "IdTrabajador" automáticamente para ct.fijo === true.
   const handleEnviarOferta = () => {
     if (!oferta?.fijo) {
-      // Subasta: abrimos el modal a completar precio/mensaje
       setOfertaPrecio('');
       setOfertaCostoMin('');
       setOfertaCostoMax('');
@@ -369,9 +271,6 @@ export default function DetalleOfertaTrabajador() {
       return;
     }
 
-    // Precio fijo: confirmación con modal propio (no Alert.alert, que no
-    // se ve en Expo Web). Es una POSTULACIÓN, no una asignación directa;
-    // el cliente decide.
     setMostrarModalConfirmarFijo(true);
   };
 
@@ -468,6 +367,83 @@ export default function DetalleOfertaTrabajador() {
   const categoriaLabel = oferta.categoria_nombre || oferta.servicio_nombre || 'Servicio';
   const modInfo = modalidadInfo(oferta.fijo);
 
+  // Componentes movidos dentro del componente principal
+  const ModalidadBadge = ({ fijo, withDescription = false }) => {
+    const info = modalidadInfo(fijo);
+    const Icon = fijo ? Icons.Etiqueta : Icons.Subasta;
+    return (
+      <View style={{ alignSelf: 'flex-start' }}>
+        <View style={[styles.modBadge, { backgroundColor: info.bg, borderColor: info.border }]}>
+          <Icon color={info.color} size={13} />
+          <Text style={[styles.modBadgeText, { color: info.color }]}>{info.shortLabel}</Text>
+        </View>
+        {withDescription && <Text style={styles.modBadgeDesc}>{info.desc}</Text>}
+      </View>
+    );
+  };
+
+  const ImageCarousel = ({ imagenes = [] }) => {
+    const [pagina, setPagina] = useState(0);
+
+    if (!imagenes || imagenes.length === 0) {
+      return (
+        <View style={styles.heroPlaceholder}>
+          <Icons.Image />
+          <Text style={styles.heroPlaceholderText}>El cliente no adjuntó fotos</Text>
+        </View>
+      );
+    }
+
+    const onScroll = (e) => {
+      const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+      setPagina(idx);
+    };
+
+    return (
+      <View>
+        <FlatList
+          data={imagenes}
+          keyExtractor={(item) => String(item.id ?? item.url)}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={onScroll}
+          renderItem={({ item }) => (
+            <Image source={{ uri: item.url }} style={styles.heroImage} resizeMode="cover" />
+          )}
+        />
+        <Svg width={SCREEN_W} height={70} style={styles.heroGradient}>
+          <Defs>
+            <LinearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="#000000" stopOpacity="0" />
+              <Stop offset="1" stopColor="#000000" stopOpacity="0.38" />
+            </LinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width={SCREEN_W} height="70" fill="url(#fade)" />
+        </Svg>
+        {imagenes.length > 1 && (
+          <View style={styles.dotsRow}>
+            {imagenes.map((_, i) => (
+              <View key={i} style={[styles.dot, i === pagina && styles.dotActive]} />
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const SectionTitle = ({ children }) => (
+    <Text style={styles.sectionTitle}>{children}</Text>
+  );
+
+  const InfoTile = ({ icon, label, value }) => (
+    <View style={styles.infoTile}>
+      {icon}
+      <Text style={styles.infoTileLabel}>{label}</Text>
+      <Text style={styles.infoTileValue} numberOfLines={1}>{value}</Text>
+    </View>
+  );
+
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={{ paddingBottom: 130 }} showsVerticalScrollIndicator={false}>
@@ -503,7 +479,7 @@ export default function DetalleOfertaTrabajador() {
           <Text style={styles.titulo}>{oferta.servicio_nombre || 'Solicitud de servicio'}</Text>
           {fechaLabel && <Text style={styles.fechaTexto}>Publicado el {fechaLabel}</Text>}
 
-          {/* Explicación breve de la modalidad, para que quede clarísimo */}
+          {/* Explicación breve de la modalidad */}
           <View style={[styles.modExplainCard, { backgroundColor: modInfo.bg, borderColor: modInfo.border }]}>
             <Text style={[styles.modExplainTexto, { color: modInfo.color }]}>{modInfo.desc}</Text>
           </View>
@@ -566,7 +542,7 @@ export default function DetalleOfertaTrabajador() {
         </View>
       </ScrollView>
 
-      {/* CTA fijo abajo — el color del botón acompaña la modalidad */}
+      {/* CTA fijo abajo */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 14 }]}>
         <View style={{ flex: 1 }}>
           <Text style={styles.footerLabel}>{precio.label}</Text>
@@ -693,7 +669,7 @@ export default function DetalleOfertaTrabajador() {
         </View>
       </Modal>
 
-      {/* Modal: confirmar postulación en precio fijo (reemplaza Alert.alert) */}
+      {/* Modal: confirmar postulación en precio fijo */}
       <Modal
         visible={mostrarModalConfirmarFijo}
         transparent
@@ -755,8 +731,8 @@ export default function DetalleOfertaTrabajador() {
 // -------------------------------------------------------------------------
 // Estilos
 // -------------------------------------------------------------------------
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.bg },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: isDark ? colors.background : COLORS.bg },
   centerState: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, gap: 6 },
 
   // Hero / carrusel
@@ -840,16 +816,16 @@ const styles = StyleSheet.create({
   },
   modExplainTexto: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
 
-  titulo: { fontSize: 21, fontWeight: '800', color: COLORS.text, marginTop: 12 },
-  fechaTexto: { fontSize: 12.5, color: COLORS.textFaint, marginTop: 3, fontWeight: '500' },
+  titulo: { fontSize: 21, fontWeight: '800', color: isDark ? colors.text : COLORS.text, marginTop: 12 },
+  fechaTexto: { fontSize: 12.5, color: isDark ? colors.textTertiary : COLORS.textFaint, marginTop: 3, fontWeight: '500' },
 
   clienteCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.card,
+    backgroundColor: isDark ? colors.card : COLORS.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: isDark ? colors.border : COLORS.border,
     padding: 14,
     marginTop: 18,
   },
@@ -862,14 +838,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { color: '#FFFFFF', fontWeight: '800', fontSize: 16 },
-  clienteNombre: { fontSize: 15.5, fontWeight: '700', color: COLORS.text },
+  clienteNombre: { fontSize: 15.5, fontWeight: '700', color: isDark ? colors.text : COLORS.text },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
-  ratingTexto: { fontSize: 12.5, color: COLORS.textMuted, fontWeight: '600' },
+  ratingTexto: { fontSize: 12.5, color: isDark ? colors.textSecondary : COLORS.textMuted, fontWeight: '600' },
 
   sectionTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: COLORS.textMuted,
+    color: isDark ? colors.textSecondary : COLORS.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginTop: 26,
@@ -879,32 +855,32 @@ const styles = StyleSheet.create({
   infoGrid: { flexDirection: 'row', gap: 10 },
   infoTile: {
     flex: 1,
-    backgroundColor: COLORS.card,
+    backgroundColor: isDark ? colors.card : COLORS.card,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: isDark ? colors.border : COLORS.border,
     paddingVertical: 12,
     paddingHorizontal: 10,
     gap: 6,
   },
-  infoTileLabel: { fontSize: 10.5, color: COLORS.textFaint, fontWeight: '700' },
-  infoTileValue: { fontSize: 13.5, color: COLORS.text, fontWeight: '800' },
+  infoTileLabel: { fontSize: 10.5, color: isDark ? colors.textTertiary : COLORS.textFaint, fontWeight: '700' },
+  infoTileValue: { fontSize: 13.5, color: isDark ? colors.text : COLORS.text, fontWeight: '800' },
 
   descripcionCard: {
-    backgroundColor: COLORS.card,
+    backgroundColor: isDark ? colors.card : COLORS.card,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: isDark ? colors.border : COLORS.border,
     padding: 14,
   },
-  descripcionTexto: { fontSize: 13.5, color: COLORS.textMuted, lineHeight: 20 },
+  descripcionTexto: { fontSize: 13.5, color: isDark ? colors.textSecondary : COLORS.textMuted, lineHeight: 20 },
 
   ubicacionCard: {
     flexDirection: 'row',
-    backgroundColor: COLORS.card,
+    backgroundColor: isDark ? colors.card : COLORS.card,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: isDark ? colors.border : COLORS.border,
     padding: 14,
     gap: 12,
   },
@@ -916,8 +892,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ubicacionDireccion: { fontSize: 13.5, color: COLORS.text, fontWeight: '600', lineHeight: 19 },
-  ubicacionDistancia: { fontSize: 12, color: COLORS.textFaint, marginTop: 4, fontWeight: '600' },
+  ubicacionDireccion: { fontSize: 13.5, color: isDark ? colors.text : COLORS.text, fontWeight: '600', lineHeight: 19 },
+  ubicacionDistancia: { fontSize: 12, color: isDark ? colors.textTertiary : COLORS.textFaint, marginTop: 4, fontWeight: '600' },
 
   mapaBtn: {
     flexDirection: 'row',
@@ -939,15 +915,15 @@ const styles = StyleSheet.create({
     bottom: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.card,
+    backgroundColor: isDark ? colors.card : COLORS.card,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: isDark ? colors.border : COLORS.border,
     paddingHorizontal: 20,
     paddingTop: 14,
     gap: 14,
   },
-  footerLabel: { fontSize: 11, color: COLORS.textFaint, fontWeight: '700' },
-  footerPrecio: { fontSize: 18, color: COLORS.text, fontWeight: '800', marginTop: 1 },
+  footerLabel: { fontSize: 11, color: isDark ? colors.textTertiary : COLORS.textFaint, fontWeight: '700' },
+  footerPrecio: { fontSize: 18, color: isDark ? colors.text : COLORS.text, fontWeight: '800', marginTop: 1 },
   enviarBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -958,8 +934,8 @@ const styles = StyleSheet.create({
   },
   enviarBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14.5 },
 
-  emptyTitle: { fontSize: 15.5, fontWeight: '800', color: COLORS.text, marginTop: 8 },
-  emptySubtitle: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', lineHeight: 18 },
+  emptyTitle: { fontSize: 15.5, fontWeight: '800', color: isDark ? colors.text : COLORS.text, marginTop: 8 },
+  emptySubtitle: { fontSize: 13, color: isDark ? colors.textSecondary : COLORS.textMuted, textAlign: 'center', lineHeight: 18 },
   retryBtn: { marginTop: 14, backgroundColor: COLORS.blue, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12 },
   retryBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
 
@@ -975,7 +951,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   modalCardSubasta: {
-    backgroundColor: COLORS.card,
+    backgroundColor: isDark ? colors.card : COLORS.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 22,
@@ -998,11 +974,11 @@ const styles = StyleSheet.create({
   modalTituloSubasta: {
     fontSize: 18,
     fontWeight: '800',
-    color: COLORS.text,
+    color: isDark ? colors.text : COLORS.text,
   },
   modalSubtituloSubasta: {
     fontSize: 13,
-    color: COLORS.textMuted,
+    color: isDark ? colors.textSecondary : COLORS.textMuted,
     marginTop: 10,
     marginBottom: 18,
     lineHeight: 18,
@@ -1010,7 +986,7 @@ const styles = StyleSheet.create({
   propLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: COLORS.textMuted,
+    color: isDark ? colors.textSecondary : COLORS.textMuted,
     marginTop: 12,
     marginBottom: 6,
   },
@@ -1018,27 +994,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.4,
-    borderColor: COLORS.border,
+    borderColor: isDark ? colors.inputBorder : COLORS.border,
     borderRadius: 12,
     paddingHorizontal: 14,
-    backgroundColor: '#FAFBFE',
+    backgroundColor: isDark ? colors.inputBg : '#FAFBFE',
   },
   propInputPrefix: {
     fontSize: 15,
     fontWeight: '700',
-    color: COLORS.textMuted,
+    color: isDark ? colors.textSecondary : COLORS.textMuted,
     marginRight: 4,
   },
   propInputSubasta: {
     flex: 1,
     borderWidth: 1.4,
-    borderColor: COLORS.border,
+    borderColor: isDark ? colors.inputBorder : COLORS.border,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 11,
     fontSize: 14.5,
-    color: COLORS.text,
-    backgroundColor: '#FAFBFE',
+    color: isDark ? colors.text : COLORS.text,
+    backgroundColor: isDark ? colors.inputBg : '#FAFBFE',
   },
   propInputMultiline: {
     minHeight: 70,
@@ -1046,7 +1022,7 @@ const styles = StyleSheet.create({
   },
   propHint: {
     fontSize: 11.5,
-    color: COLORS.textFaint,
+    color: isDark ? colors.textTertiary : COLORS.textFaint,
     marginTop: -2,
     marginBottom: 8,
     lineHeight: 15,
@@ -1061,7 +1037,7 @@ const styles = StyleSheet.create({
   },
   propRangoSeparador: {
     fontSize: 14,
-    color: COLORS.textFaint,
+    color: isDark ? colors.textTertiary : COLORS.textFaint,
     fontWeight: '700',
   },
   modalErrorTexto: {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -22,16 +22,12 @@ import * as ImagePicker from 'expo-image-picker';
 import Header from '../Header';
 import BottomNavBarTrabajador from './Navegadortrabajador';
 import API_URL from '../configS';
+import { useTheme } from '../ThemeContext';
 
 /* ==================================================================== */
 /*  TOKENS                                                              */
-/*  Paleta pensada para un perfil de trabajador: la base sigue siendo   */
-/*  el indigo/navy de la app, pero se suma un verde-azulado ("TEAL")    */
-/*  reservado exclusivamente para todo lo que significa "verificado /   */
-/*  confiable", así el usuario aprende a asociar ese color con          */
-/*  seguridad en un vistazo, sin que compita con el resto de la UI.     */
 /* ==================================================================== */
-
+const RADIUS_MD = 14;
 const INDIGO = '#3D4EEA';
 const INDIGO_DEEP = '#2432B0';
 const NAVY = '#0A1230';
@@ -53,106 +49,7 @@ const DIAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const DIAS_NOMBRE = { L: 'Lunes', M: 'Martes', X: 'Miércoles', J: 'Jueves', V: 'Viernes', S: 'Sábado', D: 'Domingo' };
 
 /* ------------------------------------------------------------------ */
-/*  Piezas de UI reutilizables                                        */
-/* ------------------------------------------------------------------ */
-
-function EditButton({ onPress, size = 14, style }) {
-  return (
-    <TouchableOpacity
-      style={[styles.editBtn, style]}
-      onPress={onPress}
-      activeOpacity={0.75}
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-    >
-      <Ionicons name="pencil" size={size} color={INDIGO_DEEP} />
-    </TouchableOpacity>
-  );
-}
-
-function Estrellas({ valor = 0, size = 16 }) {
-  return (
-    <View style={{ flexDirection: 'row', gap: 2 }}>
-      {[1, 2, 3, 4, 5].map((n) => (
-        <Ionicons
-          key={n}
-          name={n <= Math.round(valor) ? 'star' : 'star-outline'}
-          size={size}
-          color={AMBER}
-        />
-      ))}
-    </View>
-  );
-}
-
-function SeccionCard({ titulo, onEditar, children, style, subtitulo }) {
-  return (
-    <View style={[styles.card, style]}>
-      <View style={styles.cardHeaderRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.cardTitulo}>{titulo}</Text>
-          {subtitulo ? <Text style={styles.cardSubtitulo}>{subtitulo}</Text> : null}
-        </View>
-        {onEditar && <EditButton onPress={onEditar} />}
-      </View>
-      {children}
-    </View>
-  );
-}
-
-function ListaConDivisores({ items, vacio }) {
-  if (!items || items.length === 0) {
-    return <Text style={styles.textoVacio}>{vacio}</Text>;
-  }
-  return items.map((item, i) => (
-    <View
-      key={i}
-      style={[styles.itemFila, i === items.length - 1 && { borderBottomWidth: 0 }]}
-    >
-      <View style={styles.itemBullet} />
-      <Text style={styles.itemTexto}>{item}</Text>
-    </View>
-  ));
-}
-
-function Chip({ label, tono = 'default' }) {
-  const activo = tono === 'teal';
-  return (
-    <View style={[styles.chip, activo && styles.chipTeal]}>
-      <Text style={[styles.chipTexto, activo && styles.chipTextoTeal]}>{label}</Text>
-    </View>
-  );
-}
-
-/* Fila de un ítem del panel de confianza: check verde si está verificado,
-   reloj gris si está pendiente. Esto es lo primero que un cliente mira
-   antes de contratar, por eso va arriba de todo, antes que la bio. */
-function ConfianzaItem({ label, verificado, onPress }) {
-  return (
-    <TouchableOpacity
-      style={[styles.confianzaItem, verificado ? styles.confianzaItemOn : styles.confianzaItemOff]}
-      onPress={onPress}
-      activeOpacity={0.8}
-    >
-      <View style={[styles.confianzaIconWrap, verificado ? styles.confianzaIconOn : styles.confianzaIconOff]}>
-        <Ionicons
-          name={verificado ? 'shield-checkmark' : 'time-outline'}
-          size={15}
-          color={verificado ? WHITE : GRAY_SOFT}
-        />
-      </View>
-      <Text style={[styles.confianzaLabel, !verificado && styles.confianzaLabelOff]} numberOfLines={2}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Helpers y piezas nuevas para "Trabajos y aptitudes"                */
-/*  Muchos ítems de texto libre (educación / experiencia) vienen       */
-/*  cargados como "Entidad: detalle" — separamos ese primer ":" para   */
-/*  poder tratar la entidad como título y el resto como cuerpo, sin    */
-/*  tener que tocar el modelo de datos ni el modal de edición.         */
+/*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
 function partirTituloDetalle(item) {
@@ -161,9 +58,6 @@ function partirTituloDetalle(item) {
   return { titulo: item.slice(0, idx).trim(), detalle: item.slice(idx + 1).trim() };
 }
 
-/* Ícono temático simple según palabras clave del rubro. Es un detalle
-   pequeño, pero hace que la lista de aptitudes se sienta curada en vez
-   de una tira de bullets genéricos. */
 const ICONOS_APTITUD = [
   { match: /fuga|ultrason/i, icon: 'search-outline' },
   { match: /termotanque|calefón|caldera|gas/i, icon: 'flame-outline' },
@@ -176,307 +70,10 @@ function iconoParaAptitud(texto) {
   return hit ? hit.icon : 'checkmark-circle-outline';
 }
 
-/* Aptitud como "credencial": ícono en pastilla indigo (autodeclarada,
-   por eso NO usa el teal reservado a lo verificado por la plataforma)
-   más el texto de la habilidad. Se agrupan en grilla de 2 columnas. */
-function AptitudCard({ texto }) {
-  return (
-    <View style={styles.aptitudCard}>
-      <View style={styles.aptitudIconWrap}>
-        <Ionicons name={iconoParaAptitud(texto)} size={15} color={INDIGO_DEEP} />
-      </View>
-      <Text style={styles.aptitudTexto}>{texto}</Text>
-    </View>
-  );
-}
-
-/* Línea de tiempo de experiencia laboral: marcador + conector vertical,
-   título en negrita (la empresa/rol) y el detalle debajo en gris. */
-function ExperienciaTimeline({ items, vacio }) {
-  if (!items || items.length === 0) {
-    return <Text style={styles.textoVacio}>{vacio}</Text>;
-  }
-  return items.map((item, i) => {
-    const { titulo, detalle } = partirTituloDetalle(item);
-    const esUltimo = i === items.length - 1;
-    return (
-      <View key={i} style={styles.timelineFila}>
-        <View style={styles.timelineRielWrap}>
-          <View style={styles.timelineDot}>
-            <Ionicons name="briefcase" size={11} color={WHITE} />
-          </View>
-          {!esUltimo && <View style={styles.timelineLinea} />}
-        </View>
-        <View style={[styles.timelineContenido, !esUltimo && { marginBottom: 16 }]}>
-          <Text style={styles.timelineTitulo}>{titulo}</Text>
-          {!!detalle && <Text style={styles.timelineDetalle}>{detalle}</Text>}
-        </View>
-      </View>
-    );
-  });
-}
-
-/* Educación y certificaciones como tarjetas: ícono de birrete, título de
-   la institución y una pastilla "Certificación" cuando el texto lo sugiere. */
-function EducacionLista({ items, vacio }) {
-  if (!items || items.length === 0) {
-    return <Text style={styles.textoVacio}>{vacio}</Text>;
-  }
-  return items.map((item, i) => {
-    const { titulo, detalle } = partirTituloDetalle(item);
-    const esCertificacion = /certifica|curso|diploma/i.test(item);
-    return (
-      <View key={i} style={[styles.educacionFila, i === items.length - 1 && { borderBottomWidth: 0 }]}>
-        <View style={styles.educacionIconWrap}>
-          <Ionicons name="school-outline" size={16} color={INDIGO_DEEP} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <View style={styles.educacionTituloRow}>
-            <Text style={styles.educacionTitulo}>{titulo}</Text>
-            {esCertificacion && (
-              <View style={styles.educacionBadge}>
-                <Text style={styles.educacionBadgeTexto}>Certificación</Text>
-              </View>
-            )}
-          </View>
-          {!!detalle && <Text style={styles.educacionDetalle}>{detalle}</Text>}
-        </View>
-      </View>
-    );
-  });
-}
-
 /* ------------------------------------------------------------------ */
-/*  Modal genérico de edición                                         */
-/*  Tipos: texto | textarea | lista | dias | servicios | switch       */
+/*  Pantalla principal                                                 */
 /* ------------------------------------------------------------------ */
 
-function EditModal({ visible, tipo, titulo, valorInicial, onCerrar, onGuardar }) {
-  const [texto, setTexto] = useState('');
-  const [lista, setLista] = useState([]);
-  const [nuevoItem, setNuevoItem] = useState('');
-  const [dias, setDias] = useState([]);
-  const [servicios, setServicios] = useState([]);
-  const [nuevoServicioNombre, setNuevoServicioNombre] = useState('');
-  const [nuevoServicioPrecio, setNuevoServicioPrecio] = useState('');
-
-  useEffect(() => {
-    if (!visible) return;
-    if (tipo === 'lista') setLista(Array.isArray(valorInicial) ? [...valorInicial] : []);
-    else if (tipo === 'dias') setDias(Array.isArray(valorInicial) ? [...valorInicial] : []);
-    else if (tipo === 'servicios') setServicios(Array.isArray(valorInicial) ? [...valorInicial] : []);
-    else setTexto(valorInicial != null ? String(valorInicial) : '');
-    setNuevoItem('');
-    setNuevoServicioNombre('');
-    setNuevoServicioPrecio('');
-  }, [visible, tipo, valorInicial]);
-
-  const toggleDia = (d) => {
-    setDias((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
-  };
-
-  const agregarItem = () => {
-    const val = nuevoItem.trim();
-    if (!val) return;
-    setLista((prev) => [...prev, val]);
-    setNuevoItem('');
-  };
-
-  const quitarItem = (idx) => {
-    setLista((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const agregarServicio = () => {
-    const nombre = nuevoServicioNombre.trim();
-    const precio = nuevoServicioPrecio.trim();
-    if (!nombre || !precio) return;
-    setServicios((prev) => [...prev, { nombre, precio }]);
-    setNuevoServicioNombre('');
-    setNuevoServicioPrecio('');
-  };
-
-  const quitarServicio = (idx) => {
-    setServicios((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const handleGuardar = () => {
-    if (tipo === 'lista') onGuardar(lista);
-    else if (tipo === 'dias') onGuardar(dias);
-    else if (tipo === 'servicios') onGuardar(servicios);
-    else onGuardar(texto.trim());
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCerrar}>
-      <Pressable style={styles.modalOverlay} onPress={onCerrar}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ width: '100%' }}
-        >
-          <Pressable style={styles.modalSheet} onPress={() => {}}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitulo}>{titulo}</Text>
-              <TouchableOpacity onPress={onCerrar} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={22} color={GRAY_TEXT} />
-              </TouchableOpacity>
-            </View>
-
-            {tipo === 'texto' && (
-              <TextInput
-                style={styles.modalInput}
-                value={texto}
-                onChangeText={setTexto}
-                placeholder="Escribí acá..."
-                placeholderTextColor={GRAY_SOFT}
-                autoFocus
-              />
-            )}
-
-            {tipo === 'textarea' && (
-              <TextInput
-                style={[styles.modalInput, styles.modalInputMultiline]}
-                value={texto}
-                onChangeText={setTexto}
-                placeholder="Escribí acá..."
-                placeholderTextColor={GRAY_SOFT}
-                multiline
-                autoFocus
-              />
-            )}
-
-            {tipo === 'dias' && (
-              <View style={styles.modalDiasRow}>
-                {DIAS.map((d, idx) => {
-                  const activo = dias.includes(d);
-                  return (
-                    <TouchableOpacity
-                      key={`${d}-${idx}`}
-                      style={[styles.diaChip, activo && styles.diaChipActivo]}
-                      onPress={() => toggleDia(d)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[styles.diaChipTexto, activo && styles.diaChipTextoActivo]}>
-                        {d}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-
-            {tipo === 'lista' && (
-              <View>
-                <ScrollView style={{ maxHeight: 220 }} showsVerticalScrollIndicator={false}>
-                  {lista.map((item, idx) => (
-                    <View key={idx} style={styles.modalListaItem}>
-                      <Text style={styles.modalListaItemTexto} numberOfLines={3}>
-                        {item}
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => quitarItem(idx)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons name="trash-outline" size={18} color={DANGER} />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                  {lista.length === 0 && (
-                    <Text style={styles.textoVacio}>Todavía no agregaste nada.</Text>
-                  )}
-                </ScrollView>
-
-                <View style={styles.modalAgregarRow}>
-                  <TextInput
-                    style={styles.modalAgregarInput}
-                    value={nuevoItem}
-                    onChangeText={setNuevoItem}
-                    placeholder="Agregar ítem..."
-                    placeholderTextColor={GRAY_SOFT}
-                    onSubmitEditing={agregarItem}
-                    returnKeyType="done"
-                  />
-                  <TouchableOpacity style={styles.modalAgregarBtn} onPress={agregarItem} activeOpacity={0.85}>
-                    <Ionicons name="add" size={20} color={WHITE} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {tipo === 'servicios' && (
-              <View>
-                <ScrollView style={{ maxHeight: 220 }} showsVerticalScrollIndicator={false}>
-                  {servicios.map((s, idx) => (
-                    <View key={idx} style={styles.modalListaItem}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.modalListaItemTexto}>{s.nombre}</Text>
-                        <Text style={styles.modalListaItemPrecio}>Desde ${s.precio}</Text>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => quitarServicio(idx)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons name="trash-outline" size={18} color={DANGER} />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                  {servicios.length === 0 && (
-                    <Text style={styles.textoVacio}>Todavía no cargaste servicios.</Text>
-                  )}
-                </ScrollView>
-
-                <View style={styles.modalServicioRow}>
-                  <TextInput
-                    style={[styles.modalAgregarInput, { flex: 1.4 }]}
-                    value={nuevoServicioNombre}
-                    onChangeText={setNuevoServicioNombre}
-                    placeholder="Servicio (ej: Destape de cañería)"
-                    placeholderTextColor={GRAY_SOFT}
-                  />
-                  <TextInput
-                    style={[styles.modalAgregarInput, { flex: 0.7 }]}
-                    value={nuevoServicioPrecio}
-                    onChangeText={setNuevoServicioPrecio}
-                    placeholder="Precio $"
-                    placeholderTextColor={GRAY_SOFT}
-                    keyboardType="numeric"
-                  />
-                  <TouchableOpacity style={styles.modalAgregarBtn} onPress={agregarServicio} activeOpacity={0.85}>
-                    <Ionicons name="add" size={20} color={WHITE} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity style={styles.modalCancelar} onPress={onCerrar} activeOpacity={0.8}>
-                <Text style={styles.modalCancelarTexto}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalGuardar} onPress={handleGuardar} activeOpacity={0.88}>
-                <Text style={styles.modalGuardarTexto}>Guardar</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </KeyboardAvoidingView>
-      </Pressable>
-    </Modal>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Pantalla principal                                                */
-/* ------------------------------------------------------------------ */
-
-/**
- * Props:
- * - usuario: usuario logueado (se le pasa a Header y a BottomNavBarTrabajador).
- *   Puede llegar por prop directa o por `route.params.usuario`.
- * - perfilInicial: opcional, para precargar datos antes del fetch.
- * - onGuardarPerfil(perfilActualizado, campo, valor): opcional, callback extra
- *   que se dispara después de persistir cada edición.
- *
- * El perfil se obtiene del backend en `GET /trabajador/perfil/:id` usando
- * `usuario.idTrabajador`. Cada edición se persiste con `PATCH /trabajador/perfil/:id`.
- */
 const PERFIL_VACIO = {
   categoria: '',
   nombre: '',
@@ -598,6 +195,7 @@ function mapearPerfilTrabajador(db) {
 }
 
 export default function PerfilTrabajador(props) {
+  const { colors, isDark } = useTheme();
   const usuario = props.usuario ?? props.route?.params?.usuario;
   const navigation = props.navigation ?? null;
   const { perfilInicial, onGuardarPerfil } = props;
@@ -610,27 +208,31 @@ export default function PerfilTrabajador(props) {
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState(null);
   const [modal, setModal] = useState({ visible: false, campo: null, tipo: 'texto', titulo: '' });
-// ── Animación de rotación para el ícono de carga ──────────────────────
-const spinValue = useRef(new Animated.Value(0)).current;
 
-useEffect(() => {
-  if (!cargando) return;
-  spinValue.setValue(0);
-  const animacion = Animated.loop(
-    Animated.timing(spinValue, {
-      toValue: 1,
-      duration: 900,
-      useNativeDriver: true,
-    })
-  );
-  animacion.start();
-  return () => animacion.stop();
-}, [cargando]);
+  // ── Animación de rotación para el ícono de carga ──
+  const spinValue = useRef(new Animated.Value(0)).current;
 
-const spin = spinValue.interpolate({
-  inputRange: [0, 1],
-  outputRange: ['0deg', '360deg'],
-});
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
+  useEffect(() => {
+    if (!cargando) return;
+    spinValue.setValue(0);
+    const animacion = Animated.loop(
+      Animated.timing(spinValue, {
+        toValue: 1,
+        duration: 900,
+        useNativeDriver: true,
+      })
+    );
+    animacion.start();
+    return () => animacion.stop();
+  }, [cargando]);
+
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
   const cargarPerfil = useCallback(async () => {
     setCargando(true);
     setErrorCarga(null);
@@ -651,7 +253,7 @@ const spin = spinValue.interpolate({
     }
   }, [idTrabajador]);
 
-    useFocusEffect(
+  useFocusEffect(
     useCallback(() => {
       cargarPerfil();
     }, [cargarPerfil])
@@ -815,18 +417,347 @@ const spin = spinValue.interpolate({
     ? perfil.disponibilidad.map((d) => DIAS_NOMBRE[d]).join(' · ')
     : 'Sin días cargados';
 
+  // Componentes movidos dentro del componente principal
+  const EditButton = ({ onPress, size = 14, style }) => (
+    <TouchableOpacity
+      style={[styles.editBtn, style]}
+      onPress={onPress}
+      activeOpacity={0.75}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    >
+      <Ionicons name="pencil" size={size} color={INDIGO_DEEP} />
+    </TouchableOpacity>
+  );
+
+  const Estrellas = ({ valor = 0, size = 16 }) => (
+    <View style={{ flexDirection: 'row', gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <Ionicons
+          key={n}
+          name={n <= Math.round(valor) ? 'star' : 'star-outline'}
+          size={size}
+          color={AMBER}
+        />
+      ))}
+    </View>
+  );
+
+  const SeccionCard = ({ titulo, onEditar, children, style, subtitulo }) => (
+    <View style={[styles.card, style]}>
+      <View style={styles.cardHeaderRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.cardTitulo}>{titulo}</Text>
+          {subtitulo ? <Text style={styles.cardSubtitulo}>{subtitulo}</Text> : null}
+        </View>
+        {onEditar && <EditButton onPress={onEditar} />}
+      </View>
+      {children}
+    </View>
+  );
+
+  const ListaConDivisores = ({ items, vacio }) => {
+    if (!items || items.length === 0) {
+      return <Text style={styles.textoVacio}>{vacio}</Text>;
+    }
+    return items.map((item, i) => (
+      <View
+        key={i}
+        style={[styles.itemFila, i === items.length - 1 && { borderBottomWidth: 0 }]}
+      >
+        <View style={styles.itemBullet} />
+        <Text style={styles.itemTexto}>{item}</Text>
+      </View>
+    ));
+  };
+
+  const Chip = ({ label, tono = 'default' }) => {
+    const activo = tono === 'teal';
+    return (
+      <View style={[styles.chip, activo && styles.chipTeal]}>
+        <Text style={[styles.chipTexto, activo && styles.chipTextoTeal]}>{label}</Text>
+      </View>
+    );
+  };
+
+  const ConfianzaItem = ({ label, verificado, onPress }) => (
+    <TouchableOpacity
+      style={[styles.confianzaItem, verificado ? styles.confianzaItemOn : styles.confianzaItemOff]}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <View style={[styles.confianzaIconWrap, verificado ? styles.confianzaIconOn : styles.confianzaIconOff]}>
+        <Ionicons
+          name={verificado ? 'shield-checkmark' : 'time-outline'}
+          size={15}
+          color={verificado ? WHITE : GRAY_SOFT}
+        />
+      </View>
+      <Text style={[styles.confianzaLabel, !verificado && styles.confianzaLabelOff]} numberOfLines={2}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  const AptitudCard = ({ texto }) => (
+    <View style={styles.aptitudCard}>
+      <View style={styles.aptitudIconWrap}>
+        <Ionicons name={iconoParaAptitud(texto)} size={15} color={INDIGO_DEEP} />
+      </View>
+      <Text style={styles.aptitudTexto}>{texto}</Text>
+    </View>
+  );
+
+  const ExperienciaTimeline = ({ items, vacio }) => {
+    if (!items || items.length === 0) {
+      return <Text style={styles.textoVacio}>{vacio}</Text>;
+    }
+    return items.map((item, i) => {
+      const { titulo, detalle } = partirTituloDetalle(item);
+      const esUltimo = i === items.length - 1;
+      return (
+        <View key={i} style={styles.timelineFila}>
+          <View style={styles.timelineRielWrap}>
+            <View style={styles.timelineDot}>
+              <Ionicons name="briefcase" size={11} color={WHITE} />
+            </View>
+            {!esUltimo && <View style={styles.timelineLinea} />}
+          </View>
+          <View style={[styles.timelineContenido, !esUltimo && { marginBottom: 16 }]}>
+            <Text style={styles.timelineTitulo}>{titulo}</Text>
+            {!!detalle && <Text style={styles.timelineDetalle}>{detalle}</Text>}
+          </View>
+        </View>
+      );
+    });
+  };
+
+  const EducacionLista = ({ items, vacio }) => {
+    if (!items || items.length === 0) {
+      return <Text style={styles.textoVacio}>{vacio}</Text>;
+    }
+    return items.map((item, i) => {
+      const { titulo, detalle } = partirTituloDetalle(item);
+      const esCertificacion = /certifica|curso|diploma/i.test(item);
+      return (
+        <View key={i} style={[styles.educacionFila, i === items.length - 1 && { borderBottomWidth: 0 }]}>
+          <View style={styles.educacionIconWrap}>
+            <Ionicons name="school-outline" size={16} color={INDIGO_DEEP} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={styles.educacionTituloRow}>
+              <Text style={styles.educacionTitulo}>{titulo}</Text>
+              {esCertificacion && (
+                <View style={styles.educacionBadge}>
+                  <Text style={styles.educacionBadgeTexto}>Certificación</Text>
+                </View>
+              )}
+            </View>
+            {!!detalle && <Text style={styles.educacionDetalle}>{detalle}</Text>}
+          </View>
+        </View>
+      );
+    });
+  };
+
+  const EditModal = ({ visible, tipo, titulo, valorInicial, onCerrar, onGuardar }) => {
+    const [texto, setTexto] = useState('');
+    const [lista, setLista] = useState([]);
+    const [nuevoItem, setNuevoItem] = useState('');
+    const [dias, setDias] = useState([]);
+    const [servicios, setServicios] = useState([]);
+
+    useEffect(() => {
+      if (!visible) return;
+      if (tipo === 'lista') setLista(Array.isArray(valorInicial) ? [...valorInicial] : []);
+      else if (tipo === 'dias') setDias(Array.isArray(valorInicial) ? [...valorInicial] : []);
+      else if (tipo === 'servicios') setServicios(Array.isArray(valorInicial) ? valorInicial.map((s) => ({ ...s })) : []);
+      else setTexto(valorInicial != null ? String(valorInicial) : '');
+      setNuevoItem('');
+    }, [visible, tipo, valorInicial]);
+
+    const toggleDia = (d) => {
+      setDias((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
+    };
+
+    const agregarItem = () => {
+      const val = nuevoItem.trim();
+      if (!val) return;
+      setLista((prev) => [...prev, val]);
+      setNuevoItem('');
+    };
+
+    const quitarItem = (idx) => {
+      setLista((prev) => prev.filter((_, i) => i !== idx));
+    };
+
+    const actualizarPrecioServicio = (idx, val) => {
+      setServicios((prev) => prev.map((item, i) => (i === idx ? { ...item, precio: val } : item)));
+    };
+
+    const handleGuardar = () => {
+      if (tipo === 'lista') onGuardar(lista);
+      else if (tipo === 'dias') onGuardar(dias);
+      else if (tipo === 'servicios') onGuardar(servicios);
+      else onGuardar(texto.trim());
+    };
+
+    return (
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={onCerrar}>
+        <Pressable style={styles.modalOverlay} onPress={onCerrar}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%' }}
+          >
+            <Pressable style={styles.modalSheet} onPress={() => {}}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitulo}>{titulo}</Text>
+                <TouchableOpacity onPress={onCerrar} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close" size={22} color={GRAY_TEXT} />
+                </TouchableOpacity>
+              </View>
+
+              {tipo === 'texto' && (
+                <TextInput
+                  style={styles.modalInput}
+                  value={texto}
+                  onChangeText={setTexto}
+                  placeholder="Escribí acá..."
+                  placeholderTextColor={GRAY_SOFT}
+                  autoFocus
+                />
+              )}
+
+              {tipo === 'textarea' && (
+                <TextInput
+                  style={[styles.modalInput, styles.modalInputMultiline]}
+                  value={texto}
+                  onChangeText={setTexto}
+                  placeholder="Escribí acá..."
+                  placeholderTextColor={GRAY_SOFT}
+                  multiline
+                  autoFocus
+                />
+              )}
+
+              {tipo === 'dias' && (
+                <View style={styles.modalDiasRow}>
+                  {DIAS.map((d, idx) => {
+                    const activo = dias.includes(d);
+                    return (
+                      <TouchableOpacity
+                        key={`${d}-${idx}`}
+                        style={[styles.diaChip, activo && styles.diaChipActivo]}
+                        onPress={() => toggleDia(d)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.diaChipTexto, activo && styles.diaChipTextoActivo]}>
+                          {d}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              {tipo === 'lista' && (
+                <View>
+                  <ScrollView style={{ maxHeight: 220 }} showsVerticalScrollIndicator={false}>
+                    {lista.map((item, idx) => (
+                      <View key={idx} style={styles.modalListaItem}>
+                        <Text style={styles.modalListaItemTexto} numberOfLines={3}>
+                          {item}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => quitarItem(idx)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="trash-outline" size={18} color={DANGER} />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                    {lista.length === 0 && (
+                      <Text style={styles.textoVacio}>Todavía no agregaste nada.</Text>
+                    )}
+                  </ScrollView>
+
+                  <View style={styles.modalAgregarRow}>
+                    <TextInput
+                      style={styles.modalAgregarInput}
+                      value={nuevoItem}
+                      onChangeText={setNuevoItem}
+                      placeholder="Agregar ítem..."
+                      placeholderTextColor={GRAY_SOFT}
+                      onSubmitEditing={agregarItem}
+                      returnKeyType="done"
+                    />
+                    <TouchableOpacity style={styles.modalAgregarBtn} onPress={agregarItem} activeOpacity={0.85}>
+                      <Ionicons name="add" size={20} color={WHITE} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {tipo === 'servicios' && (
+                <View>
+                  <Text style={styles.modalAyuda}>
+                    Poné el precio de referencia para cada servicio que ofrecés. Los servicios se
+                    definen al registrarte — si querés sumar uno nuevo, contactá a soporte.
+                  </Text>
+                  <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+                    {servicios.map((s, idx) => (
+                      <View key={s.id ?? idx} style={styles.modalServicioEditFila}>
+                        <Text style={styles.modalListaItemTexto} numberOfLines={1}>
+                          {s.nombre}
+                        </Text>
+                        <View style={styles.modalServicioPrecioInputWrap}>
+                          <Text style={styles.modalServicioPrecioSigno}>$</Text>
+                          <TextInput
+                            style={styles.modalServicioPrecioInput}
+                            value={s.precio}
+                            onChangeText={(val) => actualizarPrecioServicio(idx, val)}
+                            placeholder="0"
+                            placeholderTextColor={GRAY_SOFT}
+                            keyboardType="numeric"
+                          />
+                        </View>
+                      </View>
+                    ))}
+                    {servicios.length === 0 && (
+                      <Text style={styles.textoVacio}>
+                        Todavía no tenés servicios cargados. Se agregan al registrarte como trabajador.
+                      </Text>
+                    )}
+                  </ScrollView>
+                </View>
+              )}
+
+              <View style={styles.modalFooter}>
+                <TouchableOpacity style={styles.modalCancelar} onPress={onCerrar} activeOpacity={0.8}>
+                  <Text style={styles.modalCancelarTexto}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalGuardar} onPress={handleGuardar} activeOpacity={0.88}>
+                  <Text style={styles.modalGuardarTexto}>Guardar</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+    );
+  };
+
   return (
     <View style={styles.root}>
       <Header usuario={usuario} />
 
       {cargando ? (
-  <View style={styles.estadoVacio}>
-    <Animated.View style={{ transform: [{ rotate: spin }] }}>
-      <Ionicons name="sync" size={34} color={INDIGO} />
-    </Animated.View>
-    <Text style={styles.estadoTexto}>Cargando tu perfil...</Text>
-  </View>
-) : errorCarga ? (
+        <View style={styles.estadoVacio}>
+          <Animated.View style={{ transform: [{ rotate: spin }] }}>
+            <Ionicons name="sync" size={34} color={INDIGO} />
+          </Animated.View>
+          <Text style={styles.estadoTexto}>Cargando tu perfil...</Text>
+        </View>
+      ) : errorCarga ? (
         <View style={styles.estadoVacio}>
           <Ionicons name="cloud-offline-outline" size={38} color={GRAY_SOFT} />
           <Text style={styles.estadoTexto}>{errorCarga}</Text>
@@ -903,7 +834,7 @@ const spin = spinValue.interpolate({
             </Text>
           </View>
 
-          {/* Métricas rápidas: lo que un cliente compara entre perfiles */}
+          {/* Métricas rápidas */}
           <View style={styles.metricasRow}>
             <View style={styles.metricaBox}>
               <Text style={styles.metricaValor}>{perfil.añosExperiencia}</Text>
@@ -930,7 +861,7 @@ const spin = spinValue.interpolate({
           </View>
         </View>
 
-        {/* ---------- Panel de confianza: lo primero que decide una contratación ---------- */}
+        {/* ---------- Panel de confianza ---------- */}
         <SeccionCard titulo="Verificación y confianza" subtitulo="Documentación validada por la plataforma">
           <View style={styles.confianzaGrid}>
             <ConfianzaItem
@@ -979,9 +910,11 @@ const spin = spinValue.interpolate({
             <Text style={styles.textoVacio}>Todavía no cargaste servicios.</Text>
           ) : (
             perfil.servicios.map((s, i) => (
-              <View key={i} style={[styles.servicioFila, i === perfil.servicios.length - 1 && { borderBottomWidth: 0 }]}>
+              <View key={s.id ?? i} style={[styles.servicioFila, i === perfil.servicios.length - 1 && { borderBottomWidth: 0 }]}>
                 <Text style={styles.servicioNombre}>{s.nombre}</Text>
-                <Text style={styles.servicioPrecio}>desde ${s.precio}</Text>
+                <Text style={styles.servicioPrecio}>
+                  {s.precio ? `desde $${s.precio}` : 'Sin precio cargado'}
+                </Text>
               </View>
             ))
           )}
@@ -1127,7 +1060,7 @@ const spin = spinValue.interpolate({
           )}
         </View>
 
-        {/* ---------- Reseñas recientes (solo lectura) ---------- */}
+        {/* ---------- Reseñas recientes ---------- */}
         <View style={[styles.card, { marginBottom: 8 }]}>
           <View style={styles.cardHeaderRow}>
             <Text style={styles.cardTitulo}>Reseñas recientes</Text>
@@ -1171,8 +1104,8 @@ const spin = spinValue.interpolate({
 /*  Estilos                                                            */
 /* ------------------------------------------------------------------ */
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: BG },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.background },
   scrollContent: { paddingBottom: 120 },
 
   /* Portada */
@@ -1197,31 +1130,31 @@ const styles = StyleSheet.create({
   },
   portadaEditTexto: { color: WHITE, fontSize: 11, fontWeight: '700' },
 
-  /* Header card (avatar + nombre + métricas) */
+  /* Header card */
   headerCard: {
-    backgroundColor: WHITE,
+    backgroundColor: colors.card,
     marginHorizontal: 16,
     marginTop: -36,
     borderRadius: 20,
     padding: 16,
     paddingTop: 12,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
-    shadowColor: NAVY,
+    borderColor: colors.border,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
     shadowRadius: 16,
     elevation: 3,
   },
   avatarWrap: { width: 78, height: 78, borderRadius: 20, marginBottom: 10 },
-  avatarImg: { width: 78, height: 78, borderRadius: 20, borderWidth: 3, borderColor: WHITE },
+  avatarImg: { width: 78, height: 78, borderRadius: 20, borderWidth: 3, borderColor: colors.card },
   avatarPlaceholder: {
     width: 78,
     height: 78,
     borderRadius: 20,
     backgroundColor: 'rgba(61,78,234,0.10)',
     borderWidth: 3,
-    borderColor: WHITE,
+    borderColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1234,7 +1167,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: INDIGO,
     borderWidth: 2,
-    borderColor: WHITE,
+    borderColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1258,48 +1191,48 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   verificadoPillTexto: { fontSize: 10, fontWeight: '800', color: TEAL_DEEP },
-  nombreTexto: { fontSize: 21, fontWeight: '900', color: NAVY, letterSpacing: -0.3, marginBottom: 4 },
+  nombreTexto: { fontSize: 21, fontWeight: '900', color: colors.text, letterSpacing: -0.3, marginBottom: 4 },
   ubicacionRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },
-  ubicacionTexto: { fontSize: 12.5, color: GRAY_TEXT, fontWeight: '600' },
+  ubicacionTexto: { fontSize: 12.5, color: colors.textSecondary, fontWeight: '600' },
   calificacionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
-  calificacionTexto: { fontSize: 12, color: GRAY_TEXT, fontWeight: '600' },
+  calificacionTexto: { fontSize: 12, color: colors.textSecondary, fontWeight: '600' },
 
   metricasRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: BG,
+    backgroundColor: colors.background,
     borderRadius: 14,
     paddingVertical: 12,
     marginBottom: 12,
   },
   metricaBox: { flex: 1, alignItems: 'center', gap: 2, paddingHorizontal: 4 },
-  metricaValor: { fontSize: 16, fontWeight: '900', color: NAVY },
-  metricaValorChico: { fontSize: 12, fontWeight: '800', color: NAVY, textAlign: 'center' },
-  metricaLabel: { fontSize: 10, color: GRAY_SOFT, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
-  metricaDivisor: { width: 1, height: 30, backgroundColor: CHIP_OFF_BORDER },
+  metricaValor: { fontSize: 16, fontWeight: '900', color: colors.text },
+  metricaValorChico: { fontSize: 12, fontWeight: '800', color: colors.text, textAlign: 'center' },
+  metricaLabel: { fontSize: 10, color: colors.textTertiary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
+  metricaDivisor: { width: 1, height: 30, backgroundColor: colors.border },
 
   tarifaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderTopWidth: 1,
-    borderTopColor: CHIP_OFF_BORDER,
+    borderTopColor: colors.border,
     paddingTop: 12,
   },
-  tarifaLabel: { fontSize: 12.5, color: GRAY_TEXT, fontWeight: '700' },
+  tarifaLabel: { fontSize: 12.5, color: colors.textSecondary, fontWeight: '700' },
   tarifaValorRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   tarifaValor: { fontSize: 17, fontWeight: '900', color: INDIGO_DEEP },
 
   /* Cards genéricas */
   card: {
-    backgroundColor: WHITE,
+    backgroundColor: colors.card,
     borderRadius: 18,
     padding: 16,
     marginHorizontal: 16,
     marginTop: 14,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
-    shadowColor: NAVY,
+    borderColor: colors.border,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.05,
     shadowRadius: 12,
@@ -1307,7 +1240,7 @@ const styles = StyleSheet.create({
   },
   cardHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 },
   cardTitulo: { fontSize: 15.5, fontWeight: '800', color: INDIGO_DEEP, letterSpacing: -0.2 },
-  cardSubtitulo: { fontSize: 11.5, color: GRAY_SOFT, fontWeight: '600', marginTop: 2 },
+  cardSubtitulo: { fontSize: 11.5, color: colors.textTertiary, fontWeight: '600', marginTop: 2 },
 
   editBtn: {
     width: 28,
@@ -1336,32 +1269,32 @@ const styles = StyleSheet.create({
   confianzaIconWrap: { width: 26, height: 26, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   confianzaIconOn: { backgroundColor: TEAL },
   confianzaIconOff: { backgroundColor: '#DCDFEB' },
-  confianzaLabel: { flex: 1, fontSize: 11.5, fontWeight: '700', color: NAVY, lineHeight: 15 },
-  confianzaLabelOff: { color: GRAY_SOFT },
+  confianzaLabel: { flex: 1, fontSize: 11.5, fontWeight: '700', color: colors.text, lineHeight: 15 },
+  confianzaLabelOff: { color: colors.textTertiary },
   matriculaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: BG,
+    backgroundColor: colors.background,
     borderRadius: 12,
     padding: 10,
   },
-  matriculaTexto: { flex: 1, fontSize: 12, color: GRAY_TEXT, fontWeight: '600', lineHeight: 16 },
+  matriculaTexto: { flex: 1, fontSize: 12, color: colors.textSecondary, fontWeight: '600', lineHeight: 16 },
 
   /* Descripción */
   descBox: {
-    backgroundColor: WHITE,
+    backgroundColor: colors.card,
     borderRadius: 18,
     padding: 16,
     paddingRight: 40,
     marginHorizontal: 16,
     marginTop: 14,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
+    borderColor: colors.border,
   },
   descEditBtn: { position: 'absolute', top: 12, right: 12 },
   descTitulo: { fontSize: 15.5, fontWeight: '800', color: INDIGO_DEEP, marginBottom: 6 },
-  descTexto: { fontSize: 13, color: GRAY_TEXT, lineHeight: 19 },
+  descTexto: { fontSize: 13, color: colors.textSecondary, lineHeight: 19 },
 
   /* Servicios */
   servicioFila: {
@@ -1370,30 +1303,29 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: CHIP_OFF_BORDER,
+    borderBottomColor: colors.border,
   },
-  servicioNombre: { flex: 1, fontSize: 13, color: NAVY, fontWeight: '700', paddingRight: 10 },
-  servicioPrecio: { fontSize: 13, color: INDIGO_DEEP, fontWeight: '800' },
+  servicioNombre: { flex: 1, fontSize: 13, color: colors.text, fontWeight: '700', paddingRight: 10 },
+  servicioPrecio: { fontSize: 13, color: colors.textSecondary, fontWeight: '600' },
 
   /* Chips */
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
     backgroundColor: CHIP_OFF_BG,
     borderWidth: 1,
     borderColor: CHIP_OFF_BORDER,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
   },
   chipTeal: { backgroundColor: TEAL_BG, borderColor: TEAL_BORDER },
-  chipTexto: { fontSize: 12, fontWeight: '700', color: GRAY_TEXT },
+  chipTexto: { fontSize: 12, fontWeight: '600', color: GRAY_TEXT },
   chipTextoTeal: { color: TEAL_DEEP },
 
-  /* Días */
-  diasRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  /* Disponibilidad */
+  diasRow: { flexDirection: 'row', gap: 6, marginBottom: 10 },
   diaChip: {
-    width: 34,
-    height: 34,
+    width: 36, height: 36,
     borderRadius: 10,
     backgroundColor: CHIP_OFF_BG,
     borderWidth: 1,
@@ -1401,245 +1333,296 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  diaChipActivo: { backgroundColor: INDIGO_DEEP, borderColor: INDIGO_DEEP },
-  diaChipTexto: { fontSize: 13, fontWeight: '800', color: GRAY_SOFT },
+  diaChipActivo: { backgroundColor: INDIGO, borderColor: INDIGO },
+  diaChipTexto: { fontSize: 12, fontWeight: '700', color: GRAY_TEXT },
   diaChipTextoActivo: { color: WHITE },
-  diasResumen: { fontSize: 11.5, color: GRAY_SOFT, fontWeight: '600', marginBottom: 12 },
-
+  diasResumen: { fontSize: 12, color: colors.textSecondary, marginBottom: 12 },
   horarioFila: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: BG,
+    backgroundColor: colors.background,
     borderRadius: 12,
     padding: 10,
-    marginBottom: 10,
+    marginBottom: 12,
   },
-  horarioTexto: { flex: 1, fontSize: 12.5, color: NAVY, fontWeight: '700' },
-
+  horarioTexto: { flex: 1, fontSize: 13, color: colors.text, fontWeight: '600' },
   emergenciaFila: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    borderTopWidth: 1,
-    borderTopColor: CHIP_OFF_BORDER,
-    paddingTop: 12,
+    gap: 12,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 12,
   },
-  emergenciaTitulo: { fontSize: 13, fontWeight: '800', color: NAVY, marginBottom: 2 },
-  emergenciaSub: { fontSize: 11, color: GRAY_SOFT, fontWeight: '600', lineHeight: 15 },
+  emergenciaTitulo: { fontSize: 13, fontWeight: '700', color: colors.text },
+  emergenciaSub: { fontSize: 11.5, color: colors.textSecondary, marginTop: 2 },
 
-  /* Listas con divisores (genérico, todavía usado en otros lados) */
-  itemFila: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    paddingVertical: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: CHIP_OFF_BORDER,
-  },
-  itemBullet: { width: 5, height: 5, borderRadius: 3, backgroundColor: INDIGO, marginTop: 7 },
-  itemTexto: { flex: 1, fontSize: 13, color: GRAY_TEXT, lineHeight: 19 },
-  textoVacio: { fontSize: 13, color: GRAY_SOFT, fontStyle: 'italic', paddingVertical: 6 },
-
-  /* Aptitudes: grilla de credenciales autodeclaradas (indigo, no teal) */
+  /* Aptitudes */
   aptitudesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   aptitudCard: {
     width: '48%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: BG,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
+    backgroundColor: colors.background,
     borderRadius: 12,
-    paddingVertical: 9,
-    paddingHorizontal: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   aptitudIconWrap: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    backgroundColor: 'rgba(61,78,234,0.12)',
+    width: 28, height: 28, borderRadius: 8,
+    backgroundColor: 'rgba(61,78,234,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  aptitudTexto: { flex: 1, fontSize: 11.5, fontWeight: '700', color: NAVY, lineHeight: 15 },
+  aptitudTexto: { flex: 1, fontSize: 12, fontWeight: '600', color: colors.text, lineHeight: 15 },
 
-  /* Experiencia laboral: línea de tiempo con marcador tipo "maletín" */
-  timelineFila: { flexDirection: 'row' },
-  timelineRielWrap: { width: 26, alignItems: 'center' },
+  /* Experiencia */
+  timelineFila: { flexDirection: 'row', gap: 12 },
+  timelineRielWrap: { alignItems: 'center', width: 24 },
   timelineDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    backgroundColor: INDIGO_DEEP,
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: INDIGO,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  timelineLinea: { flex: 1, width: 2, backgroundColor: CHIP_OFF_BORDER, marginVertical: 4, borderRadius: 1 },
-  timelineContenido: { flex: 1, paddingLeft: 12, paddingTop: 1 },
-  timelineTitulo: { fontSize: 13.5, fontWeight: '800', color: NAVY, marginBottom: 3 },
-  timelineDetalle: { fontSize: 12.5, color: GRAY_TEXT, lineHeight: 18 },
+  timelineLinea: { flex: 1, width: 2, backgroundColor: colors.border, marginTop: 4 },
+  timelineContenido: { flex: 1, paddingBottom: 0 },
+  timelineTitulo: { fontSize: 13.5, fontWeight: '700', color: colors.text },
+  timelineDetalle: { fontSize: 12, color: colors.textSecondary, marginTop: 2, lineHeight: 16 },
 
-  /* Educación: tarjetas con ícono de institución + pastilla de certificación */
+  /* Educación */
   educacionFila: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    paddingVertical: 11,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: CHIP_OFF_BORDER,
+    borderBottomColor: colors.border,
   },
   educacionIconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
+    width: 32, height: 32, borderRadius: 10,
     backgroundColor: 'rgba(61,78,234,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 1,
+    marginTop: 2,
   },
-  educacionTituloRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 3 },
-  educacionTitulo: { fontSize: 13.5, fontWeight: '800', color: NAVY },
+  educacionTituloRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+  educacionTitulo: { fontSize: 13.5, fontWeight: '700', color: colors.text, flex: 1 },
   educacionBadge: {
     backgroundColor: TEAL_BG,
     borderWidth: 1,
     borderColor: TEAL_BORDER,
-    borderRadius: 999,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 2,
+    borderRadius: 999,
   },
-  educacionBadgeTexto: { fontSize: 9.5, fontWeight: '800', color: TEAL_DEEP, textTransform: 'uppercase', letterSpacing: 0.3 },
-  educacionDetalle: { fontSize: 12.5, color: GRAY_TEXT, lineHeight: 18 },
+  educacionBadgeTexto: { fontSize: 9.5, fontWeight: '700', color: TEAL_DEEP },
+  educacionDetalle: { fontSize: 12, color: colors.textSecondary, lineHeight: 16 },
 
   /* Portfolio */
   portfolioGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  portfolioItem: { width: '31%', aspectRatio: 1, borderRadius: 12, overflow: 'hidden' },
-  portfolioImg: { width: '100%', height: '100%' },
+  portfolioItem: { position: 'relative' },
+  portfolioImg: { width: 100, height: 100, borderRadius: RADIUS_MD },
   portfolioQuitar: {
-    position: 'absolute',
-    top: 5,
-    right: 5,
-    width: 20,
-    height: 20,
-    borderRadius: 7,
-    backgroundColor: 'rgba(10,18,48,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: 'absolute', top: -6, right: -6, width: 22, height: 22,
+    borderRadius: 11, backgroundColor: DANGER, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: '#fff',
   },
   portfolioAgregar: {
-    width: '31%',
-    aspectRatio: 1,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: CHIP_OFF_BORDER,
-    borderStyle: 'dashed',
-    backgroundColor: BG,
+    width: 100, height: 100,
+    borderRadius: RADIUS_MD,
+    borderWidth: 1.5, borderColor: INDIGO, borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
+    gap: 4,
+    backgroundColor: 'rgba(61,78,234,0.06)',
   },
-  portfolioAgregarTexto: { fontSize: 10, fontWeight: '700', color: INDIGO },
+  portfolioAgregarTexto: { fontSize: 11, fontWeight: '700', color: INDIGO },
 
   /* Reseñas */
   resenaFila: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
     gap: 10,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: CHIP_OFF_BORDER,
+    borderBottomColor: colors.border,
   },
   resenaAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 11,
-    backgroundColor: 'rgba(61,78,234,0.12)',
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: INDIGO,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  resenaAvatarTexto: { fontSize: 13, fontWeight: '800', color: INDIGO_DEEP },
-  resenaTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
-  resenaNombre: { fontSize: 13.5, fontWeight: '800', color: NAVY },
-  resenaComentario: { fontSize: 12.5, color: GRAY_TEXT, lineHeight: 17 },
+  resenaAvatarTexto: { color: WHITE, fontSize: 14, fontWeight: '800' },
+  resenaTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+  resenaNombre: { fontSize: 13, fontWeight: '700', color: colors.text, flex: 1 },
+  resenaComentario: { fontSize: 12, color: colors.textSecondary, lineHeight: 16 },
 
-  /* Modal de edición */
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(10,18,48,0.45)', justifyContent: 'flex-end' },
+  /* Estado vacío / carga */
+  estadoVacio: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, gap: 10 },
+  estadoTexto: { fontSize: 14, color: colors.textSecondary, textAlign: 'center' },
+  estadoBoton: {
+    marginTop: 8,
+    backgroundColor: INDIGO,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: RADIUS_MD,
+  },
+  estadoBotonTexto: { color: WHITE, fontSize: 13, fontWeight: '700' },
+
+  /* Modal */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(10,18,48,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
   modalSheet: {
-    backgroundColor: WHITE,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: 28,
-    shadowColor: NAVY,
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 10,
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '85%',
+    overflow: 'hidden',
   },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  modalTitulo: { fontSize: 16.5, fontWeight: '900', color: NAVY },
-  modalInput: {
-    backgroundColor: CHIP_OFF_BG,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: CHIP_OFF_BORDER,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: NAVY,
-  },
-  modalInputMultiline: { minHeight: 110, textAlignVertical: 'top' },
-  modalDiasRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  modalListaItem: {
+  modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
-    paddingVertical: 9,
+    padding: 18,
+    paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: CHIP_OFF_BORDER,
+    borderBottomColor: colors.border,
   },
-  modalListaItemTexto: { flex: 1, fontSize: 13, color: GRAY_TEXT, lineHeight: 18 },
-  modalListaItemPrecio: { fontSize: 12, color: INDIGO_DEEP, fontWeight: '800', marginTop: 2 },
-  modalAgregarRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
-  modalServicioRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
-  modalAgregarInput: {
-    flex: 1,
-    backgroundColor: CHIP_OFF_BG,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: CHIP_OFF_BORDER,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 13,
-    color: NAVY,
+  modalTitulo: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.text,
   },
-  modalAgregarBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: INDIGO, alignItems: 'center', justifyContent: 'center' },
-  modalFooter: { flexDirection: 'row', gap: 10, marginTop: 20 },
+  modalFooter: {
+    flexDirection: 'row',
+    gap: 10,
+    padding: 18,
+    paddingTop: 14,
+  },
   modalCancelar: {
     flex: 1,
-    height: 46,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: CHIP_OFF_BORDER,
+    paddingVertical: 12,
+    borderRadius: 12,
     backgroundColor: CHIP_OFF_BG,
+    alignItems: 'center',
+  },
+  modalCancelarTexto: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  modalGuardar: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: INDIGO,
+    alignItems: 'center',
+  },
+  modalGuardarTexto: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: WHITE,
+  },
+  modalInput: {
+    fontSize: 14,
+    color: colors.text,
+    paddingVertical: 12,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    paddingHorizontal: 14,
+    marginHorizontal: 18,
+    marginTop: 14,
+  },
+  modalInputMultiline: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  modalAyuda: {
+    fontSize: 12.5,
+    color: colors.textSecondary,
+    lineHeight: 17,
+    marginHorizontal: 18,
+    marginTop: 14,
+  },
+  modalDiasRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 18,
+    marginTop: 14,
+  },
+  modalListaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalListaItemTexto: { flex: 1, fontSize: 13.5, color: colors.text },
+  modalAgregarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+  },
+  modalAgregarInput: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+    paddingVertical: 10,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    paddingHorizontal: 14,
+  },
+  modalAgregarBtn: {
+    width: 40, height: 40,
+    borderRadius: 12,
+    backgroundColor: INDIGO,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalCancelarTexto: { fontSize: 14, fontWeight: '700', color: GRAY_TEXT },
-  modalGuardar: { flex: 1, height: 46, borderRadius: 13, backgroundColor: INDIGO, alignItems: 'center', justifyContent: 'center' },
-  modalGuardarTexto: { fontSize: 14, fontWeight: '800', color: WHITE },
-
-  /* Carga / error */
-  estadoVacio: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 32 },
-  estadoTexto: { fontSize: 13.5, color: GRAY_TEXT, fontWeight: '600', textAlign: 'center', lineHeight: 19 },
-  estadoBoton: {
-    marginTop: 4,
-    backgroundColor: INDIGO,
-    borderRadius: 12,
-    paddingHorizontal: 22,
-    paddingVertical: 11,
+  modalServicioEditFila: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  estadoBotonTexto: { fontSize: 13, fontWeight: '800', color: WHITE },
+  modalServicioPrecioInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    paddingHorizontal: 10,
+  },
+  modalServicioPrecioSigno: { fontSize: 14, fontWeight: '700', color: colors.textSecondary },
+  modalServicioPrecioInput: {
+    fontSize: 14,
+    color: colors.text,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    minWidth: 60,
+  },
+
+  textoVacio: { fontSize: 13, color: colors.textTertiary, fontStyle: 'italic' },
 });

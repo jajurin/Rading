@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View, Text, Image, TouchableOpacity, StyleSheet, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../ThemeContext';
 
 // ─── Paleta (consistente con el resto de la app) ─────────────────────────
 const WHITE      = '#ffffff';
@@ -13,58 +14,59 @@ const TEXT_DARK  = '#1A2233';
 const TEXT_GRAY  = '#8A94A6';
 const BG_SOFT    = 'rgba(21,101,216,0.08)';
 
-// ─── Ícono info: por qué tiene ese puntaje ────────────────────────────────
-const InfoBadge = ({ mensaje }) => (
-  <TouchableOpacity
-    style={styles.infoBadge}
-    onPress={() => Alert.alert('¿Por qué este puntaje?', mensaje)}
-    activeOpacity={0.6}
-    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-  >
-    <Text style={styles.infoBadgeText}>?</Text>
-  </TouchableOpacity>
-);
-
-// ─── Estrellas reales (llena / media / vacía) ────────────────────────────
-const EstrellasRating = ({ valor = 0, size = 13 }) => {
-  const estrellas = Math.max(0, Math.min(5, Number(valor) || 0));
-  const llenas = Math.floor(estrellas);
-  const decimal = estrellas - llenas;
-  const media = decimal >= 0.25 && decimal < 0.75;
-  const extraLlena = decimal >= 0.75;
-  const totalLlenas = llenas + (extraLlena ? 1 : 0);
-  const vacias = 5 - totalLlenas - (media ? 1 : 0);
-
-  return (
-    <View style={styles.starsRow}>
-      {Array.from({ length: totalLlenas }).map((_, i) => (
-        <Ionicons key={`f${i}`} name="star" size={size} color={GOLD} />
-      ))}
-      {media && <Ionicons name="star-half" size={size} color={GOLD} />}
-      {Array.from({ length: vacias }).map((_, i) => (
-        <Ionicons key={`e${i}`} name="star-outline" size={size} color={GOLD} />
-      ))}
-      <Text style={styles.ratingNumero}>{estrellas.toFixed(1)}</Text>
-    </View>
-  );
-};
-
-// ─── Avatar con fallback de iniciales ─────────────────────────────────────
-const Avatar = ({ foto, nombre, apellido }) => {
-  if (foto) {
-    return <Image source={{ uri: foto }} style={styles.avatar} />;
-  }
-  const iniciales = `${nombre?.[0] ?? ''}${apellido?.[0] ?? ''}`.toUpperCase();
-  return (
-    <View style={[styles.avatar, styles.avatarFallback]}>
-      <Text style={styles.avatarIniciales}>{iniciales || '?'}</Text>
-    </View>
-  );
-};
-
 export default function TarjetaPerfilCliente({ item, onPressChat }) {
+  const { colors, isDark } = useTheme();
   const terminado = item.estado && item.estado !== 'EN PROCESO';
   const estadoColor = terminado ? '#22C55E' : GOLD;
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
+  // Componentes movidos dentro del componente principal para acceder a styles
+  const InfoBadge = ({ mensaje }) => (
+    <TouchableOpacity
+      style={styles.infoBadge}
+      onPress={() => Alert.alert('¿Por qué este puntaje?', mensaje)}
+      activeOpacity={0.6}
+      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+    >
+      <Text style={styles.infoBadgeText}>?</Text>
+    </TouchableOpacity>
+  );
+
+  const EstrellasRating = ({ valor = 0, size = 13 }) => {
+    const estrellas = Math.max(0, Math.min(5, Number(valor) || 0));
+    const llenas = Math.floor(estrellas);
+    const decimal = estrellas - llenas;
+    const media = decimal >= 0.25 && decimal < 0.75;
+    const extraLlena = decimal >= 0.75;
+    const totalLlenas = llenas + (extraLlena ? 1 : 0);
+    const vacias = 5 - totalLlenas - (media ? 1 : 0);
+
+    return (
+      <View style={styles.starsRow}>
+        {Array.from({ length: totalLlenas }).map((_, i) => (
+          <Ionicons key={`f${i}`} name="star" size={size} color={GOLD} />
+        ))}
+        {media && <Ionicons name="star-half" size={size} color={GOLD} />}
+        {Array.from({ length: vacias }).map((_, i) => (
+          <Ionicons key={`e${i}`} name="star-outline" size={size} color={GOLD} />
+        ))}
+        <Text style={styles.ratingNumero}>{estrellas.toFixed(1)}</Text>
+      </View>
+    );
+  };
+
+  const Avatar = ({ foto, nombre, apellido }) => {
+    if (foto) {
+      return <Image source={{ uri: foto }} style={styles.avatar} />;
+    }
+    const iniciales = `${nombre?.[0] ?? ''}${apellido?.[0] ?? ''}`.toUpperCase();
+    return (
+      <View style={[styles.avatar, styles.avatarFallback]}>
+        <Text style={styles.avatarIniciales}>{iniciales || '?'}</Text>
+      </View>
+    );
+  };
 
   return (
     <View style={styles.card}>
@@ -119,13 +121,13 @@ export default function TarjetaPerfilCliente({ item, onPressChat }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   card: {
-    backgroundColor: WHITE,
+    backgroundColor: colors.card,
     borderRadius: 18,
     marginBottom: 12,
     padding: 14,
-    shadowColor: '#0d4bb8',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 10,
@@ -149,11 +151,11 @@ const styles = StyleSheet.create({
   avatarIniciales: { color: WHITE, fontWeight: '800', fontSize: 18 },
 
   cardInfo: { flex: 1, gap: 4 },
-  cardName: { color: TEXT_DARK, fontWeight: '800', fontSize: 15.5 },
+  cardName: { color: colors.text, fontWeight: '800', fontSize: 15.5 },
 
   ratingWithInfo: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   starsRow: { flexDirection: 'row', alignItems: 'center', gap: 1 },
-  ratingNumero: { fontSize: 12, fontWeight: '700', color: TEXT_GRAY, marginLeft: 4 },
+  ratingNumero: { fontSize: 12, fontWeight: '700', color: colors.textTertiary, marginLeft: 4 },
 
   infoBadge: {
     width: 15,
@@ -166,7 +168,7 @@ const styles = StyleSheet.create({
   infoBadgeText: { color: BLUE, fontSize: 9.5, fontWeight: '800' },
 
   servicioRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
-  cardServicio: { color: TEXT_GRAY, fontSize: 12.5, fontWeight: '600', flexShrink: 1 },
+  cardServicio: { color: colors.textTertiary, fontSize: 12.5, fontWeight: '600', flexShrink: 1 },
 
   chatButton: {
     width: 38,
@@ -182,15 +184,15 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
 
-  divisor: { height: 1, backgroundColor: '#EEF1F6', marginVertical: 12 },
+  divisor: { height: 1, backgroundColor: colors.divider, marginVertical: 12 },
 
   cardFooterRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  precioLabel: { fontSize: 10.5, color: TEXT_GRAY, fontWeight: '600', marginBottom: 2 },
-  cardPrecio: { color: TEXT_DARK, fontWeight: '800', fontSize: 16 },
+  precioLabel: { fontSize: 10.5, color: colors.textTertiary, fontWeight: '600', marginBottom: 2 },
+  cardPrecio: { color: colors.text, fontWeight: '800', fontSize: 16 },
 
   estadoBadge: {
     flexDirection: 'row',

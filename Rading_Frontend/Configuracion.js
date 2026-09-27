@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,10 +20,19 @@ import Header from './Header';
 import API_URL from './configS';
 
 /* ------------------------------------------------------------------ */
+/*  Helpers de estilo (se llaman desde createStyles)                    */
+/* ------------------------------------------------------------------ */
+
+const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 };
+
+/* ------------------------------------------------------------------ */
 /*  Componentes reutilizables                                          */
 /* ------------------------------------------------------------------ */
 
-function SettingRow({ icon, iconColor, titulo, subtitulo, onPress, rightContent, disabled, colors }) {
+// ★ CAMBIO: ahora recibe `styles` como prop en vez de leerlo de una
+// variable global que nunca se definía (esa era la causa del
+// "ReferenceError: styles is not defined").
+function SettingRow({ icon, iconColor, titulo, subtitulo, onPress, rightContent, disabled, colors, styles }) {
   return (
     <TouchableOpacity
       style={[styles.settingRow, { borderBottomColor: colors.divider }, disabled && { opacity: 0.5 }]}
@@ -48,8 +57,8 @@ function SettingRow({ icon, iconColor, titulo, subtitulo, onPress, rightContent,
 // ★ CAMBIO: acepta `guardando` para mostrar un spinner chiquito pegado
 // al switch y deshabilitarlo mientras ESE toggle en particular está
 // guardándose (los demás switches quedan libres, no se bloquea toda la
-// pantalla).
-function ToggleRow({ icon, iconColor, titulo, subtitulo, value, onValueChange, disabled, guardando, colors }) {
+// pantalla). También recibe `styles` como prop (ver comentario arriba).
+function ToggleRow({ icon, iconColor, titulo, subtitulo, value, onValueChange, disabled, guardando, colors, styles }) {
   return (
     <View style={[styles.settingRow, { borderBottomColor: colors.divider }, disabled && { opacity: 0.5 }]}>
       <View style={[styles.settingIconWrap, { backgroundColor: `${iconColor}15` }]}>
@@ -77,7 +86,8 @@ function ToggleRow({ icon, iconColor, titulo, subtitulo, value, onValueChange, d
   );
 }
 
-function SectionCard({ titulo, subtitulo, children, style, colors }) {
+// ★ CAMBIO: recibe `styles` como prop.
+function SectionCard({ titulo, subtitulo, children, style, colors, styles }) {
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }, style]}>
       <View style={{ marginBottom: 4 }}>
@@ -95,7 +105,8 @@ function SectionCard({ titulo, subtitulo, children, style, colors }) {
 /*  Modal para cambiar contraseña                                      */
 /* ------------------------------------------------------------------ */
 
-function PasswordModal({ visible, onCerrar, colors }) {
+// ★ CAMBIO: recibe `styles` como prop.
+function PasswordModal({ visible, onCerrar, colors, styles }) {
   const [actual, setActual] = useState('');
   const [nueva, setNueva] = useState('');
   const [confirmar, setConfirmar] = useState('');
@@ -229,7 +240,8 @@ function PasswordModal({ visible, onCerrar, colors }) {
 /*  Modal para editar perfil                                           */
 /* ------------------------------------------------------------------ */
 
-function ProfileModal({ visible, onCerrar, colors, navigation, usuario }) {
+// ★ CAMBIO: recibe `styles` como prop.
+function ProfileModal({ visible, onCerrar, colors, navigation, usuario, styles }) {
   const irAPerfil = () => {
     onCerrar();
     navigation?.navigate?.(usuario?.tipo === 'trabajador' ? 'PerfilTrabajador' : 'PerfilScreen', { usuario });
@@ -279,6 +291,11 @@ export default function Configuracion(props) {
   const usuario = props.usuario ?? props.route?.params?.usuario;
   const navigation = props.navigation ?? null;
   const { isDark, colors, setDarkMode, updatePreference, syncUsuario } = useTheme();
+
+  // ★ CAMBIO: esto es lo que faltaba. `createStyles` estaba definido al
+  // final del archivo pero nunca se llamaba, así que `styles` no existía
+  // en ningún lado (de ahí el "ReferenceError: styles is not defined").
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   /* ---------------- Estado ---------------- */
   const [notifOfertas, setNotifOfertas] = useState(true);
@@ -459,6 +476,7 @@ export default function Configuracion(props) {
           titulo="Apariencia"
           subtitulo="Personalizá el aspecto de la app"
           colors={colors}
+          styles={styles}
         >
           <ToggleRow
             icon={isDark ? 'moon' : 'sunny'}
@@ -469,6 +487,7 @@ export default function Configuracion(props) {
             onValueChange={handleToggleTheme}
             guardando={!!guardandoKeys.modoOscuro}
             colors={colors}
+            styles={styles}
           />
         </SectionCard>
 
@@ -477,6 +496,7 @@ export default function Configuracion(props) {
           titulo="Notificaciones"
           subtitulo="Elegí qué avisos querés recibir"
           colors={colors}
+          styles={styles}
         >
           <ToggleRow
             icon="briefcase-outline"
@@ -486,6 +506,7 @@ export default function Configuracion(props) {
             onValueChange={handleToggleOfertas}
             guardando={!!guardandoKeys.notifOfertas}
             colors={colors}
+            styles={styles}
           />
           <ToggleRow
             icon="chatbubble-outline"
@@ -495,6 +516,7 @@ export default function Configuracion(props) {
             onValueChange={handleToggleMensajes}
             guardando={!!guardandoKeys.notifMensajes}
             colors={colors}
+            styles={styles}
           />
           <ToggleRow
             icon="star-outline"
@@ -505,6 +527,7 @@ export default function Configuracion(props) {
             onValueChange={handleToggleResenas}
             guardando={!!guardandoKeys.notifResenas}
             colors={colors}
+            styles={styles}
           />
           <ToggleRow
             icon="volume-high-outline"
@@ -514,6 +537,7 @@ export default function Configuracion(props) {
             onValueChange={handleToggleSonido}
             guardando={!!guardandoKeys.notifSonido}
             colors={colors}
+            styles={styles}
           />
           <ToggleRow
             icon="phone-portrait-outline"
@@ -523,6 +547,7 @@ export default function Configuracion(props) {
             onValueChange={handleToggleVibracion}
             guardando={!!guardandoKeys.notifVibracion}
             colors={colors}
+            styles={styles}
           />
         </SectionCard>
 
@@ -531,6 +556,7 @@ export default function Configuracion(props) {
           titulo="Privacidad y datos"
           subtitulo="Controlá tu información"
           colors={colors}
+          styles={styles}
         >
           <ToggleRow
             icon="location-outline"
@@ -541,6 +567,7 @@ export default function Configuracion(props) {
             onValueChange={handleToggleUbicacion}
             guardando={!!guardandoKeys.ubicacionHabilitada}
             colors={colors}
+            styles={styles}
           />
           <ToggleRow
             icon="analytics-outline"
@@ -551,6 +578,7 @@ export default function Configuracion(props) {
             onValueChange={handleToggleAnalitica}
             guardando={!!guardandoKeys.datosUso}
             colors={colors}
+            styles={styles}
           />
         </SectionCard>
 
@@ -559,6 +587,7 @@ export default function Configuracion(props) {
           titulo="Cuenta"
           subtitulo="Gestioná tu cuenta"
           colors={colors}
+          styles={styles}
         >
           <SettingRow
             icon="person-outline"
@@ -566,6 +595,7 @@ export default function Configuracion(props) {
             subtitulo="Modificá tus datos"
             onPress={() => setModalProfile(true)}
             colors={colors}
+            styles={styles}
           />
           <SettingRow
             icon="lock-closed-outline"
@@ -573,6 +603,7 @@ export default function Configuracion(props) {
             subtitulo="Actualizá tu contraseña"
             onPress={() => setModalPassword(true)}
             colors={colors}
+            styles={styles}
           />
           <SettingRow
             icon="shield-checkmark-outline"
@@ -581,17 +612,19 @@ export default function Configuracion(props) {
             subtitulo="Protección extra"
             onPress={() => Alert.alert('Próximamente', 'Disponible pronto')}
             colors={colors}
+            styles={styles}
           />
         </SectionCard>
 
         {/* ---------- Ayuda ---------- */}
-        <SectionCard titulo="Ayuda y soporte" colors={colors}>
+        <SectionCard titulo="Ayuda y soporte" colors={colors} styles={styles}>
           <SettingRow
             icon="help-circle-outline"
             titulo="Centro de ayuda"
             subtitulo="Preguntas frecuentes"
             onPress={() => Alert.alert('Ayuda', 'Ayuda disponible pronto')}
             colors={colors}
+            styles={styles}
           />
           <SettingRow
             icon="mail-outline"
@@ -599,6 +632,7 @@ export default function Configuracion(props) {
             subtitulo="Escribinos"
             onPress={() => Alert.alert('Contacto', 'soporte@rading.com')}
             colors={colors}
+            styles={styles}
           />
           <SettingRow
             icon="document-text-outline"
@@ -606,6 +640,7 @@ export default function Configuracion(props) {
             subtitulo="Información legal"
             onPress={() => Alert.alert('Términos', 'Términos disponibles en la web')}
             colors={colors}
+            styles={styles}
           />
           <SettingRow
             icon="shield-outline"
@@ -613,11 +648,12 @@ export default function Configuracion(props) {
             subtitulo="Cómo usamos tus datos"
             onPress={() => Alert.alert('Privacidad', 'Política disponible en la web')}
             colors={colors}
+            styles={styles}
           />
         </SectionCard>
 
         {/* ---------- Info de la app ---------- */}
-        <SectionCard titulo="Acerca de Rading" colors={colors}>
+        <SectionCard titulo="Acerca de Rading" colors={colors} styles={styles}>
           <View style={styles.infoRow}>
             <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Versión</Text>
             <Text style={[styles.infoValue, { color: colors.text }]}>1.0.0</Text>
@@ -647,6 +683,7 @@ export default function Configuracion(props) {
         visible={modalPassword}
         onCerrar={() => setModalPassword(false)}
         colors={colors}
+        styles={styles}
       />
       <ProfileModal
         visible={modalProfile}
@@ -654,6 +691,7 @@ export default function Configuracion(props) {
         colors={colors}
         navigation={navigation}
         usuario={usuario}
+        styles={styles}
       />
     </View>
   );
@@ -663,7 +701,7 @@ export default function Configuracion(props) {
 /*  Estilos                                                            */
 /* ------------------------------------------------------------------ */
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   root: { flex: 1 },
   scrollContent: { paddingBottom: 40 },
 

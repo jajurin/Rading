@@ -25,6 +25,7 @@ import TrabajoActivoOverlayTrabajador from './TrabajoActivoOverlayTrabajador';
 import Search from './Search';
 import API_URL from '../configS';
 import { listarNotificaciones, marcarNotificacionLeida, mapearParaHeader } from '../Notificaciones';
+import { useTheme } from '../ThemeContext';
 
 // ── Paleta ─────────────────────────────────────────────────────────────────
 const NAVY         = '#0F1B4C';
@@ -40,7 +41,6 @@ const TEXT_DARK    = '#12172E';
 const TEXT_MUTED   = '#828AA0';
 const BORDER       = 'rgba(15,27,76,0.07)';
 const WHITE        = '#FFFFFF';
-// Fijo = precio ya cerrado por el cliente. Subasta = se compite por precio.
 const FIJO         = '#6D28D9';
 const FIJO_BG      = 'rgba(109,40,217,0.09)';
 const FIJO_BORDER  = 'rgba(109,40,217,0.28)';
@@ -136,7 +136,9 @@ const Icons = {
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
         d="M12 21C12 21 19 14.4353 19 9.6C19 5.67451 15.866 2.5 12 2.5C8.13401 2.5 5 5.67451 5 9.6C5 14.4353 12 21 12 21Z"
-        stroke={color} strokeWidth="1.8" strokeLinejoin="round"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinejoin="round"
       />
       <Circle cx="12" cy="9.6" r="2.4" stroke={color} strokeWidth="1.8" />
     </Svg>
@@ -145,7 +147,8 @@ const Icons = {
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
         d="M3 7.5C3 6.67157 3.67157 6 4.5 6H19.5C20.3284 6 21 6.67157 21 7.5V16.5C21 17.3284 20.3284 18 19.5 18H4.5C3.67157 18 3 17.3284 3 16.5V7.5Z"
-        stroke={color} strokeWidth="1.8"
+        stroke={color}
+        strokeWidth="1.8"
       />
       <Circle cx="12" cy="12" r="2.4" stroke={color} strokeWidth="1.8" />
     </Svg>
@@ -166,7 +169,9 @@ const Icons = {
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
         d="M11.5 3H19a2 2 0 012 2v7.5a2 2 0 01-.586 1.414l-8 8a2 2 0 01-2.828 0l-7-7a2 2 0 010-2.828l8-8A2 2 0 0111.5 3z"
-        stroke={color} strokeWidth="1.8" strokeLinejoin="round"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinejoin="round"
       />
       <Circle cx="15.5" cy="8.5" r="1.6" stroke={color} strokeWidth="1.6" />
     </Svg>
@@ -177,340 +182,12 @@ const Icons = {
       <Path d="M12 8L15.2 9.9V13.6L12 15.5L8.8 13.6V9.9L12 8Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
     </Svg>
   ),
-  Close: ({ color = '#FFFFFF', size = 20 }) => (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Line x1="6" y1="6" x2="18" y2="18" stroke={color} strokeWidth="2" strokeLinecap="round" />
-      <Line x1="18" y1="6" x2="6" y2="18" stroke={color} strokeWidth="2" strokeLinecap="round" />
-    </Svg>
-  ),
-  Search2: ({ color = TEXT_MUTED, size = 32 }) => (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Circle cx="11" cy="11" r="7" stroke={color} strokeWidth="1.8" />
-      <Line x1="21" y1="21" x2="16.5" y2="16.5" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
-    </Svg>
-  ),
 };
-
-function ModalidadBadge({ fijo }) {
-  const info = modalidadInfo(fijo);
-  const Icon = fijo ? Icons.Etiqueta : Icons.Subasta;
-  return (
-    <View style={[styles.modBadge, { backgroundColor: info.bg, borderColor: info.border }]}>
-      <Icon color={info.color} size={11} />
-      <Text style={[styles.modBadgeText, { color: info.color }]}>{info.shortLabel}</Text>
-    </View>
-  );
-}
-
-// ── Card de resultado de búsqueda ─────────────────────────────────────────
-function ResultadoCard({ item, onVerDetalles }) {
-  const precio = formatPrecioResultado(item);
-  const nombreCliente = `${item.nombre ?? ''} ${item.apellido ?? ''}`.trim();
-  const categoriaLabel = item.categoria_nombre || item.servicio_nombre || 'Servicio';
-  const modInfo = modalidadInfo(item.fijo);
-  const distanciaTxt = formatDistancia(item.distancia);
-  const ctaGradient = item.fijo ? [FIJO, '#4C1D95'] : [SUBASTA, '#8A5A0A'];
-
-  return (
-    <View style={[styles.resCard, item.emergencia && styles.resCardEmergency]}>
-      <View style={[styles.resAccentBar, { backgroundColor: modInfo.color }]} />
-
-      {item.emergencia && (
-        <View style={styles.emergencyStrip}>
-          <Icons.Alert color="#FFFFFF" size={13} />
-          <Text style={styles.emergencyStripText}>EMERGENCIA</Text>
-        </View>
-      )}
-
-      <View style={styles.resCardBody}>
-        <View style={styles.resCardHeaderRow}>
-          <View style={styles.resAvatarWrap}>
-            <Image
-              source={{ uri: item.foto ?? AVATAR_CLIENTE(item.nombre, item.apellido) }}
-              style={styles.resAvatar}
-            />
-          </View>
-
-          <View style={{ flex: 1, marginLeft: 13 }}>
-            <Text style={styles.resClienteNombre} numberOfLines={1}>
-              {nombreCliente || 'Cliente'}
-            </Text>
-            <View style={styles.resChipsRow}>
-              <View style={styles.resChip}>
-                <Ionicons name="briefcase-outline" size={11} color={INDIGO} />
-                <Text style={styles.resChipText} numberOfLines={1}>{categoriaLabel}</Text>
-              </View>
-              <ModalidadBadge fijo={item.fijo} />
-            </View>
-          </View>
-        </View>
-
-        {distanciaTxt && (
-          <View style={styles.distanciaBadgeFloat}>
-            <Icons.Pin color={INDIGO} size={11} />
-            <Text style={styles.distanciaBadgeText}>{distanciaTxt}</Text>
-          </View>
-        )}
-
-        {!!item.descripcion && (
-          <Text style={styles.resDescripcion} numberOfLines={2}>{item.descripcion}</Text>
-        )}
-
-        <View style={styles.resInfoRow}>
-          <View style={styles.resInfoItem}>
-            <View style={styles.resInfoIconWrap}>
-              <Icons.Clock color={INDIGO} size={14} />
-            </View>
-            <View>
-              <Text style={styles.resInfoLabel}>Horario</Text>
-              <Text style={styles.resInfoValor}>{formatHora(item.horario_requerido)}</Text>
-            </View>
-          </View>
-
-          <View style={styles.resInfoDivider} />
-
-          <View style={styles.resInfoItem}>
-            <View style={[styles.resInfoIconWrap, { backgroundColor: modInfo.bg }]}>
-              <Icons.Cash color={modInfo.color} size={14} />
-            </View>
-            <View>
-              <Text style={styles.resInfoLabel}>{precio.label}</Text>
-              <Text style={[styles.resInfoValor, { color: modInfo.color, fontSize: 14.5 }]}>{precio.valor}</Text>
-            </View>
-          </View>
-        </View>
-
-        <TouchableOpacity activeOpacity={0.88} onPress={() => onVerDetalles(item)}>
-          <LinearGradient
-            colors={ctaGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.resDetalleBtn}
-          >
-            <Text style={styles.resDetalleBtnText}>{item.fijo ? 'Ver y postularme' : 'Ver y ofertar'}</Text>
-            <Icons.Chevron />
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-// ── Selector de estrellas y horario, reutilizados en el modal de filtros ──
-const StarSelector = ({ value, onChange }) => (
-  <View style={styles.starsRow}>
-    {[1, 2, 3, 4, 5].map((n) => (
-      <TouchableOpacity key={n} onPress={() => onChange(value === n ? null : n)} activeOpacity={0.7}>
-        <Ionicons
-          name={n <= (value ?? 0) ? 'star' : 'star-outline'}
-          size={26}
-          color={n <= (value ?? 0) ? AMBER : 'rgba(255,255,255,0.3)'}
-        />
-      </TouchableOpacity>
-    ))}
-    {value ? <Text style={styles.starLabel}>+{value} estrellas</Text> : null}
-  </View>
-);
-
-const TimePicker = ({ label, value, onChange }) => {
-  const minuteRef = React.useRef(null);
-  const [hour, minute] = value ? value.split(':') : ['', ''];
-
-  const setHour = (h) => {
-    const hh = h.replace(/[^0-9]/g, '').slice(0, 2);
-    if (hh === '' || (Number(hh) >= 0 && Number(hh) <= 23)) {
-      onChange(hh + ':' + (minute || '00'));
-      if (hh.length === 2) minuteRef.current?.focus();
-    }
-  };
-
-  const setMinute = (m) => {
-    const mm = m.replace(/[^0-9]/g, '').slice(0, 2);
-    if (mm === '' || (Number(mm) >= 0 && Number(mm) <= 59)) {
-      onChange((hour || '00') + ':' + mm);
-    }
-  };
-
-  return (
-    <View style={styles.timePickerRow}>
-      <Text style={styles.timeLabel}>{label}</Text>
-      <View style={styles.timeInputs}>
-        <TextInput
-          style={styles.timeInputBox}
-          value={hour}
-          onChangeText={setHour}
-          placeholder="HH"
-          placeholderTextColor="rgba(255,255,255,0.35)"
-          keyboardType="number-pad"
-          maxLength={2}
-          returnKeyType="next"
-          onSubmitEditing={() => minuteRef.current?.focus()}
-        />
-        <Text style={styles.timeSep}>:</Text>
-        <TextInput
-          ref={minuteRef}
-          style={styles.timeInputBox}
-          value={minute}
-          onChangeText={setMinute}
-          placeholder="MM"
-          placeholderTextColor="rgba(255,255,255,0.35)"
-          keyboardType="number-pad"
-          maxLength={2}
-        />
-      </View>
-    </View>
-  );
-};
-
-// ── Modal de filtros (embebido, no navega a otra pantalla) ────────────────
-function FilterModal({ visible, onClose, onApply, initialFilters }) {
-  const [estrellas,    setEstrellas]    = useState(initialFilters.estrellas    ?? null);
-  const [servicio_id,  setServicioId]   = useState(initialFilters.servicio_id  ?? null);
-  const [fijo,         setFijo]         = useState(initialFilters.fijo         ?? null);
-  const [emergencia,   setEmergencia]   = useState(initialFilters.emergencia   ?? null);
-  const [distanciaMax, setDistanciaMax] = useState(initialFilters.distanciaMax ?? null);
-  const [horarioDesde, setHorarioDesde] = useState(initialFilters.horarioDesde ?? '');
-  const [horarioHasta, setHorarioHasta] = useState(initialFilters.horarioHasta ?? '');
-  const [precioMin,    setPrecioMin]    = useState(initialFilters.precioMin    ?? '');
-  const [precioMax,    setPrecioMax]    = useState(initialFilters.precioMax    ?? '');
-
-  const handleReset = () => {
-    setEstrellas(null); setServicioId(null); setFijo(null);
-    setEmergencia(null); setDistanciaMax(null);
-    setHorarioDesde(''); setHorarioHasta('');
-    setPrecioMin(''); setPrecioMax('');
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
-          <View style={styles.sheetGrabber} />
-
-          <View style={styles.sheetHeader}>
-            <View>
-              <Text style={styles.sheetEyebrow}>FILTROS</Text>
-              <Text style={styles.sheetTitle}>Filtrar búsqueda</Text>
-            </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Icons.Close />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-            <Text style={styles.filterLabel}>Rating del cliente</Text>
-            <StarSelector value={estrellas} onChange={setEstrellas} />
-
-            <Text style={[styles.filterLabel, { marginTop: 22 }]}>Servicio</Text>
-            <View style={styles.chipsWrap}>
-              {SERVICIOS.map((s) => (
-                <TouchableOpacity
-                  key={s.id}
-                  style={[styles.chip, servicio_id === s.id && styles.chipActive]}
-                  onPress={() => setServicioId(servicio_id === s.id ? null : s.id)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.chipText, servicio_id === s.id && styles.chipTextActive]}>{s.nombre}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={[styles.filterLabel, { marginTop: 22 }]}>Tipo de trabajo</Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              {[{ label: 'Fijo', val: 'true' }, { label: 'Subasta', val: 'false' }].map((op) => (
-                <TouchableOpacity
-                  key={op.val}
-                  style={[styles.chip, fijo === op.val && styles.chipActive]}
-                  onPress={() => setFijo(fijo === op.val ? null : op.val)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.chipText, fijo === op.val && styles.chipTextActive]}>{op.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={[styles.filterLabel, { marginTop: 22 }]}>Emergencia</Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              {[{ label: 'Solo emergencias', val: 'true', icon: 'flash' }, { label: 'No urgente', val: 'false', icon: 'checkmark-circle-outline' }].map((op) => (
-                <TouchableOpacity
-                  key={op.val}
-                  style={[styles.chip, styles.chipIconRow, emergencia === op.val && styles.chipActive]}
-                  onPress={() => setEmergencia(emergencia === op.val ? null : op.val)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name={op.icon} size={13} color={emergencia === op.val ? WHITE : 'rgba(255,255,255,0.6)'} />
-                  <Text style={[styles.chipText, emergencia === op.val && styles.chipTextActive]}>{op.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={[styles.filterLabel, { marginTop: 22 }]}>Distancia máxima (km)</Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              {[5, 10, 20, 50].map((d) => (
-                <TouchableOpacity
-                  key={d}
-                  style={[styles.chip, distanciaMax === String(d) && styles.chipActive]}
-                  onPress={() => setDistanciaMax(distanciaMax === String(d) ? null : String(d))}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.chipText, distanciaMax === String(d) && styles.chipTextActive]}>{d} km</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={[styles.filterLabel, { marginTop: 22 }]}>Horario requerido</Text>
-            <View style={styles.timePickers}>
-              <TimePicker label="Desde" value={horarioDesde} onChange={setHorarioDesde} />
-              <TimePicker label="Hasta" value={horarioHasta} onChange={setHorarioHasta} />
-            </View>
-
-            <Text style={[styles.filterLabel, { marginTop: 22 }]}>Rango de precio ($)</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <TextInput
-                style={[styles.timeInputBox, { width: 100, fontSize: 14 }]}
-                value={precioMin}
-                onChangeText={setPrecioMin}
-                placeholder="Mín"
-                placeholderTextColor="rgba(255,255,255,0.35)"
-                keyboardType="numeric"
-              />
-              <Text style={styles.timeSep}>—</Text>
-              <TextInput
-                style={[styles.timeInputBox, { width: 100, fontSize: 14 }]}
-                value={precioMax}
-                onChangeText={setPrecioMax}
-                placeholder="Máx"
-                placeholderTextColor="rgba(255,255,255,0.35)"
-                keyboardType="numeric"
-              />
-            </View>
-          </ScrollView>
-
-          <View style={styles.sheetFooter}>
-            <TouchableOpacity style={styles.resetBtn} onPress={handleReset} activeOpacity={0.8}>
-              <Text style={styles.resetBtnText}>Restablecer</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.applyBtn}
-              onPress={() => {
-                onApply({ estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta, precioMin, precioMax });
-                onClose();
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.applyBtnText}>Aplicar filtros</Text>
-              <Ionicons name="arrow-forward" size={16} color={WHITE} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
 
 // ── Pantalla principal ───────────────────────────────────────────────────
 
 export default function HomeTrabajador({ route, navigation }) {
+  const { colors, isDark } = useTheme();
   const usuario = route?.params?.usuario;
   const idTrabajador = usuario?.idTrabajador;
 
@@ -531,9 +208,9 @@ export default function HomeTrabajador({ route, navigation }) {
 
   const [notificaciones, setNotificaciones] = useState([]);
 
-  // ── Foto de perfil: se trae del backend (no del parámetro de navegación,
-  // que queda desactualizado si el usuario la cambia en "Editar perfil") ──
   const [fotoPerfil, setFotoPerfil] = useState(usuario?.foto ?? null);
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const cargarFotoPerfil = useCallback(async () => {
     if (!idTrabajador) return;
@@ -570,7 +247,7 @@ export default function HomeTrabajador({ route, navigation }) {
     }
   };
 
-  // ── Búsqueda + filtros, ahora embebidos en la Home ──────────────────────
+  // ── Búsqueda + filtros ──
   const [lastTexto, setLastTexto] = useState('');
   const [resultados, setResultados] = useState([]);
   const [buscando, setBuscando] = useState(false);
@@ -631,9 +308,6 @@ export default function HomeTrabajador({ route, navigation }) {
     }
   }, [idTrabajador]);
 
-  // useFocusEffect en vez de useEffect: así se refresca todo (incluida la
-  // foto) cada vez que la pantalla vuelve a tener foco, por ejemplo al
-  // volver de "Editar perfil".
   useFocusEffect(
     useCallback(() => {
       cargarResumen();
@@ -715,10 +389,338 @@ export default function HomeTrabajador({ route, navigation }) {
     navigation?.navigate('DetalleOfertaTrabajador', { ofertaId: item.id, trabajadorId: idTrabajador });
   };
 
+  // Componentes movidos dentro del componente principal
+  const ModalidadBadge = ({ fijo }) => {
+    const info = modalidadInfo(fijo);
+    const Icon = fijo ? Icons.Etiqueta : Icons.Subasta;
+    return (
+      <View style={[styles.modBadge, { backgroundColor: info.bg, borderColor: info.border }]}>
+        <Icon color={info.color} size={11} />
+        <Text style={[styles.modBadgeText, { color: info.color }]}>{info.shortLabel}</Text>
+      </View>
+    );
+  };
+
+  const ResultadoCard = ({ item, onVerDetalles }) => {
+    const precio = formatPrecioResultado(item);
+    const nombreCliente = `${item.nombre ?? ''} ${item.apellido ?? ''}`.trim();
+    const categoriaLabel = item.categoria_nombre || item.servicio_nombre || 'Servicio';
+    const modInfo = modalidadInfo(item.fijo);
+    const distanciaTxt = formatDistancia(item.distancia);
+    const ctaGradient = item.fijo ? [FIJO, '#4C1D95'] : [SUBASTA, '#8A5A0A'];
+
+    return (
+      <View style={[styles.resCard, item.emergencia && styles.resCardEmergency]}>
+        <View style={[styles.resAccentBar, { backgroundColor: modInfo.color }]} />
+
+        {item.emergencia && (
+          <View style={styles.emergencyStrip}>
+            <Icons.Alert color="#FFFFFF" size={13} />
+            <Text style={styles.emergencyStripText}>EMERGENCIA</Text>
+          </View>
+        )}
+
+        <View style={styles.resCardBody}>
+        <TouchableOpacity
+  style={styles.resCardHeaderRow}
+  activeOpacity={0.75}
+  onPress={() => navigation?.navigate('PerfilClienteParaTrabajador', { idCliente: item.id })}
+>
+  <View style={styles.resAvatarWrap}>
+    <Image
+      source={{ uri: item.foto ?? AVATAR_CLIENTE(item.nombre, item.apellido) }}
+      style={styles.resAvatar}
+    />
+  </View>
+
+  <View style={{ flex: 1, marginLeft: 13 }}>
+    <Text style={styles.resClienteNombre} numberOfLines={1}>
+      {nombreCliente || 'Cliente'}
+    </Text>
+    <View style={styles.resChipsRow}>
+      <View style={styles.resChip}>
+        <Ionicons name="briefcase-outline" size={11} color={INDIGO} />
+        <Text style={styles.resChipText} numberOfLines={1}>{categoriaLabel}</Text>
+      </View>
+      <ModalidadBadge fijo={item.fijo} />
+    </View>
+  </View>
+</TouchableOpacity>
+
+          {distanciaTxt && (
+            <View style={styles.distanciaBadgeFloat}>
+              <Icons.Pin color={INDIGO} size={11} />
+              <Text style={styles.distanciaBadgeText}>{distanciaTxt}</Text>
+            </View>
+          )}
+
+          {!!item.descripcion && (
+            <Text style={styles.resDescripcion} numberOfLines={2}>{item.descripcion}</Text>
+          )}
+
+          <View style={styles.resInfoRow}>
+            <View style={styles.resInfoItem}>
+              <View style={styles.resInfoIconWrap}>
+                <Icons.Clock color={INDIGO} size={14} />
+              </View>
+              <View>
+                <Text style={styles.resInfoLabel}>Horario</Text>
+                <Text style={styles.resInfoValor}>{formatHora(item.horario_requerido)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.resInfoDivider} />
+
+            <View style={styles.resInfoItem}>
+              <View style={[styles.resInfoIconWrap, { backgroundColor: modInfo.bg }]}>
+                <Icons.Cash color={modInfo.color} size={14} />
+              </View>
+              <View>
+                <Text style={styles.resInfoLabel}>{precio.label}</Text>
+                <Text style={[styles.resInfoValor, { color: modInfo.color, fontSize: 14.5 }]}>{precio.valor}</Text>
+              </View>
+            </View>
+          </View>
+
+          <TouchableOpacity activeOpacity={0.88} onPress={() => onVerDetalles(item)}>
+            <LinearGradient
+              colors={ctaGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.resDetalleBtn}
+            >
+              <Text style={styles.resDetalleBtnText}>{item.fijo ? 'Ver y postularme' : 'Ver y ofertar'}</Text>
+              <Icons.Chevron />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  const StarSelector = ({ value, onChange }) => (
+    <View style={styles.starsRow}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <TouchableOpacity key={n} onPress={() => onChange(value === n ? null : n)} activeOpacity={0.7}>
+          <Ionicons
+            name={n <= (value ?? 0) ? 'star' : 'star-outline'}
+            size={26}
+            color={n <= (value ?? 0) ? AMBER : 'rgba(255,255,255,0.3)'}
+          />
+        </TouchableOpacity>
+      ))}
+      {value ? <Text style={styles.starLabel}>+{value} estrellas</Text> : null}
+    </View>
+  );
+
+  const TimePicker = ({ label, value, onChange }) => {
+    const minuteRef = React.useRef(null);
+    const [hour, minute] = value ? value.split(':') : ['', ''];
+
+    const setHour = (h) => {
+      const hh = h.replace(/[^0-9]/g, '').slice(0, 2);
+      if (hh === '' || (Number(hh) >= 0 && Number(hh) <= 23)) {
+        onChange(hh + ':' + (minute || '00'));
+        if (hh.length === 2) minuteRef.current?.focus();
+      }
+    };
+
+    const setMinute = (m) => {
+      const mm = m.replace(/[^0-9]/g, '').slice(0, 2);
+      if (mm === '' || (Number(mm) >= 0 && Number(mm) <= 59)) {
+        onChange((hour || '00') + ':' + mm);
+      }
+    };
+
+    return (
+      <View style={styles.timePickerRow}>
+        <Text style={styles.timeLabel}>{label}</Text>
+        <View style={styles.timeInputs}>
+          <TextInput
+            style={styles.timeInputBox}
+            value={hour}
+            onChangeText={setHour}
+            placeholder="HH"
+            placeholderTextColor="rgba(255,255,255,0.35)"
+            keyboardType="number-pad"
+            maxLength={2}
+            returnKeyType="next"
+            onSubmitEditing={() => minuteRef.current?.focus()}
+          />
+          <Text style={styles.timeSep}>:</Text>
+          <TextInput
+            ref={minuteRef}
+            style={styles.timeInputBox}
+            value={minute}
+            onChangeText={setMinute}
+            placeholder="MM"
+            placeholderTextColor="rgba(255,255,255,0.35)"
+            keyboardType="number-pad"
+            maxLength={2}
+          />
+        </View>
+      </View>
+    );
+  };
+
+  const FilterModal = ({ visible, onClose, onApply, initialFilters }) => {
+    const [estrellas,    setEstrellas]    = useState(initialFilters.estrellas    ?? null);
+    const [servicio_id,  setServicioId]   = useState(initialFilters.servicio_id  ?? null);
+    const [fijo,         setFijo]         = useState(initialFilters.fijo         ?? null);
+    const [emergencia,   setEmergencia]   = useState(initialFilters.emergencia   ?? null);
+    const [distanciaMax, setDistanciaMax] = useState(initialFilters.distanciaMax ?? null);
+    const [horarioDesde, setHorarioDesde] = useState(initialFilters.horarioDesde ?? '');
+    const [horarioHasta, setHorarioHasta] = useState(initialFilters.horarioHasta ?? '');
+    const [precioMin,    setPrecioMin]    = useState(initialFilters.precioMin    ?? '');
+    const [precioMax,    setPrecioMax]    = useState(initialFilters.precioMax    ?? '');
+
+    const handleReset = () => {
+      setEstrellas(null); setServicioId(null); setFijo(null);
+      setEmergencia(null); setDistanciaMax(null);
+      setHorarioDesde(''); setHorarioHasta('');
+      setPrecioMin(''); setPrecioMax('');
+    };
+
+    return (
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <View style={styles.overlay}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetGrabber} />
+
+            <View style={styles.sheetHeader}>
+              <View>
+                <Text style={styles.sheetEyebrow}>FILTROS</Text>
+                <Text style={styles.sheetTitle}>Filtrar búsqueda</Text>
+              </View>
+             <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+  <Ionicons name="close" size={20} color={WHITE} />
+</TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+              <Text style={styles.filterLabel}>Rating del cliente</Text>
+              <StarSelector value={estrellas} onChange={setEstrellas} />
+
+              <Text style={[styles.filterLabel, { marginTop: 22 }]}>Servicio</Text>
+              <View style={styles.chipsWrap}>
+                {SERVICIOS.map((s) => (
+                  <TouchableOpacity
+                    key={s.id}
+                    style={[styles.chip, servicio_id === s.id && styles.chipActive]}
+                    onPress={() => setServicioId(servicio_id === s.id ? null : s.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.chipText, servicio_id === s.id && styles.chipTextActive]}>{s.nombre}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.filterLabel, { marginTop: 22 }]}>Tipo de trabajo</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {[{ label: 'Fijo', val: 'true' }, { label: 'Subasta', val: 'false' }].map((op) => (
+                  <TouchableOpacity
+                    key={op.val}
+                    style={[styles.chip, fijo === op.val && styles.chipActive]}
+                    onPress={() => setFijo(fijo === op.val ? null : op.val)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.chipText, fijo === op.val && styles.chipTextActive]}>{op.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.filterLabel, { marginTop: 22 }]}>Emergencia</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {[{ label: 'Solo emergencias', val: 'true', icon: 'flash' }, { label: 'No urgente', val: 'false', icon: 'checkmark-circle-outline' }].map((op) => (
+                  <TouchableOpacity
+                    key={op.val}
+                    style={[styles.chip, styles.chipIconRow, emergencia === op.val && styles.chipActive]}
+                    onPress={() => setEmergencia(emergencia === op.val ? null : op.val)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name={op.icon} size={13} color={emergencia === op.val ? WHITE : 'rgba(255,255,255,0.6)'} />
+                    <Text style={[styles.chipText, emergencia === op.val && styles.chipTextActive]}>{op.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.filterLabel, { marginTop: 22 }]}>Distancia máxima (km)</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {[5, 10, 20, 50].map((d) => (
+                  <TouchableOpacity
+                    key={d}
+                    style={[styles.chip, distanciaMax === String(d) && styles.chipActive]}
+                    onPress={() => setDistanciaMax(distanciaMax === String(d) ? null : String(d))}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.chipText, distanciaMax === String(d) && styles.chipTextActive]}>{d} km</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.filterLabel, { marginTop: 22 }]}>Horario requerido</Text>
+              <View style={styles.timePickers}>
+                <TimePicker label="Desde" value={horarioDesde} onChange={setHorarioDesde} />
+                <TimePicker label="Hasta" value={horarioHasta} onChange={setHorarioHasta} />
+              </View>
+
+              <Text style={[styles.filterLabel, { marginTop: 22 }]}>Rango de precio ($)</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <TextInput
+                  style={[styles.timeInputBox, { width: 100, fontSize: 14 }]}
+                  value={precioMin}
+                  onChangeText={setPrecioMin}
+                  placeholder="Mín"
+                  placeholderTextColor="rgba(255,255,255,0.35)"
+                  keyboardType="numeric"
+                />
+                <Text style={styles.timeSep}>—</Text>
+                <TextInput
+                  style={[styles.timeInputBox, { width: 100, fontSize: 14 }]}
+                  value={precioMax}
+                  onChangeText={setPrecioMax}
+                  placeholder="Máx"
+                  placeholderTextColor="rgba(255,255,255,0.35)"
+                  keyboardType="numeric"
+                />
+              </View>
+            </ScrollView>
+
+            <View style={styles.sheetFooter}>
+              <TouchableOpacity style={styles.resetBtn} onPress={handleReset} activeOpacity={0.8}>
+                <Text style={styles.resetBtnText}>Restablecer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.applyBtn}
+                onPress={() => {
+                  onApply({ estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta, precioMin, precioMax });
+                  onClose();
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.applyBtnText}>Aplicar filtros</Text>
+                <Ionicons name="arrow-forward" size={16} color={WHITE} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
+  const EstadoVacio = ({ icon, texto }) => (
+    <View style={styles.emptyBox}>
+      <View style={styles.emptyIconWrap}>
+        <Ionicons name={icon} size={20} color={INDIGO} />
+      </View>
+      <Text style={styles.emptyText}>{texto}</Text>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="light-content" backgroundColor={NAVY} />
-     <Header
+      <StatusBar barStyle={colors.statusBar} backgroundColor={colors.statusBarBg} />
+      <Header
         usuario={usuario}
         notificaciones={notificaciones}
         onNotificaciones={cargarNotificaciones}
@@ -733,7 +735,7 @@ export default function HomeTrabajador({ route, navigation }) {
         ]}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── Saludo + avatar + disponibilidad ──────────────────────── */}
+        {/* ── Saludo + avatar + disponibilidad ── */}
         <View style={styles.saludoRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.saludoEyebrow}>{franja.saludo.toUpperCase()}</Text>
@@ -770,9 +772,9 @@ export default function HomeTrabajador({ route, navigation }) {
           )}
         </View>
 
-        {/* ── Resumen del día ───────────────────────────────────────── */}
+        {/* ── Resumen del día ── */}
         <LinearGradient
-          colors={franja.gradient}
+          colors={isDark ? ['#1a2350', '#0d1330'] : franja.gradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.banner}
@@ -821,7 +823,7 @@ export default function HomeTrabajador({ route, navigation }) {
           </TouchableOpacity>
         </LinearGradient>
 
-        {/* ── Buscador con filtro embebido ─────────────────────────── */}
+        {/* ── Buscador con filtro embebido ── */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Buscar trabajos</Text>
         </View>
@@ -844,7 +846,7 @@ export default function HomeTrabajador({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* ── Resultados de la búsqueda, mismas tarjetas que "Ofertas cercanas" ── */}
+        {/* ── Resultados de la búsqueda ── */}
         {buscando ? (
           <View style={styles.loaderBox}>
             <ActivityIndicator color={INDIGO} />
@@ -864,7 +866,7 @@ export default function HomeTrabajador({ route, navigation }) {
           </View>
         ) : null}
 
-        {/* ── Accesos rápidos ──────────────────────────────────────── */}
+        {/* ── Accesos rápidos ── */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Accesos rápidos</Text>
         </View>
@@ -942,17 +944,8 @@ export default function HomeTrabajador({ route, navigation }) {
   );
 }
 
-const EstadoVacio = ({ icon, texto }) => (
-  <View style={styles.emptyBox}>
-    <View style={styles.emptyIconWrap}>
-      <Ionicons name={icon} size={20} color={INDIGO} />
-    </View>
-    <Text style={styles.emptyText}>{texto}</Text>
-  </View>
-);
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   scrollContent: { paddingBottom: 190 },
 
   trabajoActivoWrap: {
@@ -966,42 +959,42 @@ const styles = StyleSheet.create({
 
   emptyBox: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    marginTop: 14, marginHorizontal: 16, backgroundColor: CARD, borderRadius: 16,
-    paddingVertical: 14, paddingHorizontal: 14, borderWidth: 1, borderColor: BORDER,
+    marginTop: 14, marginHorizontal: 16, backgroundColor: colors.card, borderRadius: 16,
+    paddingVertical: 14, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.border,
   },
   emptyIconWrap: {
     width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(42,63,214,0.08)',
     alignItems: 'center', justifyContent: 'center',
   },
-  emptyText: { flex: 1, color: TEXT_MUTED, fontSize: 13, lineHeight: 18 },
+  emptyText: { flex: 1, color: colors.textSecondary, fontSize: 13, lineHeight: 18 },
 
   saludoRow: {
     paddingHorizontal: 20, paddingTop: 18, paddingBottom: 4,
     flexDirection: 'row', alignItems: 'flex-start',
   },
   saludoEyebrow: { fontSize: 10.5, fontWeight: '800', color: INDIGO, letterSpacing: 1, marginBottom: 3 },
-  saludoTexto: { fontSize: 22, fontWeight: '800', color: TEXT_DARK },
+  saludoTexto: { fontSize: 22, fontWeight: '800', color: colors.text },
   avatarChip: {
     width: 44, height: 44, borderRadius: 14, backgroundColor: NAVY,
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-    shadowColor: NAVY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
   },
   avatarChipImg: { width: '100%', height: '100%' },
   avatarChipText: { color: '#fff', fontWeight: '800', fontSize: 14 },
 
   dispoRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginHorizontal: 16, marginTop: 14, backgroundColor: CARD, borderRadius: 16,
-    paddingVertical: 12, paddingHorizontal: 14, borderWidth: 1, borderColor: BORDER,
-    shadowColor: NAVY, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
+    marginHorizontal: 16, marginTop: 14, backgroundColor: colors.card, borderRadius: 16,
+    paddingVertical: 12, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.border,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
   },
   dispoLeft: { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1, marginRight: 10 },
   dispoDot: { width: 9, height: 9, borderRadius: 4.5 },
-  dispoText: { color: TEXT_DARK, fontSize: 12.5, fontWeight: '600', flexShrink: 1 },
+  dispoText: { color: colors.text, fontSize: 12.5, fontWeight: '600', flexShrink: 1 },
 
   banner: {
     margin: 16, marginTop: 14, borderRadius: 26, padding: 22, overflow: 'hidden',
-    shadowColor: NAVY, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 8,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 8,
   },
   bannerGlowTop: { position: 'absolute', top: -40, right: -40, width: 150, height: 150, borderRadius: 75, backgroundColor: '#fff', opacity: 0.12 },
   bannerGlowBottom: { position: 'absolute', bottom: -55, left: -30, width: 130, height: 130, borderRadius: 65, backgroundColor: '#fff', opacity: 0.08 },
@@ -1028,9 +1021,8 @@ const styles = StyleSheet.create({
     marginTop: 26, marginHorizontal: 16,
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
-  sectionTitle: { color: TEXT_DARK, fontWeight: '800', fontSize: 17 },
+  sectionTitle: { color: colors.text, fontWeight: '800', fontSize: 17 },
 
-  // ── Buscador + botón de filtro ──────────────────────────────────────
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1040,34 +1032,34 @@ const styles = StyleSheet.create({
   },
   filterIconBtn: {
     width: 46, height: 46, borderRadius: 16,
-    backgroundColor: CARD,
-    borderWidth: 1, borderColor: BORDER,
+    backgroundColor: colors.card,
+    borderWidth: 1, borderColor: colors.border,
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: NAVY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
   },
   filterIconBtnActive: { backgroundColor: INDIGO, borderColor: INDIGO },
   filterBadge: {
     position: 'absolute', top: -5, right: -5,
     width: 18, height: 18, borderRadius: 9,
     backgroundColor: AMBER, justifyContent: 'center', alignItems: 'center',
-    borderWidth: 2, borderColor: BG,
+    borderWidth: 2, borderColor: colors.background,
   },
   filterBadgeText: { color: NAVY, fontSize: 9, fontWeight: '800' },
 
   resultCount: {
-    color: TEXT_MUTED, fontSize: 12, fontWeight: '700',
+    color: colors.textSecondary, fontSize: 12, fontWeight: '700',
     marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5,
   },
   resultadosList: { paddingHorizontal: 16, paddingTop: 14, gap: 12 },
 
-  // ── Card de resultado ──────────────────────────────────────────────
+  // ── Card de resultado ──
   resCard: {
-    backgroundColor: CARD,
+    backgroundColor: colors.card,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: colors.border,
     overflow: 'hidden',
-    shadowColor: NAVY,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.10,
     shadowRadius: 18,
@@ -1083,11 +1075,11 @@ const styles = StyleSheet.create({
   resCardBody: { padding: 18 },
   resCardHeaderRow: { flexDirection: 'row', alignItems: 'center' },
   resAvatarWrap: {
-    padding: 2.5, borderRadius: 30, backgroundColor: BG,
-    borderWidth: 1, borderColor: BORDER,
+    padding: 2.5, borderRadius: 30, backgroundColor: colors.background,
+    borderWidth: 1, borderColor: colors.border,
   },
   resAvatar: { width: 52, height: 52, borderRadius: 26 },
-  resClienteNombre: { fontSize: 16, fontWeight: '800', color: TEXT_DARK, letterSpacing: -0.2 },
+  resClienteNombre: { fontSize: 16, fontWeight: '800', color: colors.text, letterSpacing: -0.2 },
   resChipsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' },
   resChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -1110,11 +1102,11 @@ const styles = StyleSheet.create({
   },
   distanciaBadgeText: { fontSize: 11.5, fontWeight: '700', color: INDIGO },
 
-  resDescripcion: { fontSize: 12.5, color: TEXT_MUTED, marginTop: 10, lineHeight: 17.5 },
+  resDescripcion: { fontSize: 12.5, color: colors.textSecondary, marginTop: 10, lineHeight: 17.5 },
 
   resInfoRow: {
     flexDirection: 'row', alignItems: 'center', marginTop: 14,
-    backgroundColor: BG, borderRadius: 16, paddingVertical: 11, paddingHorizontal: 12,
+    backgroundColor: colors.background, borderRadius: 16, paddingVertical: 11, paddingHorizontal: 12,
   },
   resInfoItem: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 9 },
   resInfoIconWrap: {
@@ -1122,36 +1114,36 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(42,63,214,0.08)',
     alignItems: 'center', justifyContent: 'center',
   },
-  resInfoDivider: { width: 1, height: 28, backgroundColor: BORDER, marginHorizontal: 8 },
-  resInfoLabel: { fontSize: 10.5, color: TEXT_MUTED, fontWeight: '600' },
-  resInfoValor: { fontSize: 13, color: TEXT_DARK, fontWeight: '800', marginTop: 1 },
+  resInfoDivider: { width: 1, height: 28, backgroundColor: colors.border, marginHorizontal: 8 },
+  resInfoLabel: { fontSize: 10.5, color: colors.textSecondary, fontWeight: '600' },
+  resInfoValor: { fontSize: 13, color: colors.text, fontWeight: '800', marginTop: 1 },
 
   resDetalleBtn: {
     marginTop: 14, borderRadius: 15, paddingVertical: 13,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    shadowColor: NAVY, shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.18, shadowRadius: 10, elevation: 3,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.18, shadowRadius: 10, elevation: 3,
   },
   resDetalleBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.1 },
 
-  // ── Accesos rápidos ──────────────────────────────────────────────────
+  // ── Accesos rápidos ──
   accesosGrid: {
     flexDirection: 'row', flexWrap: 'wrap', gap: 12,
     paddingHorizontal: 16, paddingTop: 14,
   },
   accesoCard: {
-    width: '47%', backgroundColor: CARD, borderRadius: 18, alignItems: 'center',
-    paddingVertical: 16, gap: 8, borderWidth: 1, borderColor: BORDER,
-    shadowColor: NAVY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
+    width: '47%', backgroundColor: colors.card, borderRadius: 18, alignItems: 'center',
+    paddingVertical: 16, gap: 8, borderWidth: 1, borderColor: colors.border,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
   },
   accesoIconWrap: {
     width: 44, height: 44, borderRadius: 14, backgroundColor: INDIGO,
     alignItems: 'center', justifyContent: 'center',
     shadowColor: INDIGO, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 2,
   },
-  accesoText: { color: TEXT_DARK, fontSize: 12.5, fontWeight: '700' },
+  accesoText: { color: colors.text, fontSize: 12.5, fontWeight: '700' },
 
-  // ── Modal de filtros ──────────────────────────────────────────────────
-  overlay: { flex: 1, backgroundColor: 'rgba(9,13,35,0.6)', justifyContent: 'flex-end' },
+  // ── Modal de filtros ──
+  overlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: NAVY_SOFT,
     borderTopLeftRadius: 28, borderTopRightRadius: 28,
@@ -1171,12 +1163,12 @@ const styles = StyleSheet.create({
     width: 30, height: 30, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center', justifyContent: 'center',
   },
-  sheetTitle: { color: WHITE, fontSize: 18, fontWeight: '800' },
+  sheetTitle:  { color: WHITE, fontSize: 18, fontWeight: '800' },
 
   filterLabel: { color: '#9AAAF5', fontSize: 12.5, fontWeight: '700', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.4 },
 
   starsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  starLabel: { color: '#c0ceff', fontSize: 12, marginLeft: 6 },
+  starLabel:  { color: '#c0ceff', fontSize: 12, marginLeft: 6 },
 
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
@@ -1188,10 +1180,10 @@ const styles = StyleSheet.create({
   chipText: { color: 'rgba(255,255,255,0.65)', fontSize: 13, fontWeight: '500' },
   chipTextActive: { color: WHITE, fontWeight: '700' },
 
-  timePickers: { gap: 12, marginBottom: 6 },
+  timePickers:   { gap: 12, marginBottom: 6 },
   timePickerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  timeLabel: { color: WHITE, fontSize: 14, fontWeight: '600', width: 60 },
-  timeInputs: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  timeLabel:     { color: WHITE, fontSize: 14, fontWeight: '600', width: 60 },
+  timeInputs:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
   timeInputBox: {
     backgroundColor: 'rgba(255,255,255,0.08)',
     color: WHITE, fontSize: 18, fontWeight: '700',

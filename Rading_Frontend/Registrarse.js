@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   StyleSheet, Text, View, TextInput, TouchableOpacity,
@@ -7,8 +7,10 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useForm, Controller } from 'react-hook-form';
+import AsyncStorage from './asyncStorage';
 import API_URL from './configS';
 import axios from 'axios';
+import { useTheme } from './ThemeContext';
 
 const BLUE      = '#1565D8';
 const BLUE_DARK = '#0D47A8';
@@ -21,8 +23,9 @@ const OK        = '#2F9E5B';
 // ─── InputField reutilizable (sin cambios) ─────────────────────────────────
 function InputField({
   label, placeholder, secureTextEntry, keyboardType, value, onChangeText,
-  error, editable = true, icon, rightSlot,
+  error, editable = true, icon, rightSlot, inputStyles,
 }) {
+  const { colors } = useTheme();
   const [focus, setFocus] = useState(false);
   return (
     <View style={inputStyles.wrapper}>
@@ -39,13 +42,13 @@ function InputField({
           <Ionicons
             name={icon}
             size={17}
-            color={error ? DANGER : focus ? BLUE : MUTED}
+            color={error ? DANGER : focus ? BLUE : colors.textTertiary}
             style={{ marginRight: 10 }}
           />
         )}
         <TextInput
           placeholder={placeholder}
-          placeholderTextColor="#A6AEBD"
+          placeholderTextColor={colors.inputPlaceholder}
           secureTextEntry={secureTextEntry}
           keyboardType={keyboardType}
           style={inputStyles.input}
@@ -68,31 +71,8 @@ function InputField({
   );
 }
 
-const inputStyles = StyleSheet.create({
-  wrapper: { marginBottom: 16 },
-  label: {
-    color: BLUE_DARK, fontSize: 11, fontWeight: '700', letterSpacing: 0.8,
-    textTransform: 'uppercase', marginBottom: 7,
-  },
-  box: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#F5F7FB',
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 4,
-  },
-  boxFocus: { borderColor: BLUE, backgroundColor: '#fff' },
-  boxError: { borderColor: DANGER, backgroundColor: '#FDF1F1' },
-  boxDisabled: { backgroundColor: '#EAF7F0' },
-  input: { flex: 1, color: INK, fontSize: 14.5, paddingVertical: Platform.OS === 'ios' ? 0 : 8 },
-  errorRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 },
-  errorText: { color: DANGER, fontSize: 11.5, fontWeight: '500' },
-});
-
 // ─── Encabezado de sección (sin cambios) ───────────────────────────────────
-function SectionHeader({ icon, title, subtitle }) {
+function SectionHeader({ icon, title, subtitle, styles }) {
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionIconWrap}>
@@ -108,6 +88,8 @@ function SectionHeader({ icon, title, subtitle }) {
 
 // ─── Pantalla principal ────────────────────────────────────────────────────
 export default function Registrarse({ route, navigation }) {
+  const { colors, isDark, syncUsuario } = useTheme();
+
   // ── react-hook-form: reemplaza el useState(form) + useState(errores) manual
   const {
     control,
@@ -144,6 +126,9 @@ export default function Registrarse({ route, navigation }) {
   const [diaTemp, setDiaTemp] = useState('');
   const [mesTemp, setMesTemp] = useState('');
   const [anioTemp, setAnioTemp] = useState('');
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const inputStyles = useMemo(() => createInputStyles(colors, isDark), [colors, isDark]);
 
   // ── Helpers de validación (mismas reglas de antes, usadas dentro de `rules`)
   const validarDNI      = (dni) => { const s = dni.replace(/\D/g, ''); return s.length >= 7 && s.length <= 8; };
@@ -220,6 +205,13 @@ export default function Registrarse({ route, navigation }) {
       });
       const respData = await response.json();
       if (!response.ok) { alert(respData.message || 'Error al registrar'); return; }
+
+      // Guardar user ID y sincronizar tema con el usuario
+      if (respData.idUsuario) {
+        await AsyncStorage.setItem('@rading_user_id', String(respData.idUsuario));
+        syncUsuario(respData.idUsuario);
+      }
+
       navigation.navigate('TipoUsuario', { idUsuario: respData.idUsuario, email: data.email });
     } catch (error) {
       alert('No se pudo conectar al servidor');
@@ -246,7 +238,7 @@ export default function Registrarse({ route, navigation }) {
         <View style={styles.card}>
 
           {/* ── IDENTIDAD ── */}
-          <SectionHeader icon="person" title="Identidad" subtitle="Tus datos personales" />
+          <SectionHeader icon="person" title="Identidad" subtitle="Tus datos personales" styles={styles} />
 
           <View style={styles.row}>
             <View style={{ flex: 1, marginRight: 10 }}>
@@ -313,11 +305,11 @@ export default function Registrarse({ route, navigation }) {
                   onPress={() => setMostrarPickerModal(true)}
                   style={[inputStyles.box, errors.fechaNac && inputStyles.boxError]}
                 >
-                  <Ionicons name="calendar-outline" size={17} color={errors.fechaNac ? DANGER : MUTED} style={{ marginRight: 10 }} />
-                  <Text style={[{ flex: 1, fontSize: 14.5, paddingVertical: 8 }, value ? { color: INK } : { color: '#A6AEBD' }]}>
+                  <Ionicons name="calendar-outline" size={17} color={errors.fechaNac ? DANGER : colors.textTertiary} style={{ marginRight: 10 }} />
+                  <Text style={[{ flex: 1, fontSize: 14.5, paddingVertical: 8 }, value ? { color: colors.text } : { color: colors.inputPlaceholder }]}>
                     {value || 'Seleccioná tu fecha'}
                   </Text>
-                  <Ionicons name="chevron-forward" size={16} color="#C7D2E3" />
+                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
                 {errors.fechaNac ? (
                   <View style={inputStyles.errorRow}>
@@ -340,15 +332,15 @@ export default function Registrarse({ route, navigation }) {
                 <View style={styles.modalRow}>
                   <View style={styles.modalInputGroup}>
                     <Text style={styles.modalLabel}>Día</Text>
-                    <TextInput style={styles.modalInput} keyboardType="numeric" maxLength={2} placeholder="DD" placeholderTextColor="#B7C0D1" value={diaTemp} onChangeText={setDiaTemp} />
+                    <TextInput style={styles.modalInput} keyboardType="numeric" maxLength={2} placeholder="DD" placeholderTextColor={colors.inputPlaceholder} value={diaTemp} onChangeText={setDiaTemp} />
                   </View>
                   <View style={styles.modalInputGroup}>
                     <Text style={styles.modalLabel}>Mes</Text>
-                    <TextInput style={styles.modalInput} keyboardType="numeric" maxLength={2} placeholder="MM" placeholderTextColor="#B7C0D1" value={mesTemp} onChangeText={setMesTemp} />
+                    <TextInput style={styles.modalInput} keyboardType="numeric" maxLength={2} placeholder="MM" placeholderTextColor={colors.inputPlaceholder} value={mesTemp} onChangeText={setMesTemp} />
                   </View>
                   <View style={styles.modalInputGroup}>
                     <Text style={styles.modalLabel}>Año</Text>
-                    <TextInput style={styles.modalInput} keyboardType="numeric" maxLength={4} placeholder="AAAA" placeholderTextColor="#B7C0D1" value={anioTemp} onChangeText={setAnioTemp} />
+                    <TextInput style={styles.modalInput} keyboardType="numeric" maxLength={4} placeholder="AAAA" placeholderTextColor={colors.inputPlaceholder} value={anioTemp} onChangeText={setAnioTemp} />
                   </View>
                 </View>
                 <View style={styles.modalBotones}>
@@ -364,7 +356,7 @@ export default function Registrarse({ route, navigation }) {
           </Modal>
 
           {/* ── CONTACTO ── */}
-          <SectionHeader icon="call" title="Contacto" subtitle="Cómo te encontramos" />
+          <SectionHeader icon="call" title="Contacto" subtitle="Cómo te encontramos" styles={styles} />
 
           <Controller
             control={control}
@@ -411,10 +403,10 @@ export default function Registrarse({ route, navigation }) {
               <View style={inputStyles.wrapper}>
                 <Text style={inputStyles.label}>Dirección</Text>
                 <View style={[inputStyles.box, errors.direccion && inputStyles.boxError]}>
-                  <Ionicons name="location-outline" size={17} color={errors.direccion ? DANGER : MUTED} style={{ marginRight: 10 }} />
+                  <Ionicons name="location-outline" size={17} color={errors.direccion ? DANGER : colors.textTertiary} style={{ marginRight: 10 }} />
                   <TextInput
                     placeholder="Av. Siempre Viva 123"
-                    placeholderTextColor="#A6AEBD"
+                    placeholderTextColor={colors.inputPlaceholder}
                     style={inputStyles.input}
                     value={value}
                     onChangeText={(texto) => buscarDireccion(texto, onChange)}
@@ -449,7 +441,7 @@ export default function Registrarse({ route, navigation }) {
           />
 
           {/* ── SEGURIDAD ── */}
-          <SectionHeader icon="lock-closed" title="Seguridad" subtitle="Protegé tu cuenta" />
+          <SectionHeader icon="lock-closed" title="Seguridad" subtitle="Protegé tu cuenta" styles={styles} />
 
           <Controller
             control={control}
@@ -503,7 +495,7 @@ export default function Registrarse({ route, navigation }) {
 
           {/* Términos (sin cambios) */}
           <View style={styles.termsContainer}>
-            <Ionicons name="shield-checkmark-outline" size={13} color={MUTED} style={{ marginRight: 5 }} />
+            <Ionicons name="shield-checkmark-outline" size={13} color={colors.textTertiary} style={{ marginRight: 5 }} />
             <Text style={styles.termsText}>Al registrarte aceptás nuestros </Text>
             <View style={styles.termsLinkRow}>
               <TouchableOpacity onPress={() => navigation.navigate('Terminos')}>
@@ -536,14 +528,37 @@ export default function Registrarse({ route, navigation }) {
           </TouchableOpacity>
 
         </View>
-        <StatusBar style="light" />
+        <StatusBar style={colors.statusBar} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F3F5FA' },
+const createInputStyles = (colors, isDark) => StyleSheet.create({
+  wrapper: { marginBottom: 16 },
+  label: {
+    color: BLUE_DARK, fontSize: 11, fontWeight: '700', letterSpacing: 0.8,
+    textTransform: 'uppercase', marginBottom: 7,
+  },
+  box: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.inputBg,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 4,
+  },
+  boxFocus: { borderColor: BLUE, backgroundColor: isDark ? colors.surfaceVariant : '#fff' },
+  boxError: { borderColor: DANGER, backgroundColor: isDark ? 'rgba(229,62,62,0.1)' : '#FDF1F1' },
+  boxDisabled: { backgroundColor: isDark ? 'rgba(47,158,91,0.1)' : '#EAF7F0' },
+  input: { flex: 1, color: colors.text, fontSize: 14.5, paddingVertical: Platform.OS === 'ios' ? 0 : 8 },
+  errorRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 },
+  errorText: { color: DANGER, fontSize: 11.5, fontWeight: '500' },
+});
+
+const createStyles = (colors, isDark) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
 
   header: {
     paddingTop: Platform.OS === 'ios' ? 70 : 50,
@@ -562,12 +577,12 @@ const styles = StyleSheet.create({
   subtitle: { color: 'rgba(255,255,255,0.78)', fontSize: 13.5, fontWeight: '500' },
 
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     marginHorizontal: 16,
     marginTop: -34,
     borderRadius: 26,
     padding: 24,
-    shadowColor: BLUE_DARK,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.12,
     shadowRadius: 24,
@@ -580,8 +595,8 @@ const styles = StyleSheet.create({
     backgroundColor: BLUE_SOFT,
     justifyContent: 'center', alignItems: 'center',
   },
-  sectionTitle: { color: INK, fontSize: 14.5, fontWeight: '800' },
-  sectionSubtitle: { color: MUTED, fontSize: 11.5, marginTop: 1 },
+  sectionTitle: { color: colors.text, fontSize: 14.5, fontWeight: '800' },
+  sectionSubtitle: { color: colors.textTertiary, fontSize: 11.5, marginTop: 1 },
 
   row: { flexDirection: 'row' },
 
@@ -589,25 +604,25 @@ const styles = StyleSheet.create({
 
   // Dirección
   sugerenciasContainer: {
-    backgroundColor: 'white', borderRadius: 14, marginTop: 8,
-    borderWidth: 1, borderColor: 'rgba(21,101,216,0.08)',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    backgroundColor: colors.card, borderRadius: 14, marginTop: 8,
+    borderWidth: 1, borderColor: colors.border,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08, shadowRadius: 10, elevation: 4,
     overflow: 'hidden',
   },
   sugerenciaItem: {
     flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: '#F0F2F7',
+    borderBottomWidth: 1, borderBottomColor: colors.divider,
   },
-  sugerenciaTexto: { flex: 1, color: INK, fontSize: 12.5, lineHeight: 17 },
+  sugerenciaTexto: { flex: 1, color: colors.text, fontSize: 12.5, lineHeight: 17 },
 
   // Términos
   termsContainer: {
     marginTop: 6, marginBottom: 20,
     flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center',
-    backgroundColor: '#F5F7FB', borderRadius: 12, padding: 10,
+    backgroundColor: colors.inputBg, borderRadius: 12, padding: 10,
   },
-  termsText: { color: '#5B6478', fontSize: 12 },
+  termsText: { color: colors.textSecondary, fontSize: 12 },
   termsLinkRow: { flexDirection: 'row' },
   termsLink: { color: BLUE, fontWeight: '700', fontSize: 12, textDecorationLine: 'underline' },
 
@@ -621,28 +636,28 @@ const styles = StyleSheet.create({
   botonTexto: { color: 'white', fontWeight: '800', fontSize: 15.5 },
 
   loginLinkRow: { marginTop: 16, alignItems: 'center' },
-  loginLinkText: { color: MUTED, fontSize: 12.5 },
+  loginLinkText: { color: colors.textTertiary, fontSize: 12.5 },
   loginLinkBold: { color: BLUE, fontWeight: '800' },
 
   // Modales compartidos
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(11,23,53,0.55)', justifyContent: 'center', alignItems: 'center' },
-  modalCard: { backgroundColor: 'white', borderRadius: 24, padding: 24, width: '86%', alignItems: 'center' },
+  modalOverlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', alignItems: 'center' },
+  modalCard: { backgroundColor: colors.card, borderRadius: 24, padding: 24, width: '86%', alignItems: 'center' },
   modalIconWrap: {
     width: 44, height: 44, borderRadius: 22, backgroundColor: BLUE,
     justifyContent: 'center', alignItems: 'center', marginBottom: 12,
   },
-  modalTitulo: { fontSize: 17, fontWeight: '800', color: INK, marginBottom: 20, textAlign: 'center' },
+  modalTitulo: { fontSize: 17, fontWeight: '800', color: colors.text, marginBottom: 20, textAlign: 'center' },
   modalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24, width: '100%' },
   modalInputGroup: { flex: 1, alignItems: 'center', marginHorizontal: 6 },
-  modalLabel: { fontSize: 10.5, fontWeight: '700', color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+  modalLabel: { fontSize: 10.5, fontWeight: '700', color: colors.textTertiary, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
   modalInput: {
-    backgroundColor: '#F5F7FB', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 8,
-    fontSize: 18, fontWeight: '800', color: INK, textAlign: 'center', width: '100%',
-    borderWidth: 1, borderColor: 'rgba(21,101,216,0.08)',
+    backgroundColor: colors.inputBg, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 8,
+    fontSize: 18, fontWeight: '800', color: colors.text, textAlign: 'center', width: '100%',
+    borderWidth: 1, borderColor: colors.border,
   },
   modalBotones: { flexDirection: 'row', gap: 12, width: '100%' },
-  modalCancelar: { flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1.5, borderColor: '#E2E8F0', alignItems: 'center' },
-  modalCancelarTexto: { color: '#5B6478', fontWeight: '700' },
+  modalCancelar: { flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1.5, borderColor: colors.border, alignItems: 'center' },
+  modalCancelarTexto: { color: colors.textSecondary, fontWeight: '700' },
   modalConfirmar: { flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: BLUE, alignItems: 'center' },
   modalConfirmarTexto: { color: 'white', fontWeight: '800' },
 });

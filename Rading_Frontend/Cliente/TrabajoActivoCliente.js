@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useMemo } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useTheme } from "../ThemeContext";
 
 /* Mismos tokens que el resto de la app */
 const AMBER = "#F5A623";
@@ -19,6 +20,9 @@ export default function TrabajoActivoCliente({
   // que tiene algo esperando, aunque no haya abierto el overlay todavía.
   badgeCount = 0,
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const mostrarBadge = badgeCount > 0;
 
   // Punto pulsante — comunica "esto se está actualizando en vivo"
@@ -72,7 +76,7 @@ export default function TrabajoActivoCliente({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   wrap: {
     width: "100%",
   },
@@ -86,7 +90,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 11,
     overflow: "hidden",
-    shadowColor: NAVY,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.2,
     shadowRadius: 12,

@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import { useTheme } from '../ThemeContext';
 import Header from '../Header';
 import BottomNavBar from './NavegadorCliente';
 import API_URL from '../configS';
@@ -38,8 +39,6 @@ const DANGER     = '#C0392B';
 const API_BASE_URL = API_URL;
 
 const OPCION_OTRO = '__otro__';
-// Máximo de fotos que se pueden adjuntar a una propuesta enviada desde el chat
-// (mismo límite que CrearSolicitud.js, para mantener el mismo "contrato" de datos).
 const MAX_IMAGENES_PROPUESTA = 5;
 
 const obtenerIniciales = (nombre = '') =>
@@ -52,27 +51,6 @@ const obtenerIniciales = (nombre = '') =>
 
 const esUrlImagen = (url = '') =>
   /\.(jpg|jpeg|png|gif|webp|jfif|bmp|heic|heif)(\?.*)?$/i.test(url);
-
-// ── Mismo cálculo de urgencia que en CrearSolicitud.js: se resuelve acá
-// (JS), no se le pide a nadie más que interprete la fecha elegida. ──
-function calcularCategoriaUrgencia(fechaLimite) {
-  if (!fechaLimite) return null;
-  const ahora = new Date();
-  const diffHoras = (fechaLimite.getTime() - ahora.getTime()) / (1000 * 60 * 60);
-
-  if (diffHoras <= 12) return 'Muy urgente, dentro de las próximas 12hs';
-  if (diffHoras <= 24) return 'Urgente, dentro de las próximas 24hs';
-  if (diffHoras <= 48) return 'Mañana o en las próximas 48hs';
-  if (diffHoras <= 24 * 7) return 'Dentro de esta semana';
-  return 'Sin apuro, más de una semana';
-}
-
-function formatearFechaHora(fecha) {
-  if (!fecha) return '';
-  const fechaStr = fecha.toLocaleDateString('es-AR');
-  const horaStr = fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
-  return `${fechaStr} ${horaStr}`;
-}
 
 const mapearMensaje = (m, idUsuario) => {
   let tipo = 'texto';
@@ -107,9 +85,6 @@ const mapearMensaje = (m, idUsuario) => {
     leido: !!m.leido,
     editado: !!m.edited_at,
     duracionAudio: m.duracion_audio,
-    // 👇 Mismos datos "estructurados" que se piden al crear una solicitud
-    // desde CrearSolicitud.js, para que una propuesta armada en el chat
-    // tenga el mismo nivel de detalle y se pueda mostrar igual.
     emergencia: !!m.emergencia,
     fechaRequerida: m.fecha_requerida ?? m.fechaRequerida ?? null,
     horarioRequerido: m.horario_requerido ?? m.horarioRequerido ?? null,
@@ -121,170 +96,48 @@ const mapearMensaje = (m, idUsuario) => {
   };
 };
 
-// ── Selector tipo pastilla simple (Sí/No, Mi dirección/Otra, etc.) ──
-function Toggle2Opciones({ opciones, activo, onChange, colorActivo = BLUE_DARK }) {
-  return (
-    <View style={styles.toggle2Track}>
-      {opciones.map((opt, i) => {
-        const seleccionado = activo === i;
-        return (
-          <TouchableOpacity
-            key={opt}
-            style={[
-              styles.toggle2Btn,
-              seleccionado && { backgroundColor: colorActivo },
-            ]}
-            onPress={() => onChange(i)}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.toggle2Text, seleccionado && styles.toggle2TextActivo]}>{opt}</Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-}
+const mapearOferta = (o, idTrabajo, servicioNombreOverride = null) => ({
+  id: o.id,
+  idTrabajo,
+  idTrabajador: o.idTrabajador,
+  nombre: `${o.nombre ?? ''} ${o.apellido ?? ''}`.trim(),
+  rating: Number(o.estrellas ?? 0),
+  distancia: o.distancia ?? null,
+  costoExtraMin: Number(o.costoExtraMin ?? 0),
+  costoExtraMax: Number(o.costoExtraMax ?? 0),
+  precio: Number(o.precio ?? o.precioSolicitud ?? 0),
+  servicioNombre: servicioNombreOverride,
+  fijo: Boolean(o.fijo),
+  emergencia: Boolean(o.emergencia),
+  subastaTermina: o.subastaTermina ?? null,
+});
 
-// ── Miniatura de una foto adjunta a la propuesta, con botón para sacarla ──
-function ImagenPropuestaThumb({ uri, onQuitar, deshabilitado }) {
-  return (
-    <View style={styles.propImagenThumbWrap}>
-      <Image source={{ uri }} style={styles.propImagenThumb} />
-      <TouchableOpacity
-        style={styles.propImagenThumbQuitar}
-        onPress={onQuitar}
-        disabled={deshabilitado}
-        hitSlop={6}
-      >
-        <Ionicons name="close" size={12} color="#fff" />
-      </TouchableOpacity>
-    </View>
-  );
-}
+const normalizar = (str = '') =>
+  str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 
-// ── Burbuja de audio (componente separado: necesita su propio estado/hooks) ──
-function formatearTiempoAudio(ms) {
-  const total = Math.floor((ms || 0) / 1000);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+const calcularCategoriaUrgencia = (fechaLimite) => {
+  if (!fechaLimite) return null;
+  const ahora = new Date();
+  const diffHoras = (fechaLimite.getTime() - ahora.getTime()) / (1000 * 60 * 60);
+  if (diffHoras <= 12) return 'Muy urgente, dentro de las próximas 12hs';
+  if (diffHoras <= 24) return 'Urgente, dentro de las próximas 24hs';
+  if (diffHoras <= 48) return 'Mañana o en las próximas 48hs';
+  if (diffHoras <= 24 * 7) return 'Dentro de esta semana';
+  return 'Sin apuro, más de una semana';
+};
 
-function BurbujaAudio({ item, esCliente, contacto }) {
-  const [reproduciendo, setReproduciendo] = useState(false);
-  const [cargando, setCargando] = useState(false);
-  const [posicion, setPosicion] = useState(0);
-  const [duracion, setDuracion] = useState((item.duracionAudio || 0) * 1000);
-  const sonidoRef = useRef(null);
-useEffect(() => {
-  // Precalentamos permiso + modo de audio para que la primera grabación
-  // no falle por timing con el sistema operativo.
-  (async () => {
-    try {
-      await Audio.requestPermissionsAsync();
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-    } catch (e) {
-      // Silencioso: si falla acá, se reintenta solo cuando el usuario grabe
-    }
-  })();
-}, []);
-  const onStatusUpdate = useCallback((status) => {
-    if (!status.isLoaded) return;
-    setPosicion(status.positionMillis || 0);
-    if (status.durationMillis) setDuracion(status.durationMillis);
-    setReproduciendo(status.isPlaying);
-    if (status.didJustFinish) {
-      setReproduciendo(false);
-      setPosicion(0);
-    }
-  }, []);
-
-  const toggleReproducir = async () => {
-    try {
-      if (!sonidoRef.current) {
-        setCargando(true);
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          playsInSilentModeIOS: true,
-        });
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: item.texto },
-          { progressUpdateIntervalMillis: 200 },
-          onStatusUpdate
-        );
-        sonidoRef.current = sound;
-        setCargando(false);
-        await sound.playAsync();
-        return;
-      }
-
-      const status = await sonidoRef.current.getStatusAsync();
-      if (!status.isLoaded) return;
-
-      if (status.isPlaying) {
-        await sonidoRef.current.pauseAsync();
-      } else {
-        if (status.didJustFinish || status.positionMillis >= (status.durationMillis || 0)) {
-          await sonidoRef.current.setPositionAsync(0);
-        }
-        await sonidoRef.current.playAsync();
-      }
-    } catch (err) {
-      console.error('Error al reproducir audio:', err);
-      setCargando(false);
-    }
-  };
-
-  useEffect(() => {
-    return () => { sonidoRef.current?.unloadAsync(); };
-  }, []);
-
-  const progresoPct = duracion > 0 ? Math.min(100, (posicion / duracion) * 100) : 0;
-
-  return (
-    <View style={[styles.filaMensaje, { justifyContent: esCliente ? 'flex-end' : 'flex-start' }]}>
-      {!esCliente && <AvatarMini contacto={contacto} />}
-      <View
-        style={[
-          styles.burbujaAudio,
-          esCliente ? styles.burbujaCliente : styles.burbujaTrabajador,
-          item.fallo && styles.burbujaFallo,
-        ]}
-      >
-        <TouchableOpacity onPress={toggleReproducir} style={styles.audioPlayBtn} disabled={cargando}>
-          {cargando ? (
-            <ActivityIndicator size="small" color={esCliente ? '#fff' : BLUE_DARK} />
-          ) : (
-            <Ionicons name={reproduciendo ? 'pause' : 'play'} size={18} color={esCliente ? '#fff' : BLUE_DARK} />
-          )}
-        </TouchableOpacity>
-
-        <View style={styles.audioOndaWrap}>
-          <View
-            style={[
-              styles.audioOndaFondo,
-              { backgroundColor: esCliente ? 'rgba(255,255,255,0.35)' : 'rgba(21,101,216,0.18)' },
-            ]}
-          />
-          <View
-            style={[
-              styles.audioOndaProgreso,
-              { width: `${progresoPct}%`, backgroundColor: esCliente ? '#fff' : BLUE_DARK },
-            ]}
-          />
-        </View>
-
-        <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>
-          {formatearTiempoAudio(reproduciendo || posicion > 0 ? posicion : duracion)}
-        </Text>
-
-        {item.fallo && <Ionicons name="alert-circle" size={13} color="#FFD1D1" style={{ marginLeft: 4 }} />}
-      </View>
-    </View>
-  );
-}
+const formatearFechaHora = (fecha) => {
+  if (!fecha) return '';
+  const fechaStr = fecha.toLocaleDateString('es-AR');
+  const horaStr = fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  return `${fechaStr} ${horaStr}`;
+};
 
 export default function ChatCliente({ route, navigation }) {
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const contacto = route?.params?.contacto;
   const usuario = route?.params?.usuario;
@@ -303,23 +156,23 @@ export default function ChatCliente({ route, navigation }) {
   const [mostrarOpciones, setMostrarOpciones] = useState(false);
   const [subiendoArchivo, setSubiendoArchivo] = useState(false);
 
-  // ── Menú del header (⋮) y vaciar chat ───────────────────────────────
+  // ── Menú del header (⋮) y vaciar chat ──
   const [mostrarMenuHeader, setMostrarMenuHeader] = useState(false);
   const [mostrarConfirmVaciar, setMostrarConfirmVaciar] = useState(false);
   const [vaciandoChat, setVaciandoChat] = useState(false);
 
-  // ── Grabación de audio ──────────────────────────────────────────────
+  // ── Grabación de audio ──
   const [grabando, setGrabando] = useState(false);
   const [grabacion, setGrabacion] = useState(null);
   const [segundosGrabando, setSegundosGrabando] = useState(0);
   const intervaloGrabacionRef = useRef(null);
 
-  // ── Edición de mensajes ──────────────────────────────────────────────
+  // ── Edición de mensajes ──
   const [editandoMensaje, setEditandoMensaje] = useState(null);
   const [textoEdicion, setTextoEdicion] = useState('');
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
 
-  // ── Overlay de "Enviar propuesta" ──────────────────────────────────
+  // ── Overlay de "Enviar propuesta" ──
   const [mostrarPropuesta, setMostrarPropuesta] = useState(false);
   const [propServicio, setPropServicio] = useState('');
   const [propPrecio, setPropPrecio] = useState('');
@@ -327,34 +180,31 @@ export default function ChatCliente({ route, navigation }) {
   const [enviandoPropuesta, setEnviandoPropuesta] = useState(false);
   const [errorPropuesta, setErrorPropuesta] = useState(null);
 
+  // ── IA de propuesta ──
   const [propAnalizando, setPropAnalizando] = useState(false);
   const [propErrorIA, setPropErrorIA] = useState(null);
   const [propAnalisis, setPropAnalisis] = useState(null);
   const [propServicioId, setPropServicioId] = useState(null);
   const [propContexto, setPropContexto] = useState('');
-  const [propRespuestas, setPropRespuestas] = useState({});
-  const [propTextosOtro, setPropTextosOtro] = useState({});
-  const [propSelectorAbierto, setPropSelectorAbierto] = useState(false);
 
-  // 👇 Los mismos datos que se piden en CrearSolicitud.js: emergencia,
-  // plazo/fecha límite, dirección del trabajo y fotos adjuntas. Así una
-  // propuesta armada desde el chat queda con la misma información que
-  // una solicitud creada desde la pantalla dedicada, y se puede mostrar
-  // con el mismo nivel de detalle (ver "Ver detalle" más abajo).
+  // ── Propuesta: emergencia, plazo, dirección, fotos ──
   const [propEmergencia, setPropEmergencia] = useState(false);
   const [propTienePlazo, setPropTienePlazo] = useState(false);
-  const [propFechaLimite, setPropFechaLimite] = useState(null); // Date | null
+  const [propFechaLimite, setPropFechaLimite] = useState(null);
   const [propMostrarPickerFecha, setPropMostrarPickerFecha] = useState(false);
   const [propMostrarPickerHora, setPropMostrarPickerHora] = useState(false);
 
   const [propUsarOtraDireccion, setPropUsarOtraDireccion] = useState(false);
   const [propDireccion, setPropDireccion] = useState('');
 
-  const [propImagenes, setPropImagenes] = useState([]); // [{uri, fileName, mimeType}]
+  const [propImagenes, setPropImagenes] = useState([]);
   const [errorImagenesProp, setErrorImagenesProp] = useState(null);
   const [subiendoImagenesProp, setSubiendoImagenesProp] = useState(false);
 
-  // ── Detalle de una propuesta ya enviada (tarjeta del chat) ──────────
+  // ── Selector de servicio sugerido por IA ──
+  const [propSelectorAbierto, setPropSelectorAbierto] = useState(false);
+
+  // ── Detalle de una propuesta ya enviada ──
   const [servicioDetalle, setServicioDetalle] = useState(null);
 
   const propDescripcionValida = propDescripcion.trim().length >= 10;
@@ -362,18 +212,23 @@ export default function ChatCliente({ route, navigation }) {
     propAnalisis !== null && propAnalisis?.necesitaAclaracion === true && !propAnalisis?.servicioId;
   const propPreguntasActuales = propNecesitaAclaracion ? (propAnalisis?.preguntas || []) : [];
 
+  // ── Respuestas a las preguntas de aclaración de la IA ──
+  const [propRespuestas, setPropRespuestas] = useState({});
+  const [propTextosOtro, setPropTextosOtro] = useState({});
+
   const propTodasRespondidas = useMemo(() => {
     if (propPreguntasActuales.length === 0) return false;
-    return propPreguntasActuales.every((_, idx) => {
+    return propPreguntasActuales.every((p, idx) => {
       const r = propRespuestas[idx];
       if (!r) return false;
-      if (r === OPCION_OTRO) return !!(propTextosOtro[idx] && propTextosOtro[idx].trim());
+      if (r === OPCION_OTRO) return !!(propTextosOtro[idx] || '').trim();
       return true;
     });
   }, [propPreguntasActuales, propRespuestas, propTextosOtro]);
 
-  const propServicioElegido = propAnalisis?.servicios?.find((s) => s.id === propServicioId);
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
+  // ── Efectos ──
   useEffect(() => {
     const mostrar = Keyboard.addListener('keyboardDidShow', () => setTecladoVisible(true));
     const ocultar = Keyboard.addListener('keyboardDidHide', () => setTecladoVisible(false));
@@ -383,51 +238,13 @@ export default function ChatCliente({ route, navigation }) {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelado = false;
-    if (route?.params?.chatId) return;
-    if (!usuario?.idCliente || !contacto?.idTrabajador) {
+  // ── Cargar mensajes ──
+  const cargarMensajes = useCallback(async () => {
+    if (!chatId) {
       setCargando(false);
       return;
     }
-
-    const resolverChatExistente = async () => {
-      try {
-        const res = await fetch(
-          `${API_BASE_URL}/chat/buscar/${usuario.idCliente}/${contacto.idTrabajador}`
-        );
-        if (!res.ok) throw new Error('No se pudo resolver el chat existente');
-        const data = await res.json();
-        if (cancelado) return;
-
-        if (data.chatId) {
-          setChatId(data.chatId);
-        } else {
-          setCargando(false);
-        }
-      } catch (err) {
-        console.error('Error al resolver chat existente:', err);
-        if (!cancelado) setCargando(false);
-      }
-    };
-
-    resolverChatExistente();
-    return () => { cancelado = true; };
-  }, [route?.params?.chatId, usuario?.idCliente, contacto?.idTrabajador]);
-
-  useEffect(() => {
-    if (!chatId || !usuario?.id) return;
-    fetch(`${API_BASE_URL}/chat/${chatId}/leido`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: usuario.id }),
-    }).catch((err) => console.error('Error al marcar como leído:', err));
-  }, [chatId, usuario]);
-
-  const cargarMensajes = useCallback(async () => {
-    if (!chatId) return;
     try {
-      setCargando(true);
       setError(null);
       const res = await fetch(`${API_BASE_URL}/chat/${chatId}/mensajes`);
       if (!res.ok) throw new Error('Respuesta no OK del servidor');
@@ -442,18 +259,49 @@ export default function ChatCliente({ route, navigation }) {
   }, [chatId, usuario]);
 
   useEffect(() => {
-    if (chatId) cargarMensajes();
-  }, [chatId, cargarMensajes]);
+    cargarMensajes();
+  }, [cargarMensajes]);
 
   useEffect(() => {
     setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 50);
   }, [mensajes.length]);
 
-  // ── Vaciar chat ──────────────────────────────────────────────────────
-  // Borra todos los mensajes de la conversación actual. Requiere confirmación
-  // explícita del usuario (modal aparte) porque es una acción irreversible.
-  // TODO: ajustá la ruta si tu endpoint real para vaciar el chat se llama
-  // distinto (acá asumo DELETE /chat/:chatId/vaciar).
+  // ── Resolver chat si no viene ──
+  useEffect(() => {
+    if (route?.params?.chatId) return;
+    if (!usuario?.idCliente || !contacto?.idTrabajador) {
+      setCargando(false);
+      return;
+    }
+    const resolverChatExistente = async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/chat/buscar/${usuario.idCliente}/${contacto.idTrabajador}`
+        );
+        if (!res.ok) throw new Error('No se pudo resolver el chat existente');
+        const data = await res.json();
+        if (data.chatId) setChatId(data.chatId);
+        else setCargando(false);
+      } catch (err) {
+        console.error('Error al resolver chat existente:', err);
+        setCargando(false);
+      }
+    };
+    resolverChatExistente();
+    return () => {};
+  }, [route?.params?.chatId, usuario?.idCliente, contacto?.idTrabajador]);
+
+  // ── Marcar leído ──
+  useEffect(() => {
+    if (!chatId || !usuario?.id) return;
+    fetch(`${API_BASE_URL}/chat/${chatId}/leido`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: usuario.id }),
+    }).catch((err) => console.error('Error al marcar como leído:', err));
+  }, [chatId, usuario]);
+
+  // ── Vaciar chat ──
   const vaciarChat = async () => {
     if (!chatId || vaciandoChat) return;
     setVaciandoChat(true);
@@ -463,23 +311,21 @@ export default function ChatCliente({ route, navigation }) {
       setMensajes([]);
       setMostrarConfirmVaciar(false);
     } catch (err) {
-      console.error('Error al vaciar el chat:', err);
+      console.error('Error al vaciar chat:', err);
       setError('No se pudo vaciar el chat. Probá de nuevo.');
-      setMostrarConfirmVaciar(false);
     } finally {
       setVaciandoChat(false);
     }
   };
 
+  // ── Enviar mensaje ──
   const enviarMensaje = async () => {
     const contenido = texto.trim();
     if (!contenido || enviando) return;
-
     if (!usuario?.id || (!chatId && (!usuario?.idCliente || !contacto?.idTrabajador))) {
       console.error('Faltan datos para enviar el mensaje (usuario o idTrabajador)');
       return;
     }
-
     const idTemp = `local-${Date.now()}`;
     const nuevoLocal = {
       id: idTemp,
@@ -488,12 +334,10 @@ export default function ChatCliente({ route, navigation }) {
       texto: contenido,
       hora: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
     };
-
     setMensajes((prev) => [...prev, nuevoLocal]);
     setTexto('');
     setEnviando(true);
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 60);
-
     try {
       const body = chatId
         ? { chatId, enviadorId: usuario.id, contenido, tipo: 'TEXTO' }
@@ -504,7 +348,6 @@ export default function ChatCliente({ route, navigation }) {
             contenido,
             tipo: 'TEXTO',
           };
-
       const res = await fetch(`${API_BASE_URL}/chat/mensaje`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -512,11 +355,7 @@ export default function ChatCliente({ route, navigation }) {
       });
       if (!res.ok) throw new Error('Respuesta no OK del servidor');
       const guardado = await res.json();
-
-      if (!chatId && guardado.chat_id) {
-        setChatId(guardado.chat_id);
-      }
-
+      if (!chatId && guardado.chat_id) setChatId(guardado.chat_id);
       setMensajes((prev) =>
         prev.map((m) =>
           m.id === idTemp
@@ -534,13 +373,12 @@ export default function ChatCliente({ route, navigation }) {
     }
   };
 
-  // --- Edición de mensajes de texto propios ---
+  // ── Edición de mensajes ──
   const abrirEdicion = (item) => {
     if (item.tipo !== 'texto' || item.autor !== 'cliente' || item.fallo) return;
     setEditandoMensaje(item);
     setTextoEdicion(item.texto);
   };
-
   const guardarEdicion = async () => {
     if (!editandoMensaje || !textoEdicion.trim() || guardandoEdicion) return;
     const nuevoTexto = textoEdicion.trim();
@@ -563,150 +401,82 @@ export default function ChatCliente({ route, navigation }) {
       setGuardandoEdicion(false);
     }
   };
-const fetchConReintento = async (url, opciones, intentos = 2) => {
-  let ultimoError;
-  for (let i = 0; i < intentos; i++) {
-    try {
-      return await fetch(url, opciones);
-    } catch (err) {
-      ultimoError = err;
-      if (i < intentos - 1) {
-        await new Promise((r) => setTimeout(r, 700));
-      }
-    }
-  }
-  throw ultimoError;
-};
-  // --- Subida de archivos (fotos, docs, audios) ---
-  const subirYEnviarArchivo = async (archivo, extraForm = {}) => {
-    if (!usuario?.id || (!chatId && (!usuario?.idCliente || !contacto?.idTrabajador))) {
-      setError('Faltan datos para enviar el archivo.');
-      return;
-    }
 
+  // ── Subida de archivos ──
+  const fetchConReintento = async (url, opciones, intentos = 2) => {
+    let ultimoError;
+    for (let i = 0; i < intentos; i++) {
+      try { return await fetch(url, opciones); }
+      catch (err) { ultimoError = err; if (i < intentos - 1) await new Promise((r) => setTimeout(r, 700)); }
+    }
+    throw ultimoError;
+  };
+  const subirYEnviarArchivo = async (archivo, extraForm = {}) => {
+    if (!usuario?.id || (!chatId && (!usuario?.idCliente || !contacto?.idTrabajador))) { setError('Faltan datos para enviar el archivo.'); return; }
     setSubiendoArchivo(true);
     try {
       const formData = new FormData();
-
       if (Platform.OS === 'web') {
         const respuestaBlob = await fetch(archivo.uri);
         const blob = await respuestaBlob.blob();
         const nombre = archivo.name || archivo.fileName || `archivo_${Date.now()}`;
         formData.append('file', blob, nombre);
       } else {
-        formData.append('file', {
-          uri: archivo.uri,
-          name: archivo.name || archivo.fileName || `archivo_${Date.now()}`,
-          type: archivo.mimeType || archivo.type || 'application/octet-stream',
-        });
+        formData.append('file', { uri: archivo.uri, name: archivo.name || archivo.fileName || `archivo_${Date.now()}`, type: archivo.mimeType || archivo.type || 'application/octet-stream' });
       }
-
-      if (chatId) {
-        formData.append('chatId', chatId);
-      } else {
-        formData.append('idCliente', usuario.idCliente);
-        formData.append('idTrabajador', contacto.idTrabajador);
-      }
+      if (chatId) formData.append('chatId', chatId);
+      else { formData.append('idCliente', usuario.idCliente); formData.append('idTrabajador', contacto.idTrabajador); }
       formData.append('enviadorId', usuario.id);
       Object.entries(extraForm).forEach(([k, v]) => formData.append(k, String(v)));
-
-      const res = await fetchConReintento(`${API_BASE_URL}/chat/mensaje/archivo`, {
-  method: 'POST',
-  body: formData,
-});
-
+      const res = await fetchConReintento(`${API_BASE_URL}/chat/mensaje/archivo`, { method: 'POST', body: formData });
       const textoBruto = await res.text();
       if (!res.ok) throw new Error(`Servidor respondió ${res.status}: ${textoBruto}`);
       const guardado = JSON.parse(textoBruto);
-
-      if (!chatId && guardado.chat_id) {
-        setChatId(guardado.chat_id);
-      }
-
+      if (!chatId && guardado.chat_id) setChatId(guardado.chat_id);
       setMensajes((prev) => [...prev, mapearMensaje(guardado, usuario.id)]);
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 60);
-    } catch (err) {
-      console.error('Error al subir archivo:', err);
-      setError('No se pudo enviar el archivo.');
-    } finally {
-      setSubiendoArchivo(false);
-    }
+    } catch (err) { console.error('Error al subir archivo:', err); setError('No se pudo enviar el archivo.'); }
+    finally { setSubiendoArchivo(false); }
   };
 
   const elegirDeGaleria = async () => {
     setMostrarOpciones(false);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      setError('Necesitamos permiso para acceder a tus fotos.');
-      return;
-    }
-    const resultado = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      quality: 0.8,
-    });
-    if (!resultado.canceled && resultado.assets?.length) {
-      subirYEnviarArchivo(resultado.assets[0]);
-    }
+    if (status !== 'granted') { setError('Necesitamos permiso para acceder a tus fotos.'); return; }
+    const resultado = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, quality: 0.8 });
+    if (!resultado.canceled && resultado.assets?.length) subirYEnviarArchivo(resultado.assets[0]);
   };
-
   const tomarFoto = async () => {
     setMostrarOpciones(false);
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      setError('Necesitamos permiso para usar la cámara.');
-      return;
-    }
+    if (status !== 'granted') { setError('Necesitamos permiso para usar la cámara.'); return; }
     const resultado = await ImagePicker.launchCameraAsync({ quality: 0.8 });
-    if (!resultado.canceled && resultado.assets?.length) {
-      subirYEnviarArchivo(resultado.assets[0]);
-    }
+    if (!resultado.canceled && resultado.assets?.length) subirYEnviarArchivo(resultado.assets[0]);
   };
-
   const elegirDocumento = async () => {
     setMostrarOpciones(false);
-    const resultado = await DocumentPicker.getDocumentAsync({
-      type: '*/*',
-      copyToCacheDirectory: true,
-    });
+    const resultado = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
     if (resultado.canceled) return;
     const archivo = resultado.assets?.[0];
     if (archivo) subirYEnviarArchivo(archivo);
   };
 
-  // --- Grabación de audio ---
+  // ── Grabación de audio ──
   const iniciarGrabacion = async () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
-        setError('Necesitamos permiso para usar el micrófono.');
-        return;
-      }
+      if (status !== 'granted') { setError('Necesitamos permiso para usar el micrófono.'); return; }
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setGrabacion(recording);
-      setGrabando(true);
-      setSegundosGrabando(0);
-      intervaloGrabacionRef.current = setInterval(() => {
-        setSegundosGrabando((s) => s + 1);
-      }, 1000);
-    } catch (err) {
-      console.error('Error al iniciar grabación:', err);
-      setError('No se pudo iniciar la grabación.');
-    }
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      setGrabacion(recording); setGrabando(true); setSegundosGrabando(0);
+      intervaloGrabacionRef.current = setInterval(() => setSegundosGrabando((s) => s + 1), 1000);
+    } catch (err) { console.error('Error al iniciar grabación:', err); setError('No se pudo iniciar la grabación.'); }
   };
-
   const cancelarGrabacion = async () => {
     clearInterval(intervaloGrabacionRef.current);
-    if (grabacion) {
-      try { await grabacion.stopAndUnloadAsync(); } catch {}
-    }
-    setGrabacion(null);
-    setGrabando(false);
-    setSegundosGrabando(0);
+    if (grabacion) { try { await grabacion.stopAndUnloadAsync(); } catch {} }
+    setGrabacion(null); setGrabando(false); setSegundosGrabando(0);
   };
-
   const detenerYEnviarGrabacion = async () => {
     clearInterval(intervaloGrabacionRef.current);
     if (!grabacion) return;
@@ -714,144 +484,49 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
       await grabacion.stopAndUnloadAsync();
       const uri = grabacion.getURI();
       const duracion = segundosGrabando;
-      setGrabacion(null);
-      setGrabando(false);
-      setSegundosGrabando(0);
-
-      if (duracion < 1) return; // grabación muy corta, la ignoramos
-
-      await subirYEnviarArchivo(
-        { uri, name: `audio_${Date.now()}.m4a`, mimeType: 'audio/m4a' },
-        { duracionAudio: duracion }
-      );
-    } catch (err) {
-      console.error('Error al detener grabación:', err);
-      setError('No se pudo enviar el audio.');
-    }
+      setGrabacion(null); setGrabando(false); setSegundosGrabando(0);
+      if (duracion < 1) return;
+      await subirYEnviarArchivo({ uri, name: `audio_${Date.now()}.m4a`, mimeType: 'audio/m4a' }, { duracionAudio: duracion });
+    } catch (err) { console.error('Error al detener grabación:', err); setError('No se pudo enviar el audio.'); }
   };
 
-  // --- Propuesta ---
+  // ── Propuesta ──
   const handleAgregarPropuesta = () => {
-    setMostrarOpciones(false);
-    setPropServicio(contacto?.servicio || '');
-    setPropPrecio('');
-    setPropDescripcion('');
-    setErrorPropuesta(null);
-    setPropAnalizando(false);
-    setPropErrorIA(null);
-    setPropAnalisis(null);
-    setPropServicioId(null);
-    setPropContexto('');
-    setPropRespuestas({});
-    setPropTextosOtro({});
-    setPropSelectorAbierto(false);
-    // 👇 mismos campos que CrearSolicitud.js, reiniciados en cada apertura
-    setPropEmergencia(false);
-    setPropTienePlazo(false);
-    setPropFechaLimite(null);
-    setPropMostrarPickerFecha(false);
-    setPropMostrarPickerHora(false);
-    setPropUsarOtraDireccion(false);
-    setPropDireccion('');
-    setPropImagenes([]);
-    setErrorImagenesProp(null);
-    setMostrarPropuesta(true);
+    setMostrarOpciones(false); setPropServicio(contacto?.servicio || ''); setPropPrecio(''); setPropDescripcion(''); setErrorPropuesta(null);
+    setPropAnalizando(false); setPropErrorIA(null); setPropAnalisis(null); setPropServicioId(null); setPropContexto('');
+    setPropRespuestas({}); setPropTextosOtro({}); setPropSelectorAbierto(false);
+    setPropEmergencia(false); setPropTienePlazo(false); setPropFechaLimite(null);
+    setPropMostrarPickerFecha(false); setPropMostrarPickerHora(false);
+    setPropUsarOtraDireccion(false); setPropDireccion(''); setPropImagenes([]); setErrorImagenesProp(null); setMostrarPropuesta(true);
   };
-
-  const cerrarPropuesta = () => {
-    if (enviandoPropuesta || propAnalizando || subiendoImagenesProp) return;
-    setMostrarPropuesta(false);
-  };
-
+  const cerrarPropuesta = () => { if (enviandoPropuesta || propAnalizando || subiendoImagenesProp) return; setMostrarPropuesta(false); };
   const invalidarAnalisisPropPrevio = useCallback(() => {
-    if (propAnalisis) {
-      setPropAnalisis(null);
-      setPropServicioId(null);
-      setPropContexto('');
-      setPropRespuestas({});
-      setPropTextosOtro({});
-    }
+    if (propAnalisis) { setPropAnalisis(null); setPropServicioId(null); setPropContexto(''); setPropRespuestas({}); setPropTextosOtro({}); }
   }, [propAnalisis]);
+  const seleccionarRespuestaProp = useCallback((idx, valor) => { setPropRespuestas((prev) => ({ ...prev, [idx]: valor })); }, []);
+  const cambiarTextoOtroProp = useCallback((idx, txt) => { setPropTextosOtro((prev) => ({ ...prev, [idx]: txt })); }, []);
+  const onCambiarPropEmergencia = useCallback((esEmergencia) => { setPropEmergencia(esEmergencia); if (esEmergencia) { setPropTienePlazo(true); setPropFechaLimite(new Date()); } }, []);
+  const onCambiarPropFecha = useCallback((event, fechaSeleccionada) => { setPropMostrarPickerFecha(Platform.OS === 'ios'); if (event.type === 'dismissed' || !fechaSeleccionada) return; setPropFechaLimite((prev) => { const base = prev ? new Date(prev) : new Date(); base.setFullYear(fechaSeleccionada.getFullYear(), fechaSeleccionada.getMonth(), fechaSeleccionada.getDate()); return base; }); }, []);
+  const onCambiarPropHora = useCallback((event, horaSeleccionada) => { setPropMostrarPickerHora(Platform.OS === 'ios'); if (event.type === 'dismissed' || !horaSeleccionada) return; setPropFechaLimite((prev) => { const base = prev ? new Date(prev) : new Date(); base.setHours(horaSeleccionada.getHours(), horaSeleccionada.getMinutes(), 0, 0); return base; }); }, []);
 
-  const seleccionarRespuestaProp = useCallback((idx, valor) => {
-    setPropRespuestas((prev) => ({ ...prev, [idx]: valor }));
-  }, []);
-
-  const cambiarTextoOtroProp = useCallback((idx, txt) => {
-    setPropTextosOtro((prev) => ({ ...prev, [idx]: txt }));
-  }, []);
-
-  // 👇 Emergencia: igual que en CrearSolicitud.js, se elige ANTES de
-  // analizar y fuerza el plazo a "ahora mismo".
-  const onCambiarPropEmergencia = useCallback((esEmergencia) => {
-    setPropEmergencia(esEmergencia);
-    if (esEmergencia) {
-      setPropTienePlazo(true);
-      setPropFechaLimite(new Date());
-    }
-  }, []);
-
-  const onCambiarPropFecha = useCallback((event, fechaSeleccionada) => {
-    setPropMostrarPickerFecha(Platform.OS === 'ios');
-    if (event.type === 'dismissed' || !fechaSeleccionada) return;
-    setPropFechaLimite((prev) => {
-      const base = prev ? new Date(prev) : new Date();
-      base.setFullYear(fechaSeleccionada.getFullYear(), fechaSeleccionada.getMonth(), fechaSeleccionada.getDate());
-      return base;
-    });
-  }, []);
-
-  const onCambiarPropHora = useCallback((event, horaSeleccionada) => {
-    setPropMostrarPickerHora(Platform.OS === 'ios');
-    if (event.type === 'dismissed' || !horaSeleccionada) return;
-    setPropFechaLimite((prev) => {
-      const base = prev ? new Date(prev) : new Date();
-      base.setHours(horaSeleccionada.getHours(), horaSeleccionada.getMinutes(), 0, 0);
-      return base;
-    });
-  }, []);
-
-  // ── Fotos de la propuesta (mismo patrón que CrearSolicitud.js) ──────
+  // ── Fotos de la propuesta ──
   const agregarImagenesPropuestaGaleria = async () => {
     setErrorImagenesProp(null);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      setErrorImagenesProp('Necesitamos permiso para acceder a tus fotos.');
-      return;
-    }
-    const resultado = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-      allowsMultipleSelection: true,
-      selectionLimit: MAX_IMAGENES_PROPUESTA,
-    });
-    if (!resultado.canceled && resultado.assets?.length) {
-      setPropImagenes((prev) => [...prev, ...resultado.assets].slice(0, MAX_IMAGENES_PROPUESTA));
-    }
+    if (status !== 'granted') { setErrorImagenesProp('Necesitamos permiso para acceder a tus fotos.'); return; }
+    const resultado = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7, allowsMultipleSelection: true, selectionLimit: MAX_IMAGENES_PROPUESTA });
+    if (!resultado.canceled && resultado.assets?.length) setPropImagenes((prev) => [...prev, ...resultado.assets].slice(0, MAX_IMAGENES_PROPUESTA));
   };
-
   const tomarFotoPropuesta = async () => {
     setErrorImagenesProp(null);
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      setErrorImagenesProp('Necesitamos permiso para usar la cámara.');
-      return;
-    }
+    if (status !== 'granted') { setErrorImagenesProp('Necesitamos permiso para usar la cámara.'); return; }
     const resultado = await ImagePicker.launchCameraAsync({ quality: 0.7 });
-    if (!resultado.canceled && resultado.assets?.length) {
-      setPropImagenes((prev) => [...prev, resultado.assets[0]].slice(0, MAX_IMAGENES_PROPUESTA));
-    }
+    if (!resultado.canceled && resultado.assets?.length) setPropImagenes((prev) => [...prev, resultado.assets[0]].slice(0, MAX_IMAGENES_PROPUESTA));
   };
+  const quitarImagenPropuesta = (idx) => { setPropImagenes((prev) => prev.filter((_, i) => i !== idx)); };
 
-  const quitarImagenPropuesta = (idx) => {
-    setPropImagenes((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  // Sube las fotos DESPUÉS de crear el mensaje de propuesta, ya con su id
-  // real, y devuelve las URLs subidas (para reflejarlas en el chat sin
-  // tener que recargar todo). TODO: ajustá el endpoint si el tuyo se llama
-  // distinto (acá asumo POST /chat/mensaje/propuesta-imagen con
-  // {file, mensajeId, orden}).
+  // ── Subir imágenes de propuesta ──
   const subirImagenesPropuesta = async (idMensaje) => {
     if (propImagenes.length === 0) return [];
     setSubiendoImagenesProp(true);
@@ -860,284 +535,97 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
       for (let i = 0; i < propImagenes.length; i++) {
         const img = propImagenes[i];
         const formData = new FormData();
-
-        if (Platform.OS === 'web') {
-          const respuestaBlob = await fetch(img.uri);
-          const blob = await respuestaBlob.blob();
-          formData.append('file', blob, img.fileName || `foto_${i}.jpg`);
-        } else {
-          formData.append('file', {
-            uri: img.uri,
-            name: img.fileName || `foto_${i}.jpg`,
-            type: img.mimeType || 'image/jpeg',
-          });
-        }
-        formData.append('mensajeId', idMensaje);
-        formData.append('orden', String(i));
-
+        if (Platform.OS === 'web') { const respuestaBlob = await fetch(img.uri); const blob = await respuestaBlob.blob(); formData.append('file', blob, img.fileName || `foto_${i}.jpg`); }
+        else { formData.append('file', { uri: img.uri, name: img.fileName || `foto_${i}.jpg`, type: img.mimeType || 'image/jpeg' }); }
+        formData.append('mensajeId', idMensaje); formData.append('orden', String(i));
         try {
-          const resp = await fetch(`${API_BASE_URL}/chat/mensaje/propuesta-imagen`, {
-            method: 'POST',
-            body: formData,
-          });
-          if (resp.ok) {
-            const data = await resp.json();
-            if (data?.url) urlsSubidas.push(data.url);
-          } else {
-            console.error(`No se pudo subir la imagen ${i + 1} de la propuesta`);
-          }
-        } catch (e) {
-          console.error('Error al subir una imagen de la propuesta:', e);
-        }
+          const resp = await fetch(`${API_BASE_URL}/chat/mensaje/propuesta-imagen`, { method: 'POST', body: formData });
+          if (resp.ok) { const data = await resp.json(); if (data?.url) urlsSubidas.push(data.url); }
+          else console.error(`No se pudo subir la imagen ${i + 1} de la propuesta`);
+        } catch (e) { console.error('Error al subir una imagen de la propuesta:', e); }
       }
-    } finally {
-      setSubiendoImagenesProp(false);
-    }
+    } finally { setSubiendoImagenesProp(false); }
     return urlsSubidas;
   };
 
+  // ── Enviar propuesta ──
   const enviarPropuesta = async () => {
     if (enviandoPropuesta || propAnalizando || propNecesitaAclaracion) return;
-
     const servicio = propServicio.trim();
     const precioNum = Number(propPrecio);
-
-    if (!servicio) {
-      setErrorPropuesta('Contá qué servicio le vas a proponer.');
-      return;
-    }
-    if (!propPrecio || isNaN(precioNum) || precioNum <= 0) {
-      setErrorPropuesta('Ingresá un precio válido.');
-      return;
-    }
-    if (propUsarOtraDireccion && !propDireccion.trim()) {
-      setErrorPropuesta('Ingresá la dirección del trabajo, o volvé a usar tu dirección predeterminada.');
-      return;
-    }
-    if (!usuario?.id || (!chatId && (!usuario?.idCliente || !contacto?.idTrabajador))) {
-      setErrorPropuesta('Faltan datos para enviar la propuesta.');
-      return;
-    }
-
-    // 👇 Mismos datos "estructurados" que manda CrearSolicitud.js al backend:
-    // emergencia, fecha/hora del plazo y dirección del trabajo.
+    if (!servicio) { setErrorPropuesta('Contá qué servicio le vas a proponer.'); return; }
+    if (!propPrecio || isNaN(precioNum) || precioNum <= 0) { setErrorPropuesta('Ingresá un precio válido.'); return; }
+    if (propUsarOtraDireccion && !propDireccion.trim()) { setErrorPropuesta('Ingresá la dirección del trabajo, o volvé a usar tu dirección predeterminada.'); return; }
+    if (!usuario?.id || (!chatId && (!usuario?.idCliente || !contacto?.idTrabajador))) { setErrorPropuesta('Faltan datos para enviar la propuesta.'); return; }
     const datosExtra = {
       emergencia: propEmergencia,
-      fechaRequerida: propTienePlazo && propFechaLimite
-        ? propFechaLimite.toISOString().slice(0, 10)
-        : null,
-      horarioRequerido: propTienePlazo && propFechaLimite
-        ? propFechaLimite.toTimeString().slice(0, 5)
-        : null,
-      direccion: propUsarOtraDireccion
-        ? propDireccion.trim()
-        : (usuario?.direccion ?? null),
+      fechaRequerida: propTienePlazo && propFechaLimite ? propFechaLimite.toISOString().slice(0, 10) : null,
+      horarioRequerido: propTienePlazo && propFechaLimite ? propFechaLimite.toTimeString().slice(0, 5) : null,
+      direccion: propUsarOtraDireccion ? propDireccion.trim() : (usuario?.direccion ?? null),
     };
-
     const contenido = propDescripcion.trim() || `Propuesta de servicio: ${servicio}`;
     const idTemp = `local-${Date.now()}`;
-    const nuevoLocal = {
-      id: idTemp,
-      tipo: 'servicio',
-      autor: 'cliente',
-      texto: contenido,
-      servicio,
-      precio: precioNum,
-      estado: 'Pendiente',
-      ...datosExtra,
-      imagenes: [],
-      hora: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setMensajes((prev) => [...prev, nuevoLocal]);
-    setEnviandoPropuesta(true);
-    setErrorPropuesta(null);
+    const nuevoLocal = { id: idTemp, tipo: 'servicio', autor: 'cliente', texto: contenido, servicio, precio: precioNum, estado: 'Pendiente', ...datosExtra, imagenes: [], hora: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) };
+    setMensajes((prev) => [...prev, nuevoLocal]); setEnviandoPropuesta(true); setErrorPropuesta(null);
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 60);
-
     try {
       const body = chatId
-        ? {
-            chatId,
-            enviadorId: usuario.id,
-            contenido,
-            tipo: 'PROPUESTA',
-            servicio_nombre: servicio,
-            servicioId: propServicioId ?? undefined,
-            precio: precioNum,
-            ...datosExtra,
-          }
-        : {
-            idCliente: usuario.idCliente,
-            idTrabajador: contacto.idTrabajador,
-            enviadorId: usuario.id,
-            contenido,
-            tipo: 'PROPUESTA',
-            servicio_nombre: servicio,
-            servicioId: propServicioId ?? undefined,
-            precio: precioNum,
-            ...datosExtra,
-          };
-
-      const res = await fetch(`${API_BASE_URL}/chat/mensaje`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+        ? { chatId, enviadorId: usuario.id, contenido, tipo: 'PROPUESTA', servicio_nombre: servicio, servicioId: propServicioId ?? undefined, precio: precioNum, ...datosExtra }
+        : { idCliente: usuario.idCliente, idTrabajador: contacto.idTrabajador, enviadorId: usuario.id, contenido, tipo: 'PROPUESTA', servicio_nombre: servicio, servicioId: propServicioId ?? undefined, precio: precioNum, ...datosExtra };
+      const res = await fetch(`${API_BASE_URL}/chat/mensaje`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error('Respuesta no OK del servidor');
       const guardado = await res.json();
-
-      if (!chatId && guardado.chat_id) {
-        setChatId(guardado.chat_id);
-      }
-
+      if (!chatId && guardado.chat_id) setChatId(guardado.chat_id);
       const idCreado = String(guardado.id);
-      setMensajes((prev) =>
-        prev.map((m) =>
-          m.id === idTemp
-            ? {
-                ...m,
-                id: idCreado,
-                hora: mapearMensaje(guardado, usuario.id).hora,
-                estado: guardado.ESTADO_OFERTA ?? 'Pendiente',
-              }
-            : m
-        )
-      );
-
-      // 👇 Las fotos se suben recién ahora, con el id real del mensaje ya
-      // creado (mismo criterio que subirImagenes en CrearSolicitud.js: la
-      // solicitud/propuesta ya existe, las fotos son un plus asociado).
-      if (propImagenes.length > 0) {
-        const urls = await subirImagenesPropuesta(idCreado);
-        setMensajes((prev) =>
-          prev.map((m) => (m.id === idCreado ? { ...m, imagenes: urls } : m))
-        );
-      }
-
-      setMostrarPropuesta(false);
-      setPropServicio('');
-      setPropPrecio('');
-      setPropDescripcion('');
-      setPropAnalisis(null);
-      setPropServicioId(null);
-      setPropContexto('');
-      setPropRespuestas({});
-      setPropTextosOtro({});
-      setPropEmergencia(false);
-      setPropTienePlazo(false);
-      setPropFechaLimite(null);
-      setPropUsarOtraDireccion(false);
-      setPropDireccion('');
-      setPropImagenes([]);
-    } catch (err) {
-      console.error('Error al enviar propuesta:', err);
-      setMensajes((prev) =>
-        prev.map((m) => (m.id === idTemp ? { ...m, fallo: true } : m))
-      );
-      setErrorPropuesta('No se pudo enviar la propuesta. Probá de nuevo.');
-    } finally {
-      setEnviandoPropuesta(false);
-    }
+      setMensajes((prev) => prev.map((m) => (m.id === idTemp ? { ...m, id: idCreado, hora: mapearMensaje(guardado, usuario.id).hora, estado: guardado.ESTADO_OFERTA ?? 'Pendiente' } : m)));
+      if (propImagenes.length > 0) { const urls = await subirImagenesPropuesta(idCreado); setMensajes((prev) => prev.map((m) => (m.id === idCreado ? { ...m, imagenes: urls } : m))); }
+      setMostrarPropuesta(false); setPropServicio(''); setPropPrecio(''); setPropDescripcion(''); setPropAnalisis(null); setPropServicioId(null); setPropContexto(''); setPropRespuestas({}); setPropTextosOtro({}); setPropEmergencia(false); setPropTienePlazo(false); setPropFechaLimite(null); setPropUsarOtraDireccion(false); setPropDireccion(''); setPropImagenes([]);
+    } catch (err) { console.error('Error al enviar propuesta:', err); setMensajes((prev) => prev.map((m) => (m.id === idTemp ? { ...m, fallo: true } : m))); setErrorPropuesta('No se pudo enviar la propuesta. Probá de nuevo.'); }
+    finally { setEnviandoPropuesta(false); }
   };
 
+  // ── Analizar propuesta con IA ──
   const analizarPropuestaConIA = useCallback(async (descripcionExtra = '') => {
     if (!propDescripcionValida && !descripcionExtra) return;
-    setPropAnalizando(true);
-    setPropErrorIA(null);
-
+    setPropAnalizando(true); setPropErrorIA(null);
     const base = descripcionExtra ? (propContexto || propDescripcion.trim()) : propDescripcion.trim();
     const textoFinal = descripcionExtra ? `${base} — Aclaración: ${descripcionExtra.trim()}` : base;
-
     try {
-      const resp = await fetch(`${API_BASE_URL}/solicitud/analizar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ descripcionOriginal: textoFinal }),
-      });
-
+      const resp = await fetch(`${API_BASE_URL}/solicitud/analizar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ descripcionOriginal: textoFinal }) });
       const json = await resp.json();
       if (!resp.ok || !json.ok) throw new Error(json.message || 'No se pudo analizar la propuesta');
-
       const data = json.data;
-      setPropAnalisis(null);
-      setPropRespuestas({});
-      setPropTextosOtro({});
-      setPropAnalisis(data);
-      setPropServicioId(data.servicioId);
+      setPropAnalisis(null); setPropRespuestas({}); setPropTextosOtro({}); setPropAnalisis(data); setPropServicioId(data.servicioId);
       setPropServicio((prev) => data.servicioId ? (data.servicios?.find((s) => s.id === data.servicioId)?.nombre ?? prev) : prev);
       if (data.descripcionMejorada) setPropDescripcion(data.descripcionMejorada);
       if (data.precioSugerido != null) setPropPrecio(String(data.precioSugerido));
-      setPropContexto(textoFinal);
-      // 👇 igual que en CrearSolicitud.js: no se le "baja" la emergencia
-      // al cliente si ya la había marcado a mano.
-      setPropEmergencia((prev) => prev || !!data.emergencia);
-    } catch (err) {
-      setPropErrorIA(err.message || 'Ocurrió un error analizando la propuesta');
-    } finally {
-      setPropAnalizando(false);
-    }
+      setPropContexto(textoFinal); setPropEmergencia((prev) => prev || !!data.emergencia);
+    } catch (err) { setPropErrorIA(err.message || 'Ocurrió un error analizando la propuesta'); }
+    finally { setPropAnalizando(false); }
   }, [propDescripcionValida, propDescripcion, propContexto]);
 
   const confirmarRespuestasProp = useCallback(() => {
-    const txt = propPreguntasActuales
-      .map((p, idx) => {
-        const r = propRespuestas[idx];
-        const valor = r === OPCION_OTRO ? (propTextosOtro[idx] || '').trim() : r;
-        return `${p.pregunta} → ${valor}`;
-      })
-      .join(' | ');
+    const txt = propPreguntasActuales.map((p, idx) => { const r = propRespuestas[idx]; const valor = r === OPCION_OTRO ? (propTextosOtro[idx] || '').trim() : r; return `${p.pregunta} → ${valor}`; }).join(' | ');
     if (!txt.trim()) return;
     analizarPropuestaConIA(txt);
   }, [propPreguntasActuales, propRespuestas, propTextosOtro, analizarPropuestaConIA]);
 
-  // ── Detalle de una propuesta ya enviada (tarjeta "Ver detalle") ─────
+  // ── Detalle de propuesta ──
   const abrirDetalleServicio = (item) => setServicioDetalle(item);
   const cerrarDetalleServicio = () => setServicioDetalle(null);
 
-  // ── Render ────────────────────────────────────────────────────────
-
+  // ── Render ──
   const renderBurbujaTexto = (item) => {
     const esCliente = item.autor === 'cliente';
     return (
-      <TouchableOpacity
-        activeOpacity={esCliente && !item.fallo ? 0.85 : 1}
-        onLongPress={() => abrirEdicion(item)}
-        style={[
-          styles.filaMensaje,
-          { justifyContent: esCliente ? 'flex-end' : 'flex-start' },
-        ]}
-      >
+      <TouchableOpacity activeOpacity={esCliente && !item.fallo ? 0.85 : 1} onLongPress={() => abrirEdicion(item)} style={[styles.filaMensaje, { justifyContent: esCliente ? 'flex-end' : 'flex-start' }]}>
         {!esCliente && <AvatarMini contacto={contacto} />}
-        <View
-          style={[
-            styles.burbuja,
-            esCliente ? styles.burbujaCliente : styles.burbujaTrabajador,
-            item.fallo && styles.burbujaFallo,
-          ]}
-        >
-          <Text style={esCliente ? styles.textoBurbujaCliente : styles.textoBurbujaTrabajador}>
-            {item.texto}
-          </Text>
+        <View style={[styles.burbuja, esCliente ? styles.burbujaCliente : styles.burbujaTrabajador, item.fallo && styles.burbujaFallo]}>
+          <Text style={esCliente ? styles.textoBurbujaCliente : styles.textoBurbujaTrabajador}>{item.texto}</Text>
           <View style={styles.filaHora}>
-            <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>
-              {item.fallo ? 'No se pudo enviar' : item.hora}{item.editado ? ' · Editado' : ''}
-            </Text>
-            {esCliente && !item.fallo && (
-              <Ionicons
-                name={item.leido ? 'checkmark-done' : 'checkmark'}
-                size={14}
-                color="rgba(255,255,255,0.85)"
-                style={{ marginLeft: 4 }}
-              />
-            )}
-            {item.fallo && (
-              <Ionicons
-                name="alert-circle"
-                size={13}
-                color="#FFD1D1"
-                style={{ marginLeft: 4 }}
-              />
-            )}
+            <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>{item.fallo ? 'No se pudo enviar' : item.hora}{item.editado ? ' · Editado' : ''}</Text>
+            {esCliente && !item.fallo && (<Ionicons name={item.leido ? 'checkmark-done' : 'checkmark'} size={14} color="rgba(255,255,255,0.85)" style={{ marginLeft: 4 }} />)}
+            {item.fallo && (<Ionicons name="alert-circle" size={13} color="#FFD1D1" style={{ marginLeft: 4 }} />)}
           </View>
         </View>
       </TouchableOpacity>
@@ -1147,39 +635,14 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
   const renderBurbujaVideo = (item) => {
     const esCliente = item.autor === 'cliente';
     return (
-      <View
-        style={[
-          styles.filaMensaje,
-          { justifyContent: esCliente ? 'flex-end' : 'flex-start' },
-        ]}
-      >
+      <View style={[styles.filaMensaje, { justifyContent: esCliente ? 'flex-end' : 'flex-start' }]}>
         {!esCliente && <AvatarMini contacto={contacto} />}
-        <View
-          style={[
-            styles.burbujaImagenWrap,
-            esCliente ? styles.burbujaImagenCliente : styles.burbujaImagenTrabajador,
-            item.fallo && styles.burbujaFallo,
-          ]}
-        >
-          <Video
-            source={{ uri: item.texto }}
-            style={styles.imagenChat}
-            resizeMode={ResizeMode.COVER}
-            useNativeControls
-            isLooping={false}
-          />
+        <View style={[styles.burbujaImagenWrap, esCliente ? styles.burbujaImagenCliente : styles.burbujaImagenTrabajador, item.fallo && styles.burbujaFallo]}>
+          <Video source={{ uri: item.texto }} style={styles.imagenChat} resizeMode={ResizeMode.COVER} useNativeControls isLooping={false} />
           <View style={[styles.filaHora, { paddingHorizontal: 4, paddingTop: 4 }]}>
-            <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>
-              {item.fallo ? 'No se pudo enviar' : item.hora}
-            </Text>
-            {esCliente && !item.fallo && (
-              <Ionicons
-                name={item.leido ? 'checkmark-done' : 'checkmark'}
-                size={14}
-                color={esCliente ? 'rgba(255,255,255,0.85)' : '#A0AEC0'}
-                style={{ marginLeft: 4 }}
-              />
-            )}
+            <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>{item.fallo ? 'No se pudo enviar' : item.hora}</Text>
+            {esCliente && !item.fallo && (<Ionicons name={item.leido ? 'checkmark-done' : 'checkmark'} size={14} color={esCliente ? 'rgba(255,255,255,0.85)' : '#A0AEC0'} style={{ marginLeft: 4 }} />)}
+            {item.fallo && (<Ionicons name="alert-circle" size={13} color="#FFD1D1" style={{ marginLeft: 4 }} />)}
           </View>
         </View>
       </View>
@@ -1189,46 +652,14 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
   const renderBurbujaImagen = (item) => {
     const esCliente = item.autor === 'cliente';
     return (
-      <View
-        style={[
-          styles.filaMensaje,
-          { justifyContent: esCliente ? 'flex-end' : 'flex-start' },
-        ]}
-      >
+      <View style={[styles.filaMensaje, { justifyContent: esCliente ? 'flex-end' : 'flex-start' }]}>
         {!esCliente && <AvatarMini contacto={contacto} />}
-        <TouchableOpacity
-          activeOpacity={0.9}
-          style={[
-            styles.burbujaImagenWrap,
-            esCliente ? styles.burbujaImagenCliente : styles.burbujaImagenTrabajador,
-            item.fallo && styles.burbujaFallo,
-          ]}
-        >
-          <Image
-            source={{ uri: item.texto }}
-            style={styles.imagenChat}
-            resizeMode="cover"
-          />
+        <TouchableOpacity activeOpacity={0.9} style={[styles.burbujaImagenWrap, esCliente ? styles.burbujaImagenCliente : styles.burbujaImagenTrabajador, item.fallo && styles.burbujaFallo]}>
+          <Image source={{ uri: item.texto }} style={styles.imagenChat} resizeMode="cover" />
           <View style={[styles.filaHora, { paddingHorizontal: 4, paddingTop: 4 }]}>
-            <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>
-              {item.fallo ? 'No se pudo enviar' : item.hora}
-            </Text>
-            {esCliente && !item.fallo && (
-              <Ionicons
-                name={item.leido ? 'checkmark-done' : 'checkmark'}
-                size={14}
-                color={esCliente ? 'rgba(255,255,255,0.85)' : '#A0AEC0'}
-                style={{ marginLeft: 4 }}
-              />
-            )}
-            {item.fallo && (
-              <Ionicons
-                name="alert-circle"
-                size={13}
-                color="#FFD1D1"
-                style={{ marginLeft: 4 }}
-              />
-            )}
+            <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>{item.fallo ? 'No se pudo enviar' : item.hora}</Text>
+            {esCliente && !item.fallo && (<Ionicons name={item.leido ? 'checkmark-done' : 'checkmark'} size={14} color={esCliente ? 'rgba(255,255,255,0.85)' : '#A0AEC0'} style={{ marginLeft: 4 }} />)}
+            {item.fallo && (<Ionicons name="alert-circle" size={13} color="#FFD1D1" style={{ marginLeft: 4 }} />)}
           </View>
         </TouchableOpacity>
       </View>
@@ -1238,12 +669,7 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
   const renderTarjetaServicio = (item) => {
     const esCliente = item.autor === 'cliente';
     return (
-      <View
-        style={[
-          styles.filaMensaje,
-          { justifyContent: esCliente ? 'flex-end' : 'flex-start' },
-        ]}
-      >
+      <View style={[styles.filaMensaje, { justifyContent: esCliente ? 'flex-end' : 'flex-start' }]}>
         {!esCliente && <AvatarMini contacto={contacto} />}
         <View style={[styles.tarjetaServicio, item.fallo && styles.burbujaFallo]}>
           <View style={styles.tarjetaServicioBadgeRow}>
@@ -1258,34 +684,17 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
               </View>
             )}
           </View>
-
           <Text style={styles.tarjetaServicioLabel}>Servicio</Text>
           <Text style={styles.tarjetaServicioValor}>{item.servicio ?? contacto?.servicio}</Text>
-
-          {!!item.texto && item.texto !== `Propuesta de servicio: ${item.servicio}` && (
-            <>
-              <Text style={[styles.tarjetaServicioLabel, { marginTop: 10 }]}>Detalle</Text>
-              <Text style={styles.tarjetaServicioDetalle}>{item.texto}</Text>
-            </>
-          )}
-
+          {!!item.texto && item.texto !== `Propuesta de servicio: ${item.servicio}` && (<><Text style={[styles.tarjetaServicioLabel, { marginTop: 10 }]}>Detalle</Text><Text style={styles.tarjetaServicioDetalle}>{item.texto}</Text></>)}
           <View style={styles.tarjetaServicioDivider} />
-
           <Text style={styles.tarjetaServicioLabel}>Precio estimado</Text>
           <Text style={styles.tarjetaServicioPrecio}>${Number(item.precio).toLocaleString('es-AR')}</Text>
-
-          <TouchableOpacity
-            style={styles.tarjetaServicioBoton}
-            activeOpacity={0.85}
-            onPress={() => abrirDetalleServicio(item)}
-          >
+          <TouchableOpacity style={styles.tarjetaServicioBoton} activeOpacity={0.85} onPress={() => abrirDetalleServicio(item)}>
             <Text style={styles.tarjetaServicioBotonText}>Ver detalle</Text>
             <Ionicons name="arrow-forward" size={15} color="#fff" />
           </TouchableOpacity>
-
-          <Text style={styles.horaTrabajadorTexto}>
-            {item.fallo ? 'No se pudo enviar' : item.hora}
-          </Text>
+          <Text style={styles.horaTrabajadorTexto}>{item.fallo ? 'No se pudo enviar' : item.hora}</Text>
         </View>
       </View>
     );
@@ -1299,24 +708,115 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
     return renderBurbujaTexto(item);
   };
 
+  // Componentes movidos dentro del componente principal
+  const Toggle2Opciones = ({ opciones, activo, onChange, colorActivo = BLUE_DARK }) => (
+    <View style={styles.toggle2Track}>
+      {opciones.map((opt, i) => {
+        const seleccionado = activo === i;
+        return (
+          <TouchableOpacity key={opt} style={[styles.toggle2Btn, seleccionado && { backgroundColor: colorActivo }]} onPress={() => onChange(i)} activeOpacity={0.8}>
+            <Text style={[styles.toggle2Text, seleccionado && styles.toggle2TextActivo]}>{opt}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+
+  const ImagenPropuestaThumb = ({ uri, onQuitar, deshabilitado }) => (
+    <View style={styles.propImagenThumbWrap}>
+      <Image source={{ uri }} style={styles.propImagenThumb} />
+      <TouchableOpacity style={styles.propImagenThumbQuitar} onPress={onQuitar} disabled={deshabilitado} hitSlop={6}>
+        <Ionicons name="close" size={12} color="#fff" />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const BurbujaAudio = ({ item, esCliente, contacto }) => {
+    const [reproduciendo, setReproduciendo] = useState(false);
+    const [cargando, setCargando] = useState(false);
+    const [posicion, setPosicion] = useState(0);
+    const [duracion, setDuracion] = useState((item.duracionAudio || 0) * 1000);
+    const sonidoRef = useRef(null);
+
+    useEffect(() => {
+      (async () => {
+        try {
+          await Audio.requestPermissionsAsync();
+          await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        } catch (e) {}
+      })();
+    }, []);
+
+    const onStatusUpdate = useCallback((status) => {
+      if (!status.isLoaded) return;
+      setPosicion(status.positionMillis || 0);
+      if (status.durationMillis) setDuracion(status.durationMillis);
+      setReproduciendo(status.isPlaying);
+      if (status.didJustFinish) { setReproduciendo(false); setPosicion(0); }
+    }, []);
+
+    const toggleReproducir = async () => {
+      try {
+        if (!sonidoRef.current) {
+          setCargando(true);
+          await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+          const { sound } = await Audio.Sound.createAsync({ uri: item.texto }, { progressUpdateIntervalMillis: 200 }, onStatusUpdate);
+          sonidoRef.current = sound; setCargando(false); await sound.playAsync(); return;
+        }
+        const status = await sonidoRef.current.getStatusAsync();
+        if (!status.isLoaded) return;
+        if (status.isPlaying) { await sonidoRef.current.pauseAsync(); }
+        else { if (status.didJustFinish || status.positionMillis >= (status.durationMillis || 0)) { await sonidoRef.current.setPositionAsync(0); } await sonidoRef.current.playAsync(); }
+      } catch (err) { console.error('Error al reproducir audio:', err); setCargando(false); }
+    };
+
+    useEffect(() => { return () => { sonidoRef.current?.unloadAsync(); }; }, []);
+
+    const progresoPct = duracion > 0 ? Math.min(100, (posicion / duracion) * 100) : 0;
+
+    return (
+      <View style={[styles.filaMensaje, { justifyContent: esCliente ? 'flex-end' : 'flex-start' }]}>
+        {!esCliente && <AvatarMini contacto={contacto} />}
+        <View style={[styles.burbujaAudio, esCliente ? styles.burbujaCliente : styles.burbujaTrabajador, item.fallo && styles.burbujaFallo]}>
+          <TouchableOpacity onPress={toggleReproducir} style={styles.audioPlayBtn} disabled={cargando}>
+            {cargando ? (<ActivityIndicator size="small" color={esCliente ? '#fff' : BLUE_DARK} />) : (<Ionicons name={reproduciendo ? 'pause' : 'play'} size={18} color={esCliente ? '#fff' : BLUE_DARK} />)}
+          </TouchableOpacity>
+          <View style={styles.audioOndaWrap}>
+            <View style={[styles.audioOndaFondo, { backgroundColor: esCliente ? 'rgba(255,255,255,0.35)' : 'rgba(21,101,216,0.18)' }]} />
+            <View style={[styles.audioOndaProgreso, { width: `${progresoPct}%`, backgroundColor: esCliente ? '#fff' : BLUE_DARK }]} />
+          </View>
+          <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>{formatearTiempoAudio(reproduciendo || posicion > 0 ? posicion : duracion)}</Text>
+          {item.fallo && <Ionicons name="alert-circle" size={13} color="#FFD1D1" style={{ marginLeft: 4 }} />}
+        </View>
+      </View>
+    );
+  };
+
+  const AvatarMini = ({ contacto }) => {
+    return contacto?.foto ? (
+      <Image source={{ uri: contacto.foto }} style={styles.avatarMini} />
+    ) : (
+      <View style={styles.avatarMiniPlaceholder}>
+        <Text style={styles.avatarMiniTexto}>{obtenerIniciales(contacto?.nombre)}</Text>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor={STATUS_BAR} />
       <Header />
 
-      <View
-        style={styles.chatHeader}
-        onLayout={(e) => setAlturaHeader(e.nativeEvent.layout.height)}
-      >
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
-        >
+      <View style={styles.chatHeader} onLayout={(e) => setAlturaHeader(e.nativeEvent.layout.height)}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.7}>
           <Ionicons name="chevron-back" size={24} color="#fff" />
         </TouchableOpacity>
 
-        <View style={styles.chatHeaderAvatarWrap}>
+        <TouchableOpacity
+          style={styles.chatHeaderAvatarWrap}
+          onPress={() => navigation.navigate('PerfilTrabajadorParaCliente', { idTrabajador: contacto.idTrabajador })}
+          activeOpacity={0.7}
+        >
           {contacto?.foto ? (
             <Image source={{ uri: contacto.foto }} style={styles.chatHeaderAvatar} />
           ) : (
@@ -1325,30 +825,23 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
             </View>
           )}
           {contacto?.online && <View style={styles.onlineDot} />}
-        </View>
-
-        <View style={{ flex: 1, marginLeft: 10 }}>
-          <Text style={styles.chatHeaderNombre} numberOfLines={1}>{contacto?.nombre}</Text>
-          <Text style={styles.chatHeaderEstado}>
-            {contacto?.online ? 'En línea' : 'Desconectado'}
-            {contacto?.servicio ? ` · ${contacto.servicio}` : ''}
-          </Text>
-        </View>
+        </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.headerIconButton}
+          style={{ flex: 1, marginLeft: 10 }}
+          onPress={() => navigation.navigate('PerfilTrabajadorParaCliente', { idTrabajador: contacto.idTrabajador })}
           activeOpacity={0.7}
-          onPress={() => setMostrarMenuHeader(true)}
         >
+          <Text style={styles.chatHeaderNombre} numberOfLines={1}>{contacto?.nombre}</Text>
+          <Text style={styles.chatHeaderEstado}>{contacto?.online ? 'En línea' : 'Desconectado'}{contacto?.servicio ? ` · ${contacto.servicio}` : ''}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.headerIconButton} activeOpacity={0.7} onPress={() => setMostrarMenuHeader(true)}>
           <Ionicons name="ellipsis-vertical" size={18} color="#fff" />
         </TouchableOpacity>
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? alturaHeader : 0}
-      >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? alturaHeader : 0}>
         {cargando ? (
           <View style={styles.estadoWrap}>
             <ActivityIndicator size="large" color={BLUE} />
@@ -1364,11 +857,7 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
           </View>
         ) : (
           <FlatList
-            onContentSizeChange={() => {
-              if (mensajes.length > 0) {
-                listRef.current?.scrollToEnd({ animated: false });
-              }
-            }}
+            onContentSizeChange={() => { if (mensajes.length > 0) { listRef.current?.scrollToEnd({ animated: false }); } }}
             ref={listRef}
             data={mensajes}
             keyExtractor={(item) => item.id}
@@ -1391,19 +880,11 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
           />
         )}
 
-        {/* Barra de entrada */}
-        <View
-          style={[
-            styles.inputBar,
-            { paddingBottom: tecladoVisible ? 10 : Math.max(insets.bottom, 10) },
-          ]}
-        >
+        <View style={[styles.inputBar, { paddingBottom: tecladoVisible ? 10 : Math.max(insets.bottom, 10) }]}>
           {grabando ? (
             <View style={styles.grabandoRow}>
               <View style={styles.grabandoDot} />
-              <Text style={styles.grabandoTexto}>
-                {Math.floor(segundosGrabando / 60)}:{String(segundosGrabando % 60).padStart(2, '0')}
-              </Text>
+              <Text style={styles.grabandoTexto}>{Math.floor(segundosGrabando / 60)}:{String(segundosGrabando % 60).padStart(2, '0')}</Text>
               <View style={{ flex: 1 }} />
               <TouchableOpacity onPress={cancelarGrabacion} style={styles.grabandoCancelar}>
                 <Ionicons name="trash" size={18} color={DANGER} />
@@ -1414,47 +895,16 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
             </View>
           ) : (
             <>
-              <TouchableOpacity
-                style={styles.adjuntarButton}
-                activeOpacity={0.8}
-                onPress={() => setMostrarOpciones((v) => !v)}
-                disabled={subiendoArchivo}
-              >
-                {subiendoArchivo ? (
-                  <ActivityIndicator size="small" color={BLUE_DARK} />
-                ) : (
-                  <Ionicons name={mostrarOpciones ? 'close' : 'add'} size={22} color={BLUE_DARK} />
-                )}
+              <TouchableOpacity style={styles.adjuntarButton} activeOpacity={0.8} onPress={() => setMostrarOpciones((v) => !v)}>
+                {subiendoArchivo ? (<ActivityIndicator size="small" color={BLUE_DARK} />) : (<Ionicons name={mostrarOpciones ? 'close' : 'add'} size={22} color={BLUE_DARK} />)}
               </TouchableOpacity>
-
-              <TextInput
-                style={styles.textInput}
-                placeholder="Escribí un mensaje..."
-                placeholderTextColor="#9AA5B5"
-                value={texto}
-                onChangeText={setTexto}
-                multiline
-              />
-
+              <TextInput style={styles.textInput} placeholder="Escribí un mensaje..." placeholderTextColor="#9AA5B5" value={texto} onChangeText={setTexto} multiline />
               {texto.trim() ? (
-                <TouchableOpacity
-                  style={styles.enviarButton}
-                  onPress={enviarMensaje}
-                  activeOpacity={0.85}
-                  disabled={enviando}
-                >
-                  {enviando ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Ionicons name="send" size={17} color="#fff" />
-                  )}
+                <TouchableOpacity style={styles.enviarButton} onPress={enviarMensaje} activeOpacity={0.85} disabled={enviando}>
+                  {enviando ? (<ActivityIndicator size="small" color="#fff" />) : (<Ionicons name="send" size={17} color="#fff" />)}
                 </TouchableOpacity>
               ) : (
-                <TouchableOpacity
-                  style={styles.enviarButton}
-                  onPress={iniciarGrabacion}
-                  activeOpacity={0.85}
-                >
+                <TouchableOpacity style={styles.enviarButton} onPress={iniciarGrabacion} activeOpacity={0.85}>
                   <Ionicons name="mic" size={19} color="#fff" />
                 </TouchableOpacity>
               )}
@@ -1464,21 +914,12 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
       </KeyboardAvoidingView>
 
       {/* Menú de opciones del botón "+" */}
-      <Modal
-        visible={mostrarOpciones}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMostrarOpciones(false)}
-      >
+      <Modal visible={mostrarOpciones} transparent animationType="fade" onRequestClose={() => setMostrarOpciones(false)}>
         <TouchableWithoutFeedback onPress={() => setMostrarOpciones(false)}>
           <View style={styles.overlay}>
             <TouchableWithoutFeedback>
               <View style={styles.menuOpciones}>
-                <TouchableOpacity
-                  style={styles.opcionItem}
-                  activeOpacity={0.75}
-                  onPress={elegirDeGaleria}
-                >
+                <TouchableOpacity style={styles.opcionItem} activeOpacity={0.75} onPress={elegirDeGaleria}>
                   <View style={[styles.opcionIconoWrap, { backgroundColor: 'rgba(21,101,216,0.10)' }]}>
                     <Ionicons name="images" size={20} color={BLUE_DARK} />
                   </View>
@@ -1488,14 +929,8 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
                   </View>
                   <Ionicons name="chevron-forward" size={16} color="#C7D2E3" />
                 </TouchableOpacity>
-
                 <View style={styles.opcionDivider} />
-
-                <TouchableOpacity
-                  style={styles.opcionItem}
-                  activeOpacity={0.75}
-                  onPress={tomarFoto}
-                >
+                <TouchableOpacity style={styles.opcionItem} activeOpacity={0.75} onPress={tomarFoto}>
                   <View style={[styles.opcionIconoWrap, { backgroundColor: 'rgba(21,101,216,0.10)' }]}>
                     <Ionicons name="camera" size={20} color={BLUE_DARK} />
                   </View>
@@ -1505,14 +940,8 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
                   </View>
                   <Ionicons name="chevron-forward" size={16} color="#C7D2E3" />
                 </TouchableOpacity>
-
                 <View style={styles.opcionDivider} />
-
-                <TouchableOpacity
-                  style={styles.opcionItem}
-                  activeOpacity={0.75}
-                  onPress={elegirDocumento}
-                >
+                <TouchableOpacity style={styles.opcionItem} activeOpacity={0.75} onPress={elegirDocumento}>
                   <View style={[styles.opcionIconoWrap, { backgroundColor: 'rgba(21,101,216,0.10)' }]}>
                     <Ionicons name="document-attach" size={20} color={BLUE_DARK} />
                   </View>
@@ -1522,20 +951,14 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
                   </View>
                   <Ionicons name="chevron-forward" size={16} color="#C7D2E3" />
                 </TouchableOpacity>
-
                 <View style={styles.opcionDivider} />
-
-                <TouchableOpacity
-                  style={styles.opcionItem}
-                  activeOpacity={0.75}
-                  onPress={handleAgregarPropuesta}
-                >
+                <TouchableOpacity style={styles.opcionItem} activeOpacity={0.75} onPress={handleAgregarPropuesta}>
                   <View style={[styles.opcionIconoWrap, { backgroundColor: 'rgba(21,101,216,0.10)' }]}>
-                    <Ionicons name="hammer" size={20} color={BLUE_DARK} />
+                    <Ionicons name="pricetag" size={20} color={BLUE_DARK} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.opcionTitulo}>Enviar propuesta</Text>
-                    <Text style={styles.opcionSubtitulo}>Servicio y precio estimado</Text>
+                    <Text style={styles.opcionSubtitulo}>Mandá un presupuesto</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color="#C7D2E3" />
                 </TouchableOpacity>
@@ -1545,32 +968,19 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* Menú del header (⋮): por ahora solo "Vaciar chat" */}
-      <Modal
-        visible={mostrarMenuHeader}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMostrarMenuHeader(false)}
-      >
+      {/* Menú del header (⋮) */}
+      <Modal visible={mostrarMenuHeader} transparent animationType="fade" onRequestClose={() => setMostrarMenuHeader(false)}>
         <TouchableWithoutFeedback onPress={() => setMostrarMenuHeader(false)}>
           <View style={styles.overlay}>
             <TouchableWithoutFeedback>
-              <View style={[styles.menuOpciones, { marginTop: 60, marginBottom: 0, alignSelf: 'flex-end' }]}>
-                <TouchableOpacity
-                  style={styles.opcionItem}
-                  activeOpacity={0.75}
-                  onPress={() => {
-                    setMostrarMenuHeader(false);
-                    setMostrarConfirmVaciar(true);
-                  }}
-                  disabled={!chatId || mensajes.length === 0}
-                >
+              <View style={styles.menuOpciones}>
+                <TouchableOpacity style={styles.opcionItem} activeOpacity={0.75} onPress={() => { setMostrarMenuHeader(false); setMostrarConfirmVaciar(true); }}>
                   <View style={[styles.opcionIconoWrap, { backgroundColor: 'rgba(192,57,43,0.10)' }]}>
-                    <Ionicons name="trash" size={18} color={DANGER} />
+                    <Ionicons name="trash-outline" size={20} color={DANGER} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.opcionTitulo, { color: DANGER }]}>Vaciar chat</Text>
-                    <Text style={styles.opcionSubtitulo}>Borra todos los mensajes</Text>
+                    <Text style={styles.opcionTitulo}>Vaciar chat</Text>
+                    <Text style={styles.opcionSubtitulo}>Borrar todos los mensajes</Text>
                   </View>
                 </TouchableOpacity>
               </View>
@@ -1579,104 +989,34 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* Modal: confirmar vaciar chat */}
-      <Modal
-        visible={mostrarConfirmVaciar}
-        transparent
-        animationType="fade"
-        onRequestClose={() => !vaciandoChat && setMostrarConfirmVaciar(false)}
-      >
-        <View style={styles.overlay}>
-          <View style={styles.editarCard}>
-            <Text style={styles.propTitulo}>Vaciar chat</Text>
-            <Text style={styles.confirmVaciarTexto}>
-              Se van a borrar todos los mensajes de esta conversación. Esta acción no se puede deshacer.
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-              <TouchableOpacity
-                onPress={() => setMostrarConfirmVaciar(false)}
-                style={[styles.reintentarBtn, { flex: 1, backgroundColor: '#E9EDF5' }]}
-                disabled={vaciandoChat}
-              >
-                <Text style={[styles.reintentarBtnText, { color: '#5B6478' }]}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={vaciarChat}
-                style={[styles.reintentarBtn, { flex: 1, backgroundColor: DANGER }]}
-                disabled={vaciandoChat}
-              >
-                {vaciandoChat ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.reintentarBtnText}>Vaciar</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+      {/* Confirmación de vaciar chat */}
+      <Modal visible={mostrarConfirmVaciar} transparent animationType="fade" onRequestClose={() => setMostrarConfirmVaciar(false)}>
+        <TouchableWithoutFeedback onPress={() => setMostrarConfirmVaciar(false)}>
+          <View style={styles.overlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.menuOpciones}>
+                <View style={{ paddingVertical: 8 }}>
+                  <Text style={styles.opcionTitulo}>¿Vaciar la conversación?</Text>
+                  <Text style={styles.opcionSubtitulo}>Se borrarán todos los mensajes. Esta acción no se puede deshacer.</Text>
+                </View>
+                <View style={styles.opcionDivider} />
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity style={[styles.opcionItem, { flex: 1 }]} onPress={() => setMostrarConfirmVaciar(false)}>
+                    <Text style={[styles.opcionTitulo, { color: BLUE_DARK }]}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.opcionItem, { flex: 1 }]} onPress={vaciarChat}>
+                    <Text style={[styles.opcionTitulo, { color: DANGER }]}>Vaciar</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
-      {/* Modal: editar mensaje */}
-      <Modal
-        visible={!!editandoMensaje}
-        transparent
-        animationType="fade"
-        onRequestClose={() => !guardandoEdicion && setEditandoMensaje(null)}
-      >
-        <KeyboardAvoidingView
-          style={styles.overlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <TouchableWithoutFeedback onPress={() => !guardandoEdicion && setEditandoMensaje(null)}>
-            <View style={StyleSheet.absoluteFillObject} />
-          </TouchableWithoutFeedback>
-          <View style={styles.editarCard}>
-            <Text style={styles.propTitulo}>Editar mensaje</Text>
-            <TextInput
-              style={[styles.propInput, { marginTop: 12, minHeight: 60, textAlignVertical: 'top' }]}
-              value={textoEdicion}
-              onChangeText={setTextoEdicion}
-              multiline
-              autoFocus
-              editable={!guardandoEdicion}
-            />
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
-              <TouchableOpacity
-                onPress={() => setEditandoMensaje(null)}
-                style={[styles.reintentarBtn, { flex: 1, backgroundColor: '#E9EDF5' }]}
-                disabled={guardandoEdicion}
-              >
-                <Text style={[styles.reintentarBtnText, { color: '#5B6478' }]}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={guardarEdicion}
-                style={[styles.reintentarBtn, { flex: 1, backgroundColor: BLUE_DARK }]}
-                disabled={guardandoEdicion || !textoEdicion.trim()}
-              >
-                {guardandoEdicion ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.reintentarBtnText}>Guardar</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Overlay: armar y enviar una propuesta (con IA) — mismos campos
-          que CrearSolicitud.js: descripción, fotos, emergencia, plazo,
-          servicio + precio (sugeridos por IA) y dirección del trabajo. */}
-      <Modal
-        visible={mostrarPropuesta}
-        transparent
-        animationType="slide"
-        onRequestClose={cerrarPropuesta}
-      >
-        <KeyboardAvoidingView
-          style={styles.propOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
+      {/* Overlay: enviar propuesta */}
+      <Modal visible={mostrarPropuesta} transparent animationType="slide" onRequestClose={cerrarPropuesta}>
+        <KeyboardAvoidingView style={styles.propOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <TouchableWithoutFeedback onPress={cerrarPropuesta}>
             <View style={styles.propBackdrop} />
           </TouchableWithoutFeedback>
@@ -1686,1061 +1026,329 @@ const fetchConReintento = async (url, opciones, intentos = 2) => {
 
             <View style={styles.propHeaderRow}>
               <View style={styles.propHeaderIconWrap}>
-                <Ionicons name="hammer" size={16} color="#fff" />
+                <Ionicons name="pricetag" size={16} color="#fff" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.propTitulo}>Nueva propuesta</Text>
-                <Text style={styles.propSubtitulo}>
-                  Se envía como tarjeta a {contacto?.nombre ?? 'este chat'}
-                </Text>
+                <Text style={styles.propTitulo}>Enviar propuesta</Text>
+                <Text style={styles.propSubtitulo}>Enviá un presupuesto a {contacto?.nombre ?? 'trabajador'}</Text>
               </View>
               <TouchableOpacity onPress={cerrarPropuesta} hitSlop={10} style={styles.propCerrarBtn}>
                 <Ionicons name="close" size={16} color="#5B6478" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView
-              style={styles.propScroll}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={styles.propLabel}>Contanos el trabajo</Text>
-              <TextInput
-                style={styles.propTextArea}
-                placeholder="Ej: reparación de cañería en la cocina, pérdida activa..."
-                placeholderTextColor="#9AA5B5"
-                multiline
-                numberOfLines={3}
-                value={propDescripcion}
-                onChangeText={(t) => {
-                  setPropDescripcion(t);
-                  if (errorPropuesta) setErrorPropuesta(null);
-                  invalidarAnalisisPropPrevio();
-                }}
-                editable={!enviandoPropuesta && !propAnalizando}
-              />
+            <Text style={styles.propLabel}>Servicio</Text>
+            <TextInput style={styles.propServicioInput} value={propServicio} onChangeText={setPropServicio} placeholder="Ej: Instalación de aire acondicionado" placeholderTextColor="#9AA5B5" />
 
-              {/* Fotos (opcional) — mismo patrón que CrearSolicitud.js */}
-              <Text style={styles.propLabel}>Fotos (opcional)</Text>
-              <Text style={styles.propHelperText}>
-                Ayudan a que {contacto?.nombre ?? 'el trabajador'} entienda mejor el problema.
-              </Text>
-              <View style={styles.propImagenesRow}>
-                {propImagenes.map((img, idx) => (
-                  <ImagenPropuestaThumb
-                    key={img.assetId ?? img.uri ?? idx}
-                    uri={img.uri}
-                    onQuitar={() => quitarImagenPropuesta(idx)}
-                    deshabilitado={subiendoImagenesProp}
-                  />
-                ))}
-                {propImagenes.length < MAX_IMAGENES_PROPUESTA && (
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <TouchableOpacity
-                      style={styles.propImagenAgregarBtn}
-                      onPress={agregarImagenesPropuestaGaleria}
-                      disabled={subiendoImagenesProp}
-                    >
-                      <Ionicons name="images" size={18} color={BLUE_DARK} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.propImagenAgregarBtn}
-                      onPress={tomarFotoPropuesta}
-                      disabled={subiendoImagenesProp}
-                    >
-                      <Ionicons name="camera" size={18} color={BLUE_DARK} />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-              {errorImagenesProp && <Text style={styles.propError}>{errorImagenesProp}</Text>}
+            <Text style={styles.propLabel}>Descripción</Text>
+            <TextInput style={styles.propTextArea} placeholder="Detalle el trabajo, materiales, garantía..." placeholderTextColor="#9AA5B5" multiline numberOfLines={3} value={propDescripcion} onChangeText={(t) => { setPropDescripcion(t); invalidarAnalisisPropPrevio(); }} />
 
-              {/* Emergencia — igual que CrearSolicitud.js */}
-              <Text style={styles.propLabel}>¿Es una emergencia?</Text>
-              <Text style={styles.propHelperText}>
-                Pérdida de agua activa, corte de luz total, olor a gas, riesgo estructural, etc.
-              </Text>
-              <Toggle2Opciones
-                opciones={['No', 'Sí, es urgente']}
-                activo={propEmergencia ? 1 : 0}
-                onChange={(i) => onCambiarPropEmergencia(i === 1)}
-                colorActivo={DANGER}
-              />
-
-              {propEmergencia ? (
-                <View style={styles.propEmergenciaAviso}>
-                  <Ionicons name="alert-circle" size={16} color={DANGER} style={{ marginRight: 8 }} />
-                  <Text style={styles.propEmergenciaAvisoTexto}>
-                    Como marcaste que es una emergencia, el plazo se toma como "hoy mismo".
-                  </Text>
+            <Text style={styles.propLabel}>Fotos (opcional)</Text>
+            <View style={styles.propImagenesRow}>
+              {propImagenes.map((img, idx) => (
+                <ImagenPropuestaThumb key={img.assetId ?? img.uri ?? idx} uri={img.uri} onQuitar={() => quitarImagenPropuesta(idx)} deshabilitado={subiendoImagenesProp} />
+              ))}
+              {propImagenes.length < MAX_IMAGENES_PROPUESTA && (
+                <View style={styles.propImagenesBotonesWrap}>
+                  <TouchableOpacity style={styles.propImagenAgregarBtn} onPress={agregarImagenesPropuestaGaleria} disabled={subiendoImagenesProp}>
+                    <Ionicons name="images" size={18} color={BLUE} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.propImagenAgregarBtn} onPress={tomarFotoPropuesta} disabled={subiendoImagenesProp}>
+                    <Ionicons name="camera" size={18} color={BLUE} />
+                  </TouchableOpacity>
                 </View>
-              ) : (
-                <>
-                  <Text style={styles.propLabel}>¿Tenés un plazo o fecha límite?</Text>
-                  <Toggle2Opciones
-                    opciones={['No, sin apuro', 'Sí, elegir fecha']}
-                    activo={propTienePlazo ? 1 : 0}
-                    onChange={(i) => {
-                      const activar = i === 1;
-                      setPropTienePlazo(activar);
-                      if (activar && !propFechaLimite) setPropFechaLimite(new Date());
-                    }}
-                  />
-
-                  {propTienePlazo && (
-                    <View style={styles.plazoRowProp}>
-                      <TouchableOpacity style={styles.plazoBoxProp} onPress={() => setPropMostrarPickerFecha(true)}>
-                        <Text style={styles.plazoBoxLabelProp}>Fecha</Text>
-                        <Text style={styles.plazoBoxValueProp}>
-                          {propFechaLimite ? propFechaLimite.toLocaleDateString('es-AR') : 'Elegir'}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.plazoBoxProp} onPress={() => setPropMostrarPickerHora(true)}>
-                        <Text style={styles.plazoBoxLabelProp}>Hora</Text>
-                        <Text style={styles.plazoBoxValueProp}>
-                          {propFechaLimite ? propFechaLimite.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : 'Elegir'}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
-                  {propTienePlazo && propMostrarPickerFecha && (
-                    <DateTimePicker
-                      value={propFechaLimite || new Date()}
-                      mode="date"
-                      minimumDate={new Date()}
-                      display={Platform.OS === 'ios' ? 'inline' : 'default'}
-                      onChange={onCambiarPropFecha}
-                    />
-                  )}
-                  {propTienePlazo && propMostrarPickerHora && (
-                    <DateTimePicker
-                      value={propFechaLimite || new Date()}
-                      mode="time"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={onCambiarPropHora}
-                    />
-                  )}
-                </>
               )}
+            </View>
+            {errorImagenesProp && <Text style={styles.propError}>{errorImagenesProp}</Text>}
 
-              <TouchableOpacity
-                style={[
-                  styles.propIaBtn,
-                  (!propDescripcionValida || propAnalizando || enviandoPropuesta) && styles.propIaBtnDisabled,
-                ]}
-                activeOpacity={0.85}
-                onPress={() => analizarPropuestaConIA()}
-                disabled={!propDescripcionValida || propAnalizando || enviandoPropuesta}
-              >
-                {propAnalizando ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <>
-                    <Ionicons name="sparkles" size={15} color="#fff" style={{ marginRight: 7 }} />
-                    <Text style={styles.propIaBtnText}>
-                      {propAnalisis ? 'Volver a analizar' : 'Analizar con IA'}
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
+            <Text style={styles.propLabel}>¿Es una emergencia?</Text>
+            <Toggle2Opciones opciones={['No', 'Sí, es urgente']} activo={propEmergencia ? 1 : 0} onChange={(i) => onCambiarPropEmergencia(i === 1)} />
 
-              {!propDescripcionValida && propDescripcion.length > 0 && (
-                <Text style={styles.propError}>Contá un poco más (mínimo 10 caracteres).</Text>
-              )}
-              {propErrorIA && <Text style={styles.propError}>{propErrorIA}</Text>}
-
-              {propAnalisis && propNecesitaAclaracion && propPreguntasActuales.length > 0 && (
-                <View style={styles.propAclaracionBox}>
-                  <View style={styles.propAclaracionHeaderRow}>
-                    <Ionicons name="help-circle" size={16} color={ACCENT} />
-                    <Text style={styles.propAclaracionTitulo}>Necesitamos un dato más</Text>
+            {!propEmergencia && (
+              <>
+                <Text style={styles.propLabel}>¿Tenés un plazo o fecha límite?</Text>
+                <Toggle2Opciones opciones={['No, sin apuro', 'Sí, elegir fecha']} activo={propTienePlazo ? 1 : 0} onChange={(i) => { const activar = i === 1; setPropTienePlazo(activar); if (activar && !propFechaLimite) setPropFechaLimite(new Date()); invalidarAnalisisPropPrevio(); }} />
+                {propTienePlazo && (
+                  <View style={styles.propPlazoRow}>
+                    <TouchableOpacity style={styles.propPlazoBox} onPress={() => setPropMostrarPickerFecha(true)}>
+                      <Text style={styles.propPlazoBoxLabel}>Fecha</Text>
+                      <Text style={styles.propPlazoBoxValue}>{propFechaLimite ? propFechaLimite.toLocaleDateString('es-AR') : 'Elegir'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.propPlazoBox} onPress={() => setPropMostrarPickerHora(true)}>
+                      <Text style={styles.propPlazoBoxLabel}>Hora</Text>
+                      <Text style={styles.propPlazoBoxValue}>{propFechaLimite ? propFechaLimite.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : 'Elegir'}</Text>
+                    </TouchableOpacity>
                   </View>
+                )}
+                {propTienePlazo && propMostrarPickerFecha && (
+                  <DateTimePicker value={propFechaLimite || new Date()} mode="date" minimumDate={new Date()} display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={onCambiarPropFecha} />
+                )}
+                {propTienePlazo && propMostrarPickerHora && (
+                  <DateTimePicker value={propFechaLimite || new Date()} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={onCambiarPropHora} />
+                )}
+              </>
+            )}
 
-                  {propPreguntasActuales.map((p, idx) => {
-                    const seleccion = propRespuestas[idx];
-                    const eligioOtro = seleccion === OPCION_OTRO;
-                    return (
-                      <View key={idx} style={styles.propPreguntaItem}>
-                        <Text style={styles.propPreguntaTexto}>{p.pregunta}</Text>
-                        <View style={styles.propChipsRow}>
-                          {(p.opciones || []).map((opcion) => {
-                            const activo = seleccion === opcion;
-                            return (
-                              <TouchableOpacity
-                                key={opcion}
-                                style={[styles.propChip, activo && styles.propChipActivo]}
-                                onPress={() => seleccionarRespuestaProp(idx, opcion)}
-                                disabled={propAnalizando}
-                              >
-                                <Text style={[styles.propChipText, activo && styles.propChipTextActivo]}>
-                                  {opcion}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                          <TouchableOpacity
-                            style={[styles.propChip, styles.propChipOtro, eligioOtro && styles.propChipActivo]}
-                            onPress={() => seleccionarRespuestaProp(idx, OPCION_OTRO)}
-                            disabled={propAnalizando}
-                          >
-                            <Text style={[styles.propChipText, eligioOtro && styles.propChipTextActivo]}>Otro</Text>
-                          </TouchableOpacity>
+            <Text style={styles.propLabel}>Precio</Text>
+            <View style={styles.propPriceRow}>
+              <Text style={styles.propPriceCurrency}>$</Text>
+              <TextInput style={styles.propPriceInput} placeholder="0" placeholderTextColor="#9AA5B5" keyboardType="numeric" value={propPrecio} onChangeText={setPropPrecio} editable={!enviandoPropuesta} />
+            </View>
+
+            {propAnalisis && !propNecesitaAclaracion && (
+              <>
+                <Text style={styles.propLabel}>Servicio sugerido por IA</Text>
+                <TouchableOpacity style={styles.propSelectBox} onPress={() => setPropSelectorAbierto((v) => !v)}>
+                  <Text style={styles.propSelectText}>{propAnalisis.servicios?.find((s) => s.id === propServicioId)?.nombre ?? 'Seleccionar servicio'}</Text>
+                  <Ionicons name={propSelectorAbierto ? 'chevron-up' : 'chevron-down'} size={16} color="#5B6478" />
+                </TouchableOpacity>
+                {propSelectorAbierto && (
+                  <View style={styles.propDropdown}>
+                    {propAnalisis.servicios?.map((s) => (
+                      <TouchableOpacity key={s.id} style={[styles.propDropdownItem, s.id === propServicioId && styles.propDropdownItemActivo]} onPress={() => { setPropServicioId(s.id); setPropSelectorAbierto(false); }}>
+                        <View style={styles.propDropdownItemTextWrap}>
+                          <Text style={styles.propDropdownItemCategoria}>{s.categoria}</Text>
+                          <Text style={[styles.propDropdownItemText, s.id === propServicioId && styles.propDropdownItemTextActivo]}>{s.nombre}</Text>
                         </View>
-                        {eligioOtro && (
-                          <TextInput
-                            style={styles.propOtroInput}
-                            placeholder="Escribí tu respuesta..."
-                            placeholderTextColor="#9AA5B5"
-                            value={propTextosOtro[idx] || ''}
-                            onChangeText={(t) => cambiarTextoOtroProp(idx, t)}
-                            editable={!propAnalizando}
-                          />
-                        )}
-                      </View>
-                    );
-                  })}
-
-                  <TouchableOpacity
-                    style={[styles.propIaBtn, (!propTodasRespondidas || propAnalizando) && styles.propIaBtnDisabled]}
-                    onPress={confirmarRespuestasProp}
-                    disabled={!propTodasRespondidas || propAnalizando}
-                  >
-                    {propAnalizando ? (
-                      <ActivityIndicator color="#fff" size="small" />
-                    ) : (
-                      <>
-                        <Ionicons name="arrow-forward-circle" size={15} color="#fff" style={{ marginRight: 7 }} />
-                        <Text style={styles.propIaBtnText}>Continuar con esta info</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {propAnalisis && !propNecesitaAclaracion && propAnalisis.servicios?.length > 0 && (
-                <>
-                  <View style={styles.propBadgeIa}>
-                    <Ionicons name="sparkles" size={11} color="#fff" style={{ marginRight: 5 }} />
-                    <Text style={styles.propBadgeIaText}>Sugerido por IA · editable</Text>
+                        {s.id === propServicioId && <Ionicons name="checkmark-circle" size={20} color={BLUE} />}
+                      </TouchableOpacity>
+                    ))}
                   </View>
-                  <Text style={styles.propLabel}>Servicio</Text>
-                  <TouchableOpacity
-                    style={styles.propSelectBox}
-                    onPress={() => setPropSelectorAbierto((v) => !v)}
-                  >
-                    <Text style={styles.propSelectText}>
-                      {propServicioElegido?.nombre ?? propServicio ?? 'Seleccionar servicio'}
-                    </Text>
-                    <Ionicons name={propSelectorAbierto ? 'chevron-up' : 'chevron-down'} size={16} color="#8A94A6" />
-                  </TouchableOpacity>
+                )}
+                {propAnalisis.precioMin != null && propAnalisis.precioMax != null && (
+                  <Text style={styles.propPriceRange}>Rango estimado: ${propAnalisis.precioMin.toLocaleString('es-AR')} – ${propAnalisis.precioMax.toLocaleString('es-AR')}</Text>
+                )}
+              </>
+            )}
 
-                  {propSelectorAbierto && (
-                    <View style={styles.propDropdown}>
-                      {propAnalisis.servicios.map((s) => {
-                        const activo = s.id === propServicioId;
+            {propAnalizando ? (
+              <View style={styles.propAnalizandoRow}>
+                <ActivityIndicator size="small" color={ACCENT} />
+                <Text style={styles.propAnalizandoTexto}>Analizando con IA...</Text>
+              </View>
+            ) : propErrorIA ? (
+              <Text style={styles.propError}>{propErrorIA}</Text>
+            ) : null}
+
+            {propNecesitaAclaracion && propPreguntasActuales.length > 0 && (
+              <View style={styles.propAclaracionBox}>
+                <View style={styles.propAclaracionIconRow}>
+                  <View style={styles.propAclaracionIconWrap}>
+                    <Ionicons name="help" size={16} color="#fff" />
+                  </View>
+                  <Text style={styles.propAclaracionTitulo}>{propPreguntasActuales.length > 1 ? 'Necesitamos un poco más de info' : 'Necesitamos un dato más'}</Text>
+                </View>
+                {propPreguntasActuales.map((p, idx) => (
+                  <View key={idx} style={styles.propPreguntaItem}>
+                    <Text style={styles.propPreguntaTexto}>{p.pregunta}</Text>
+                    <View style={styles.propChipsRow}>
+                      {p.opciones.map((opcion) => {
+                        const activo = propRespuestas[idx] === opcion;
                         return (
-                          <TouchableOpacity
-                            key={s.id}
-                            style={[styles.propDropdownItem, activo && styles.propDropdownItemActivo]}
-                            onPress={() => {
-                              setPropServicioId(s.id);
-                              setPropServicio(s.nombre);
-                              setPropSelectorAbierto(false);
-                            }}
-                          >
-                            <Text style={[styles.propDropdownItemText, activo && styles.propDropdownItemTextActivo]}>
-                              {s.nombre}
-                            </Text>
-                            {activo && <Ionicons name="checkmark-circle" size={18} color={BLUE} />}
+                          <TouchableOpacity key={opcion} style={[styles.propChip, activo && styles.propChipActivo]} onPress={() => seleccionarRespuestaProp(idx, opcion)} disabled={propAnalizando}>
+                            <Text style={[styles.propChipText, activo && styles.propChipTextActivo]}>{opcion}</Text>
                           </TouchableOpacity>
                         );
                       })}
+                      <TouchableOpacity style={[styles.propChip, styles.propChipOtro, propRespuestas[idx] === OPCION_OTRO && styles.propChipActivo]} onPress={() => seleccionarRespuestaProp(idx, OPCION_OTRO)} disabled={propAnalizando}>
+                        <Ionicons name="create-outline" size={14} color={propRespuestas[idx] === OPCION_OTRO ? '#fff' : '#5B6478'} style={styles.propChipIcon} />
+                        <Text style={[styles.propChipText, propRespuestas[idx] === OPCION_OTRO && styles.propChipTextActivo]}>Otro</Text>
+                      </TouchableOpacity>
                     </View>
-                  )}
-
-                  {(propAnalisis.precioMin != null && propAnalisis.precioMax != null) && (
-                    <Text style={styles.propRangoTexto}>
-                      Rango estimado: ${propAnalisis.precioMin?.toLocaleString('es-AR')} – ${propAnalisis.precioMax?.toLocaleString('es-AR')}
-                    </Text>
-                  )}
-                  {!!propAnalisis.notas && (
-                    <Text style={styles.propNotaTexto}>{propAnalisis.notas} Es una estimación, puede no ser exacta.</Text>
-                  )}
-                </>
-              )}
-
-              {!(propAnalisis && !propNecesitaAclaracion && propAnalisis.servicios?.length > 0) && (
-                <>
-                  <Text style={styles.propLabel}>Servicio</Text>
-                  <TextInput
-                    style={styles.propInput}
-                    placeholder="Ej: Reparación de cañería"
-                    placeholderTextColor="#9AA5B5"
-                    value={propServicio}
-                    onChangeText={(t) => { setPropServicio(t); if (errorPropuesta) setErrorPropuesta(null); }}
-                    editable={!enviandoPropuesta}
-                  />
-                </>
-              )}
-
-              <Text style={styles.propLabel}>Precio estimado</Text>
-              <View style={styles.propPriceRow}>
-                <Text style={styles.propPriceCurrency}>$</Text>
-                <TextInput
-                  style={styles.propPriceInput}
-                  placeholder="0"
-                  placeholderTextColor="#9AA5B5"
-                  keyboardType="numeric"
-                  value={propPrecio}
-                  onChangeText={(t) => { setPropPrecio(t.replace(/[^0-9]/g, '')); if (errorPropuesta) setErrorPropuesta(null); }}
-                  editable={!enviandoPropuesta}
-                />
-              </View>
-
-              {/* Dirección del trabajo — igual que CrearSolicitud.js */}
-              <Text style={styles.propLabel}>Dirección del trabajo</Text>
-              <Toggle2Opciones
-                opciones={['Mi dirección', 'Otra dirección']}
-                activo={propUsarOtraDireccion ? 1 : 0}
-                onChange={(i) => {
-                  const usarOtra = i === 1;
-                  setPropUsarOtraDireccion(usarOtra);
-                  if (!usarOtra) setPropDireccion('');
-                  if (errorPropuesta) setErrorPropuesta(null);
-                }}
-              />
-              {!propUsarOtraDireccion ? (
-                <View style={styles.propDireccionActualBox}>
-                  <Ionicons name="location" size={16} color={BLUE} style={{ marginRight: 8 }} />
-                  <Text style={styles.propDireccionActualTexto} numberOfLines={2}>
-                    {usuario?.direccion || 'No tenés una dirección cargada en tu perfil'}
-                  </Text>
-                </View>
-              ) : (
-                <TextInput
-                  style={[styles.propInput, { marginTop: 8 }]}
-                  placeholder="Av. Siempre Viva 123"
-                  placeholderTextColor="#9AA5B5"
-                  value={propDireccion}
-                  onChangeText={(t) => { setPropDireccion(t); if (errorPropuesta) setErrorPropuesta(null); }}
-                  editable={!enviandoPropuesta}
-                />
-              )}
-
-              {(propServicio.trim() || propPrecio) && !propNecesitaAclaracion && (
-                <View style={styles.propPreviewWrap}>
-                  <Text style={styles.propPreviewLabel}>Vista previa</Text>
-                  <View style={styles.propPreviewCard}>
-                    <View style={styles.tarjetaServicioBadge}>
-                      <Ionicons name="hammer" size={12} color={BLUE_DARK} />
-                      <Text style={styles.tarjetaServicioBadgeText}>Pendiente</Text>
-                    </View>
-                    <Text style={styles.tarjetaServicioLabel}>Servicio</Text>
-                    <Text style={styles.tarjetaServicioValor}>
-                      {propServicio.trim() || 'Sin especificar'}
-                    </Text>
-                    <View style={styles.tarjetaServicioDivider} />
-                    <Text style={styles.tarjetaServicioLabel}>Precio estimado</Text>
-                    <Text style={styles.tarjetaServicioPrecio}>
-                      ${propPrecio ? Number(propPrecio).toLocaleString('es-AR') : '0'}
-                    </Text>
+                    {propRespuestas[idx] === OPCION_OTRO && (
+                      <TextInput style={styles.propOtroInput} placeholder="Escribí tu respuesta..." placeholderTextColor="#98A2B3" value={propTextosOtro[idx] || ''} onChangeText={(t) => cambiarTextoOtroProp(idx, t)} editable={!propAnalizando} />
+                    )}
                   </View>
-                </View>
-              )}
+                ))}
+                <TouchableOpacity style={[styles.propAiButton, (!propTodasRespondidas || propAnalizando) && styles.propAiButtonDisabled]} onPress={confirmarRespuestasProp} disabled={!propTodasRespondidas || propAnalizando}>
+                  {propAnalizando ? (<ActivityIndicator color="#fff" />) : (<><Ionicons name="arrow-forward-circle" size={18} color="#fff" style={styles.propAiButtonIcon} /><Text style={styles.propAiButtonText}>Continuar con esta info</Text></>)}
+                </TouchableOpacity>
+              </View>
+            )}
 
-              {errorPropuesta && <Text style={styles.propError}>{errorPropuesta}</Text>}
-            </ScrollView>
+            {errorPropuesta && <Text style={styles.propError}>{errorPropuesta}</Text>}
 
-            <TouchableOpacity
-              style={[
-                styles.propEnviarBtn,
-                (enviandoPropuesta || propNecesitaAclaracion) && styles.propEnviarBtnDisabled,
-              ]}
-              activeOpacity={0.85}
-              onPress={enviarPropuesta}
-              disabled={enviandoPropuesta || propNecesitaAclaracion}
-            >
-              {enviandoPropuesta ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <>
-                  <Ionicons name="send" size={16} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.propEnviarBtnText}>
-                    {propNecesitaAclaracion ? 'Respondé las preguntas primero' : 'Enviar propuesta'}
-                  </Text>
-                </>
-              )}
+            <TouchableOpacity style={[styles.propEnviarBtn, enviandoPropuesta && styles.propEnviarBtnDisabled]} activeOpacity={0.85} onPress={enviarPropuesta} disabled={enviandoPropuesta}>
+              {enviandoPropuesta ? (<ActivityIndicator color="#fff" />) : (<><Ionicons name="send" size={16} color="#fff" style={{ marginRight: 8 }} /><Text style={styles.propEnviarBtnText}>Enviar propuesta</Text></>)}
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Modal: detalle completo de una propuesta ya enviada (botón "Ver
-          detalle" de la tarjeta). Muestra los mismos datos que se cargan
-          al crear la propuesta: servicio, precio, descripción, emergencia,
-          plazo, dirección y fotos. */}
-      <Modal
-        visible={!!servicioDetalle}
-        transparent
-        animationType="slide"
-        onRequestClose={cerrarDetalleServicio}
-      >
-        <View style={styles.propOverlay}>
-          <TouchableWithoutFeedback onPress={cerrarDetalleServicio}>
-            <View style={styles.propBackdrop} />
-          </TouchableWithoutFeedback>
-
-          <View style={styles.propCard}>
-            <View style={styles.propHandle} />
-            <View style={styles.propHeaderRow}>
-              <View style={styles.propHeaderIconWrap}>
-                <Ionicons name="hammer" size={16} color="#fff" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.propTitulo}>Detalle de la propuesta</Text>
-                <Text style={styles.propSubtitulo}>
-                  {servicioDetalle?.estado ?? 'Pendiente'}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={cerrarDetalleServicio} hitSlop={10} style={styles.propCerrarBtn}>
-                <Ionicons name="close" size={16} color="#5B6478" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.propScroll} showsVerticalScrollIndicator={false}>
-              {servicioDetalle?.emergencia && (
-                <View style={[styles.propEmergenciaAviso, { marginTop: 4 }]}>
-                  <Ionicons name="alert-circle" size={16} color={DANGER} style={{ marginRight: 8 }} />
-                  <Text style={styles.propEmergenciaAvisoTexto}>Esta propuesta es una emergencia.</Text>
+      {/* Detalle de propuesta */}
+      <Modal visible={!!servicioDetalle} transparent animationType="slide" onRequestClose={cerrarDetalleServicio}>
+        <TouchableWithoutFeedback onPress={cerrarDetalleServicio}>
+          <View style={styles.propOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.propCard}>
+                <View style={styles.propHandle} />
+                <View style={styles.propHeaderRow}>
+                  <View style={styles.propHeaderIconWrap}>
+                    <Ionicons name="hammer" size={16} color="#fff" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.propTitulo}>Detalle de propuesta</Text>
+                    <Text style={styles.propSubtitulo}>{servicioDetalle?.servicio}</Text>
+                  </View>
+                  <TouchableOpacity onPress={cerrarDetalleServicio} hitSlop={10} style={styles.propCerrarBtn}>
+                    <Ionicons name="close" size={16} color="#5B6478" />
+                  </TouchableOpacity>
                 </View>
-              )}
-
-              <Text style={styles.propLabel}>Servicio</Text>
-              <Text style={styles.detalleValor}>{servicioDetalle?.servicio ?? contacto?.servicio}</Text>
-
-              {!!servicioDetalle?.texto && (
-                <>
-                  <Text style={styles.propLabel}>Descripción</Text>
-                  <Text style={styles.detalleTexto}>{servicioDetalle.texto}</Text>
-                </>
-              )}
-
-              <Text style={styles.propLabel}>Precio estimado</Text>
-              <Text style={styles.detalleValorDestacado}>
-                ${servicioDetalle?.precio ? Number(servicioDetalle.precio).toLocaleString('es-AR') : '0'}
-              </Text>
-
-              {(servicioDetalle?.fechaRequerida || servicioDetalle?.horarioRequerido) && (
-                <>
-                  <Text style={styles.propLabel}>Plazo</Text>
-                  <Text style={styles.detalleTexto}>
-                    {servicioDetalle?.emergencia
-                      ? 'Hoy mismo (emergencia)'
-                      : `${servicioDetalle?.fechaRequerida ?? ''} ${servicioDetalle?.horarioRequerido ?? ''}`.trim()}
-                  </Text>
-                </>
-              )}
-
-              <Text style={styles.propLabel}>Dirección del trabajo</Text>
-              <Text style={styles.detalleTexto}>
-                {servicioDetalle?.direccion || 'No especificada'}
-              </Text>
-
-              {servicioDetalle?.imagenes?.length > 0 && (
-                <>
-                  <Text style={styles.propLabel}>Fotos</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
-                    {servicioDetalle.imagenes.map((url, idx) => (
-                      <Image
-                        key={url ?? idx}
-                        source={{ uri: url }}
-                        style={styles.detalleImagen}
-                      />
-                    ))}
-                  </ScrollView>
-                </>
-              )}
-            </ScrollView>
+                <Text style={styles.propLabel}>Precio</Text>
+                <Text style={styles.propDetallePrecio}>${Number(servicioDetalle?.precio ?? 0).toLocaleString('es-AR')}</Text>
+                <Text style={styles.propLabel}>Descripción</Text>
+                <Text style={styles.propDetalleTexto}>{servicioDetalle?.texto}</Text>
+                {servicioDetalle?.emergencia && (<><Text style={styles.propLabel}>Emergencia</Text><Text style={styles.propDetalleEmergencia}>Sí</Text></>)}
+                {servicioDetalle?.fechaRequerida && (<><Text style={styles.propLabel}>Fecha requerida</Text><Text style={styles.propDetalleTexto}>{servicioDetalle.fechaRequerida}</Text></>)}
+                {servicioDetalle?.horarioRequerido && (<><Text style={styles.propLabel}>Horario requerido</Text><Text style={styles.propDetalleTexto}>{servicioDetalle.horarioRequerido}</Text></>)}
+                {servicioDetalle?.direccion && (<><Text style={styles.propLabel}>Dirección</Text><Text style={styles.propDetalleTexto}>{servicioDetalle.direccion}</Text></>)}
+                {!!servicioDetalle?.imagenes?.length && (<><Text style={styles.propLabel}>Fotos</Text><View style={styles.propDetalleImagenesRow}>{servicioDetalle.imagenes.map((img, idx) => (<Image key={idx} source={{ uri: img }} style={styles.propDetalleImagen} />))}</View></>)}
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
-
     </SafeAreaView>
   );
 }
 
-function AvatarMini({ contacto }) {
-  return contacto?.foto ? (
-    <Image source={{ uri: contacto.foto }} style={styles.avatarMini} />
-  ) : (
-    <View style={styles.avatarMiniPlaceholder}>
-      <Text style={styles.avatarMiniTexto}>{obtenerIniciales(contacto?.nombre)}</Text>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG },
-
-  chatHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: BLUE_DARK,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    shadowColor: BLUE_DARK,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  backButton: {
-    width: 36, height: 36, borderRadius: 18,
-    justifyContent: 'center', alignItems: 'center',
-    marginRight: 2,
-  },
+const createStyles = (colors, isDark) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
+  chatHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: BLUE_DARK, paddingHorizontal: 12, paddingVertical: 10, shadowColor: BLUE_DARK, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 6 },
+  backButton: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginRight: 2 },
   chatHeaderAvatarWrap: { position: 'relative' },
-  chatHeaderAvatar: {
-    width: 42, height: 42, borderRadius: 21,
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.35)',
-  },
-  chatHeaderAvatarPlaceholder: {
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: BLUE_LIGHT,
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.35)',
-  },
+  chatHeaderAvatar: { width: 42, height: 42, borderRadius: 21, borderWidth: 2, borderColor: 'rgba(255,255,255,0.35)' },
+  chatHeaderAvatarPlaceholder: { width: 42, height: 42, borderRadius: 21, backgroundColor: BLUE_LIGHT, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.35)' },
   chatHeaderAvatarText: { color: '#fff', fontWeight: '800', fontSize: 14 },
-  onlineDot: {
-    position: 'absolute', bottom: 0, right: 0,
-    width: 11, height: 11, borderRadius: 6,
-    backgroundColor: '#3ECF6E',
-    borderWidth: 2, borderColor: BLUE_DARK,
-  },
+  onlineDot: { position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: 6, backgroundColor: '#3ECF6E', borderWidth: 2, borderColor: BLUE_DARK },
   chatHeaderNombre: { color: '#fff', fontWeight: '800', fontSize: 15 },
   chatHeaderEstado: { color: 'rgba(255,255,255,0.75)', fontSize: 11, marginTop: 2 },
-  headerIconButton: {
-    width: 34, height: 34, borderRadius: 17,
-    justifyContent: 'center', alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.12)',
-  },
-
+  headerIconButton: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.12)' },
   estadoWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
-  estadoTexto: { marginTop: 10, color: '#8A94A6', fontSize: 13, textAlign: 'center' },
-  reintentarBtn: {
-    marginTop: 14,
-    backgroundColor: BLUE,
-    borderRadius: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  estadoTexto: { marginTop: 10, color: colors.textSecondary, fontSize: 13, textAlign: 'center' },
+  reintentarBtn: { marginTop: 14, backgroundColor: BLUE, borderRadius: 14, paddingHorizontal: 18, paddingVertical: 10 },
   reintentarBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  confirmVaciarTexto: { color: '#5B6478', fontSize: 13, marginTop: 8, lineHeight: 18 },
-
   listaContent: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 18, flexGrow: 1 },
   diaDividerWrap: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  diaDividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(21,101,216,0.12)' },
-  diaDividerText: {
-    color: '#8A94A6', fontSize: 11, fontWeight: '700',
-    marginHorizontal: 10, textTransform: 'uppercase', letterSpacing: 0.5,
-  },
-
+  diaDividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
+  diaDividerText: { color: colors.textSecondary, fontSize: 11, fontWeight: '700', marginHorizontal: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
   filaMensaje: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 12 },
-
   avatarMini: { width: 28, height: 28, borderRadius: 14, marginRight: 8 },
-  avatarMiniPlaceholder: {
-    width: 28, height: 28, borderRadius: 14, marginRight: 8,
-    backgroundColor: BLUE, justifyContent: 'center', alignItems: 'center',
-  },
+  avatarMiniPlaceholder: { width: 28, height: 28, borderRadius: 14, marginRight: 8, backgroundColor: BLUE, justifyContent: 'center', alignItems: 'center' },
   avatarMiniTexto: { color: '#fff', fontSize: 10, fontWeight: '800' },
-
-  burbuja: {
-    maxWidth: '74%',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  burbujaCliente: {
-    backgroundColor: BLUE,
-    borderBottomRightRadius: 4,
-    shadowColor: BLUE_DARK,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  burbujaTrabajador: {
-    backgroundColor: '#fff',
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(21,101,216,0.08)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  burbujaFallo: {
-    opacity: 0.6,
-  },
+  burbuja: { maxWidth: '74%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
+  burbujaCliente: { backgroundColor: BLUE, borderBottomRightRadius: 4, shadowColor: BLUE_DARK, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 6, elevation: 2 },
+  burbujaTrabajador: { backgroundColor: colors.card, borderBottomLeftRadius: 4, borderWidth: 1, borderColor: colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 1 },
+  burbujaFallo: { opacity: 0.6 },
   textoBurbujaCliente: { color: '#fff', fontSize: 14, lineHeight: 20 },
-  textoBurbujaTrabajador: { color: '#2D3748', fontSize: 14, lineHeight: 20 },
+  textoBurbujaTrabajador: { color: colors.text, fontSize: 14, lineHeight: 20 },
   filaHora: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', marginTop: 4 },
-  horaClienteTexto: { color: 'rgba(255,255,255,0.75)', fontSize: 10 },
-  horaTrabajadorTexto: { color: '#A0AEC0', fontSize: 10, marginTop: 6 },
-
-  burbujaImagenWrap: {
-    maxWidth: '65%',
-    borderRadius: 18,
-    overflow: 'hidden',
-    backgroundColor: '#fff',
-    padding: 5,
-  },
-  burbujaImagenCliente: {
-    borderBottomRightRadius: 4,
-    shadowColor: BLUE_DARK,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  burbujaImagenTrabajador: {
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(21,101,216,0.08)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  imagenChat: {
-    width: 210,
-    height: 210,
-    borderRadius: 14,
-    backgroundColor: '#E8ECF3',
-  },
-
-  // ---- Burbuja de audio ----
-  burbujaAudio: {
-    maxWidth: '74%',
-    borderRadius: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  audioPlayBtn: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: 'rgba(0,0,0,0.08)',
-    justifyContent: 'center', alignItems: 'center',
-  },
-audioOndaWrap: { flex: 1, height: 24, justifyContent: 'center', position: 'relative' },
-audioOndaFondo: { position: 'absolute', left: 0, right: 0, height: 3, borderRadius: 2 },
-audioOndaProgreso: { position: 'absolute', left: 0, height: 3, borderRadius: 2 },
-
-  // ---- Tarjeta de servicio (presupuesto) ----
-  tarjetaServicio: {
-    maxWidth: '78%',
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    borderBottomLeftRadius: 4,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(21,101,216,0.10)',
-    shadowColor: BLUE_DARK,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.10,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  tarjetaServicioBadgeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
-  tarjetaServicioBadge: {
-    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
-    backgroundColor: 'rgba(21,101,216,0.08)',
-    paddingHorizontal: 9, paddingVertical: 4,
-    borderRadius: 12, marginBottom: 10, gap: 5,
-  },
+  horaClienteTexto: { color: colors.textTertiary, fontSize: 10, marginTop: 6 },
+  horaTrabajadorTexto: { color: colors.textTertiary, fontSize: 10 },
+  burbujaImagenWrap: { maxWidth: '65%', borderRadius: 18, overflow: 'hidden', backgroundColor: colors.card, padding: 5 },
+  burbujaImagenCliente: { borderBottomRightRadius: 4, shadowColor: BLUE_DARK, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 6, elevation: 2 },
+  burbujaImagenTrabajador: { borderBottomLeftRadius: 4, borderWidth: 1, borderColor: colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 1 },
+  imagenChat: { width: 210, height: 210, borderRadius: 14, backgroundColor: colors.inputBg },
+  tarjetaServicio: { maxWidth: '78%', backgroundColor: colors.card, borderRadius: 20, borderBottomLeftRadius: 4, padding: 16, borderWidth: 1, borderColor: colors.border, shadowColor: BLUE_DARK, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.10, shadowRadius: 12, elevation: 3 },
+  tarjetaServicioBadgeRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: 'rgba(21,101,216,0.08)', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12, marginBottom: 10, gap: 5 },
   tarjetaServicioBadgeText: { color: BLUE_DARK, fontSize: 10, fontWeight: '700' },
-  tarjetaEmergenciaBadge: {
-    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 4,
-    backgroundColor: DANGER,
-    paddingHorizontal: 9, paddingVertical: 4,
-    borderRadius: 12, marginBottom: 10,
-  },
-  tarjetaEmergenciaBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  tarjetaServicioLabel: { color: '#8A94A6', fontSize: 11, fontWeight: '600', marginTop: 4 },
-  tarjetaServicioValor: { color: '#1A202C', fontSize: 16, fontWeight: '800', marginTop: 2 },
-  tarjetaServicioDetalle: { color: '#4A5568', fontSize: 12.5, lineHeight: 18, marginTop: 2 },
-  tarjetaServicioDivider: { height: 1, backgroundColor: 'rgba(21,101,216,0.10)', marginVertical: 10 },
+  tarjetaEmergenciaBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(226,55,68,0.12)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  tarjetaEmergenciaBadgeText: { color: '#E23744', fontSize: 10, fontWeight: '700' },
+  tarjetaServicioLabel: { color: colors.textSecondary, fontSize: 11, fontWeight: '600', marginTop: 4 },
+  tarjetaServicioValor: { color: colors.text, fontSize: 16, fontWeight: '800', marginTop: 2 },
+  tarjetaServicioDetalle: { color: colors.text, fontSize: 12.5, lineHeight: 18, marginTop: 2 },
+  tarjetaServicioDivider: { height: 1, backgroundColor: colors.border, marginVertical: 12 },
   tarjetaServicioPrecio: { color: BLUE_DARK, fontSize: 20, fontWeight: '800', marginTop: 2 },
-  tarjetaServicioBoton: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: BLUE, borderRadius: 14,
-    paddingVertical: 10, marginTop: 14, gap: 6,
-  },
+  tarjetaServicioBoton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: BLUE, borderRadius: 14, paddingVertical: 10, marginTop: 14, gap: 6 },
   tarjetaServicioBotonText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-
-  // ---- Barra de entrada ----
-  inputBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(21,101,216,0.08)',
-    gap: 8,
-  },
-  adjuntarButton: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: 'rgba(21,101,216,0.10)',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  textInput: {
-    flex: 1,
-    minHeight: 38,
-    maxHeight: 100,
-    backgroundColor: BG,
-    borderRadius: 19,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    fontSize: 14,
-    color: '#1A202C',
-  },
-  enviarButton: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: BLUE,
-    justifyContent: 'center', alignItems: 'center',
-    shadowColor: BLUE_DARK,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 3,
-  },
+  inputBar: { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border, gap: 8 },
+  adjuntarButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(21,101,216,0.10)', justifyContent: 'center', alignItems: 'center' },
+  textInput: { flex: 1, minHeight: 38, maxHeight: 100, backgroundColor: colors.inputBg, borderRadius: 19, paddingHorizontal: 16, paddingVertical: 9, fontSize: 14, color: colors.text },
+  enviarButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: BLUE, justifyContent: 'center', alignItems: 'center', shadowColor: BLUE_DARK, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 3 },
   enviarButtonDisabled: { backgroundColor: '#B9C6DB', shadowOpacity: 0 },
-
-  // ---- Grabación de audio ----
-  grabandoRow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: BG,
-    borderRadius: 19,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    gap: 10,
-  },
-  grabandoDot: {
-    width: 10, height: 10, borderRadius: 5,
-    backgroundColor: DANGER,
-  },
-  grabandoTexto: { color: '#1A202C', fontWeight: '700', fontSize: 14 },
-  grabandoCancelar: {
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: 'rgba(192,57,43,0.10)',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  grabandoEnviar: {
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: BLUE,
-    justifyContent: 'center', alignItems: 'center',
-  },
-
-  // ---- Menú de opciones (archivo / propuesta / header) ----
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(13,26,48,0.35)',
-    justifyContent: 'flex-end',
-  },
-  menuOpciones: {
-    backgroundColor: '#fff',
-    marginHorizontal: 12,
-    marginBottom: 84,
-    borderRadius: 18,
-    paddingVertical: 6,
-    shadowColor: BLUE_DARK,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  opcionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  opcionIconoWrap: {
-    width: 38, height: 38, borderRadius: 12,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  opcionTitulo: { color: '#1A202C', fontSize: 14, fontWeight: '700' },
-  opcionSubtitulo: { color: '#8A94A6', fontSize: 11.5, marginTop: 1 },
-  opcionDivider: { height: 1, backgroundColor: 'rgba(21,101,216,0.08)', marginLeft: 14 + 38 + 12 },
-
-  // ---- Modal: editar mensaje / confirmar vaciar ----
-  editarCard: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    marginHorizontal: 24,
-    alignSelf: 'center',
-    width: '86%',
-  },
-
-  // ---- Toggle simple de 2 opciones (emergencia / dirección) ----
-  toggle2Track: {
-    flexDirection: 'row',
-    backgroundColor: BG,
-    borderWidth: 1,
-    borderColor: 'rgba(21,101,216,0.10)',
-    borderRadius: 14,
-    padding: 3,
-    marginTop: 4,
-  },
-  toggle2Btn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toggle2Text: { fontSize: 13, fontWeight: '700', color: '#5B6478' },
-  toggle2TextActivo: { color: '#fff' },
-
-  // ---- Overlay: crear/enviar propuesta ----
+  grabandoRow: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.inputBg, borderRadius: 19, paddingHorizontal: 14, paddingVertical: 9, gap: 10 },
+  grabandoDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: DANGER },
+  grabandoTexto: { color: colors.text, fontWeight: '700', fontSize: 14 },
+  grabandoCancelar: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(192,57,43,0.10)', justifyContent: 'center', alignItems: 'center' },
+  grabandoEnviar: { width: 34, height: 34, borderRadius: 17, backgroundColor: BLUE, justifyContent: 'center', alignItems: 'center' },
+  overlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
+  menuOpciones: { backgroundColor: colors.card, marginHorizontal: 12, marginBottom: 84, borderRadius: 18, paddingVertical: 6, shadowColor: BLUE_DARK, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 8 },
+  opcionItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, gap: 12 },
+  opcionIconoWrap: { width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  opcionTitulo: { color: colors.text, fontSize: 14, fontWeight: '700' },
+  opcionSubtitulo: { color: colors.textSecondary, fontSize: 11.5, marginTop: 1 },
+  opcionDivider: { height: 1, backgroundColor: colors.border, marginLeft: 14 + 38 + 12 },
   propOverlay: { flex: 1, justifyContent: 'flex-end' },
-  propBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(11,23,53,0.55)',
-  },
-  propCard: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '86%',
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 26 : 18,
-    shadowColor: BLUE_DARK,
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  propHandle: {
-    width: 40, height: 4, borderRadius: 2,
-    backgroundColor: 'rgba(21,101,216,0.16)',
-    alignSelf: 'center', marginBottom: 14,
-  },
-  propHeaderRow: {
-    flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10,
-  },
-  propHeaderIconWrap: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: ACCENT,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  propTitulo: { fontSize: 16, fontWeight: '800', color: '#1A202C' },
-  propSubtitulo: { fontSize: 12, color: '#8A94A6', marginTop: 2 },
-  propCerrarBtn: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: '#F3F5FA',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  propScroll: { flexGrow: 0 },
-  propLabel: { fontSize: 13, fontWeight: '700', color: '#1A202C', marginTop: 14, marginBottom: 6 },
-  propHelperText: { fontSize: 12, color: '#8A94A6', marginBottom: 8, lineHeight: 16 },
-  propInput: {
-    backgroundColor: BG,
-    borderWidth: 1,
-    borderColor: 'rgba(21,101,216,0.10)',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: '#1A202C',
-  },
-  propPriceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: BG,
-    borderWidth: 1,
-    borderColor: 'rgba(21,101,216,0.10)',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-  },
-  propPriceCurrency: { fontSize: 16, color: '#8A94A6', marginRight: 4, fontWeight: '700' },
-  propPriceInput: { flex: 1, paddingVertical: 12, fontSize: 16, fontWeight: '800', color: '#1A202C' },
-  propTextArea: {
-    backgroundColor: BG,
-    borderWidth: 1,
-    borderColor: 'rgba(21,101,216,0.10)',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: '#1A202C',
-    minHeight: 84,
-    textAlignVertical: 'top',
-  },
-  propPreviewWrap: { marginTop: 18 },
-  propPreviewLabel: {
-    fontSize: 11, color: '#8A94A6', fontWeight: '800',
-    letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 8,
-  },
-  propPreviewCard: {
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(21,101,216,0.10)',
-    shadowColor: BLUE_DARK,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  propError: {
-    color: DANGER, fontSize: 12.5, fontWeight: '600',
-    marginTop: 12, backgroundColor: '#FBEAE8', padding: 10, borderRadius: 10,
-  },
-  propEnviarBtn: {
-    flexDirection: 'row',
-    marginTop: 16,
-    backgroundColor: BLUE,
-    borderRadius: 16,
-    paddingVertical: 15,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: BLUE_DARK,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.28,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  propEnviarBtnDisabled: { backgroundColor: '#B9C6DB', shadowOpacity: 0, elevation: 0 },
-  propEnviarBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
-
-  propIaBtn: {
-    flexDirection: 'row',
-    marginTop: 12,
-    backgroundColor: ACCENT,
-    borderRadius: 14,
-    paddingVertical: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  propIaBtnDisabled: { backgroundColor: '#D8C1A3' },
-  propIaBtnText: { color: '#fff', fontWeight: '800', fontSize: 13.5 },
-
-  propBadgeIa: {
-    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
-    backgroundColor: BLUE_DARK, borderRadius: 999,
-    paddingHorizontal: 10, paddingVertical: 4, marginTop: 16,
-  },
-  propBadgeIaText: { color: '#fff', fontSize: 10.5, fontWeight: '800' },
-
-  propAclaracionBox: {
-    marginTop: 14,
-    backgroundColor: ACCENT_SOFT,
-    borderWidth: 1,
-    borderColor: 'rgba(217,130,43,0.35)',
-    borderRadius: 16,
-    padding: 14,
-  },
-  propAclaracionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  propAclaracionTitulo: { color: ACCENT, fontWeight: '800', fontSize: 13.5 },
-  propPreguntaItem: { marginBottom: 12 },
-  propPreguntaTexto: { fontSize: 13, color: '#1A202C', fontWeight: '700', marginBottom: 8, lineHeight: 18 },
-  propChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  propChip: {
-    backgroundColor: '#fff', borderWidth: 1.5, borderColor: BLUE,
-    borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7,
-  },
-  propChipActivo: { backgroundColor: BLUE, borderColor: BLUE },
-  propChipOtro: { borderColor: '#C7D2E3' },
-  propChipText: { fontSize: 12, fontWeight: '700', color: BLUE },
-  propChipTextActivo: { color: '#fff' },
-  propOtroInput: {
-    backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(217,130,43,0.5)',
-    borderRadius: 10, padding: 10, fontSize: 13, color: '#1A202C', marginTop: 8,
-  },
-
-  propSelectBox: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: BG, borderWidth: 1, borderColor: 'rgba(21,101,216,0.10)',
-    borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
-  },
-  propSelectText: { fontSize: 14, color: '#1A202C', fontWeight: '700' },
-  propDropdown: {
-    marginTop: 6, backgroundColor: '#fff', borderWidth: 1,
-    borderColor: 'rgba(21,101,216,0.10)', borderRadius: 14, overflow: 'hidden',
-  },
-  propDropdownItem: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 14, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: 'rgba(21,101,216,0.08)',
-  },
-  propDropdownItemActivo: { backgroundColor: 'rgba(21,101,216,0.06)' },
-  propDropdownItemText: { fontSize: 13.5, color: '#1A202C', fontWeight: '600' },
-  propDropdownItemTextActivo: { color: BLUE, fontWeight: '800' },
-  propRangoTexto: { fontSize: 12, color: '#8A94A6', marginTop: 6 },
-  propNotaTexto: { fontSize: 12, color: ACCENT, marginTop: 4, lineHeight: 16, fontWeight: '600' },
-
-  // ---- Fotos de la propuesta ----
-  propImagenesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center' },
+  propBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
+  propCard: { backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '80%', paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 26 : 18, shadowColor: BLUE_DARK, shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
+  propHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 14 },
+  propHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10 },
+  propHeaderIconWrap: { width: 32, height: 32, borderRadius: 16, backgroundColor: BLUE, justifyContent: 'center', alignItems: 'center' },
+  propTitulo: { fontSize: 16, fontWeight: '800', color: colors.text },
+  propSubtitulo: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  propCerrarBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.inputBg, justifyContent: 'center', alignItems: 'center' },
+  propLabel: { fontSize: 13, fontWeight: '700', color: colors.text, marginTop: 14, marginBottom: 6 },
+  propServicioInput: { backgroundColor: colors.inputBg, borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: colors.text },
+  propTextArea: { backgroundColor: colors.inputBg, borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: colors.text, minHeight: 70, textAlignVertical: 'top' },
+  propImagenesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   propImagenThumbWrap: { position: 'relative' },
-  propImagenThumb: { width: 60, height: 60, borderRadius: 12, backgroundColor: BG },
-  propImagenThumbQuitar: {
-    position: 'absolute', top: -6, right: -6,
-    width: 20, height: 20, borderRadius: 10,
-    backgroundColor: DANGER,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: '#fff',
-  },
-  propImagenAgregarBtn: {
-    width: 60, height: 60, borderRadius: 12,
-    borderWidth: 1.5, borderColor: BLUE, borderStyle: 'dashed',
-    backgroundColor: 'rgba(21,101,216,0.06)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-
-  // ---- Emergencia / plazo dentro de la propuesta ----
-  propEmergenciaAviso: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#FBEAE8',
-    borderWidth: 1, borderColor: 'rgba(192,57,43,0.35)',
-    borderRadius: 14, padding: 12,
-  },
-  propEmergenciaAvisoTexto: { flex: 1, fontSize: 12.5, color: DANGER, lineHeight: 17, fontWeight: '600' },
-  plazoRowProp: { flexDirection: 'row', gap: 10, marginTop: 10 },
-  plazoBoxProp: {
-    flex: 1, backgroundColor: BG, borderWidth: 1, borderColor: 'rgba(21,101,216,0.10)',
-    borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
-  },
-  plazoBoxLabelProp: { fontSize: 10.5, color: '#8A94A6', fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
-  plazoBoxValueProp: { fontSize: 14, color: '#1A202C', fontWeight: '700', marginTop: 4 },
-
-  // ---- Dirección dentro de la propuesta ----
-  propDireccionActualBox: {
-    marginTop: 8, flexDirection: 'row', alignItems: 'center',
-    backgroundColor: BG, borderWidth: 1, borderColor: 'rgba(21,101,216,0.10)',
-    borderRadius: 14, padding: 12,
-  },
-  propDireccionActualTexto: { flex: 1, fontSize: 13, color: '#1A202C', fontWeight: '600', lineHeight: 18 },
-
-  // ---- Modal de detalle de una propuesta ya enviada ----
-  detalleValor: { fontSize: 16, color: '#1A202C', fontWeight: '800' },
-  detalleValorDestacado: { fontSize: 20, color: BLUE_DARK, fontWeight: '800' },
-  detalleTexto: { fontSize: 13.5, color: '#4A5568', lineHeight: 19 },
-  detalleImagen: { width: 100, height: 100, borderRadius: 12, marginRight: 10, backgroundColor: BG },
+  propImagenThumb: { width: 64, height: 64, borderRadius: 10 },
+  propImagenThumbQuitar: { position: 'absolute', top: -5, right: -5, width: 20, height: 20, borderRadius: 10, backgroundColor: DANGER, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#fff' },
+  propImagenesBotonesWrap: { flexDirection: 'row', gap: 8 },
+  propImagenAgregarBtn: { width: 64, height: 64, borderRadius: 10, borderWidth: 1.5, borderColor: BLUE, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(21,101,216,0.06)' },
+  toggle2Track: { backgroundColor: colors.inputBg, borderRadius: 999, height: 40, flexDirection: 'row', padding: 3 },
+  toggle2Btn: { flex: 1, justifyContent: 'center', alignItems: 'center', zIndex: 2 },
+  toggle2Text: { fontSize: 12.5, fontWeight: '700', color: colors.textSecondary },
+  toggle2TextActivo: { color: '#fff' },
+  propPlazoRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  propPlazoBox: { flex: 1, backgroundColor: colors.inputBg, borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 10 },
+  propPlazoBoxLabel: { fontSize: 10.5, fontWeight: '700', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  propPlazoBoxValue: { fontSize: 13.5, fontWeight: '700', color: colors.text, marginTop: 2 },
+  propPriceRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border, borderRadius: 14, paddingHorizontal: 14 },
+  propPriceCurrency: { fontSize: 16, fontWeight: '700', color: colors.textSecondary, marginRight: 4 },
+  propPriceInput: { flex: 1, fontSize: 16, color: colors.text, paddingVertical: 12 },
+  propSelectBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.inputBg, borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 4 },
+  propSelectText: { fontSize: 14, color: colors.text },
+  propDropdown: { backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginTop: 4, overflow: 'hidden' },
+  propDropdownItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+  propDropdownItemActivo: { backgroundColor: 'rgba(21,101,216,0.08)' },
+  propDropdownItemTextWrap: { flex: 1 },
+  propDropdownItemCategoria: { fontSize: 10.5, fontWeight: '700', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
+  propDropdownItemText: { fontSize: 14, fontWeight: '600', color: colors.text },
+  propDropdownItemTextActivo: { color: BLUE, fontWeight: '800' },
+  propPriceRange: { fontSize: 12, color: colors.textSecondary, marginTop: 8 },
+  propAnalizandoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
+  propAnalizandoTexto: { fontSize: 13, color: ACCENT, fontWeight: '600' },
+  propError: { color: DANGER, fontSize: 12.5, marginTop: 8 },
+  propAclaracionBox: { backgroundColor: colors.surfaceVariant, borderRadius: 14, padding: 14, marginTop: 16, borderWidth: 1, borderColor: ACCENT_BORDER },
+  propAclaracionIconRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
+  propAclaracionIconWrap: { width: 32, height: 32, borderRadius: 16, backgroundColor: ACCENT, justifyContent: 'center', alignItems: 'center' },
+  propAclaracionTitulo: { fontSize: 14, fontWeight: '800', color: ACCENT },
+  propPreguntaItem: { backgroundColor: colors.card, borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: colors.border },
+  propPreguntaTexto: { fontSize: 13.5, fontWeight: '700', color: colors.text, marginBottom: 10 },
+  propChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  propChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border },
+  propChipActivo: { backgroundColor: BLUE, borderColor: BLUE },
+  propChipText: { fontSize: 12.5, fontWeight: '600', color: colors.textSecondary },
+  propChipTextActivo: { color: '#fff' },
+  propChipOtro: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  propChipIcon: { marginRight: 0 },
+  propOtroInput: { backgroundColor: colors.inputBg, borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13.5, color: colors.text, marginTop: 10 },
+  propAiButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: ACCENT, borderRadius: 14, paddingVertical: 14, marginTop: 16, shadowColor: ACCENT, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 3 },
+  propAiButtonDisabled: { opacity: 0.5, shadowOpacity: 0 },
+  propAiButtonIcon: { marginRight: 2 },
+  propAiButtonText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  propEnviarBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BLUE, borderRadius: 14, paddingVertical: 14, marginTop: 20, shadowColor: BLUE_DARK, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 3 },
+  propEnviarBtnDisabled: { opacity: 0.6 },
+  propEnviarBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  propDetallePrecio: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: 4 },
+  propDetalleTexto: { fontSize: 14, color: colors.textSecondary, lineHeight: 20, marginTop: 4 },
+  propDetalleEmergencia: { fontSize: 14, fontWeight: '700', color: DANGER, marginTop: 4 },
+  propDetalleImagenesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  propDetalleImagen: { width: 80, height: 80, borderRadius: 10 },
+  burbujaAudio: { maxWidth: '74%', borderRadius: 18, paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  audioPlayBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.08)', justifyContent: 'center', alignItems: 'center' },
+  audioOndaWrap: { flex: 1, height: 24, justifyContent: 'center', position: 'relative' },
+  audioOndaFondo: { position: 'absolute', left: 0, right: 0, height: 3, borderRadius: 2 },
+  audioOndaProgreso: { position: 'absolute', left: 0, height: 3, borderRadius: 2 },
 });

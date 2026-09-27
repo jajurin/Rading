@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import TrabajoActivoCliente from './TrabajoActivoCliente';
 import OfertaRecibidaOverlayCliente from './OfertaRecibidaOverlayCliente';
 import API_URL from '../configS';
+import { useTheme } from '../ThemeContext';
 
 // Cada cuánto se vuelve a preguntar por ofertas nuevas mientras el widget
 // está en pantalla (el overlay puede estar cerrado todo este tiempo).
@@ -32,6 +33,9 @@ const INTERVALO_POLLING_MS = 25000;
  *  - style: estilo opcional adicional para el contenedor de la tarjeta
  */
 export default function TrabajoActivoWidget({ idCliente, usuario, navigation, style }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const [showOferta, setShowOferta] = useState(false);
   const [totalOfertas, setTotalOfertas] = useState(0);
   const intervaloRef = useRef(null);
@@ -98,7 +102,7 @@ export default function TrabajoActivoWidget({ idCliente, usuario, navigation, st
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   floatingWrapper: {
     position: 'absolute',
     left: 16,
