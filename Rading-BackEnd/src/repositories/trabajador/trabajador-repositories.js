@@ -392,16 +392,18 @@ editarOferta = async (idOferta, idTrabajador, { precio, costoExtraMin = null, co
     /**
      * Muestra los trabajos realizados (TERMINADO o CANCELADO) de un trabajador.
      */
-   mostrarTrabajosRealizados = async (idTrabajador) => {
+  mostrarTrabajosRealizados = async (idTrabajador) => {
     const client = new Client(config)
     try {
         await client.connect()
         const sql = `
             SELECT
                 ct.id,
+                c.id AS "idCliente",
                 u.nombre,
                 u.apellido,
                 c.estrellas,
+                c.foto AS "clienteFoto",
                 ct.estado,
                 ct.fecha_iniciado,
                 ct.fecha_acabado,
@@ -411,18 +413,104 @@ editarOferta = async (idOferta, idTrabajador, { precio, costoExtraMin = null, co
                 ct.servicio_id,
                 ct.horario_requerido,
                 ct.horario_finalizado,
-                s.nombre AS servicio_nombre
+                s.nombre AS servicio_nombre,
+                EXISTS (
+                    SELECT 1 FROM "ReseñaCliente" r
+                    WHERE r."idTrabajo" = ct.id AND r."idTrabajador" = $1
+                ) AS "yaCalificado"
             FROM "Cliente-Trabajador" ct
             INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
             INNER JOIN "Usuario" u ON c."IdPersona" = u.id
             LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
             WHERE ct."IdTrabajador" = $1
             AND ct.estado IN ('TERMINADO', 'CANCELADO')
+            ORDER BY ct.fecha_acabado DESC NULLS LAST, ct.id DESC
         `
         const result = await client.query(sql, [idTrabajador])
         return result?.rows ?? []
     } catch (err) {
         console.error('Error en mostrarTrabajosRealizados:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
+
+/**
+ * Guarda la reseña que un trabajador hace de un cliente al terminar un
+ * trabajo. Incluye la calificación general, los 4 aspectos puntuales
+ * (puntualidad, trato, claridad, pago), si volvería a trabajar con el
+ * cliente, las etiquetas rápidas (concatenadas en "razon") y el
+ * comentario libre ("descripcion").
+ */
+calificarCliente = async (
+    idTrabajo,
+    idTrabajador,
+    {
+        estrellas,
+        razon = null,
+        descripcion = null,
+        puntualidad = null,
+        trato = null,
+        claridad = null,
+        pago = null,
+        volveria = null,
+    }
+) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        await client.query('BEGIN')
+
+        const ctResult = await client.query(
+            `SELECT id, "IdCliente", "IdTrabajador", estado
+             FROM "Cliente-Trabajador"
+             WHERE id = $1
+             FOR UPDATE`,
+            [idTrabajo]
+        )
+        const ct = ctResult.rows[0]
+        if (!ct) throw new Error('El trabajo no existe')
+        if (Number(ct.IdTrabajador) !== Number(idTrabajador)) {
+            throw new Error('Este trabajo no te pertenece')
+        }
+        if (ct.estado !== 'TERMINADO') {
+            throw new Error('Solo podés calificar trabajos terminados')
+        }
+
+        const yaExiste = await client.query(
+            `SELECT id FROM "ReseñaCliente" WHERE "idTrabajo" = $1 AND "idTrabajador" = $2`,
+            [idTrabajo, idTrabajador]
+        )
+        if (yaExiste.rows.length > 0) {
+            throw new Error('Ya calificaste a este cliente por este trabajo')
+        }
+
+        const insertResult = await client.query(
+            `INSERT INTO "ReseñaCliente"
+                ("idTrabajador", "idCliente", "idTrabajo", estrellas, razon, descripcion,
+                 puntualidad, trato, claridad, pago, volveria, "fechaCreacion")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+             RETURNING *`,
+            [idTrabajador, ct.IdCliente, idTrabajo, estrellas, razon, descripcion,
+             puntualidad, trato, claridad, pago, volveria]
+        )
+
+        // Recalcula el promedio de estrellas del cliente con todas sus reseñas
+        await client.query(
+            `UPDATE "Cliente"
+             SET estrellas = (
+                 SELECT AVG(estrellas) FROM "ReseñaCliente" WHERE "idCliente" = $1
+             )
+             WHERE id = $1`,
+            [ct.IdCliente]
+        )
+
+        await client.query('COMMIT')
+        return insertResult.rows[0]
+    } catch (err) {
+        try { await client.query('ROLLBACK') } catch (_) {}
+        console.error('Error en calificarCliente:', err)
         throw err
     } finally {
         await client.end()
@@ -1282,7 +1370,58 @@ obtenerPerfil = async (idTrabajador) => {
         await client.end()
     }
 }
-
+cancelarTrabajo = async (idTrabajo, idTrabajador, motivo = null) => {
+    const client = new Client(config)
+    try {
+        await client.connect()
+        await client.query('BEGIN')
+ 
+        const filaResult = await client.query(
+            `SELECT id, estado, "IdCliente" AS "idCliente", "IdTrabajador" AS "idTrabajador"
+             FROM "Cliente-Trabajador"
+             WHERE id = $1
+             FOR UPDATE`,
+            [idTrabajo]
+        )
+        const fila = filaResult.rows[0]
+        if (!fila) throw new Error('El trabajo no existe')
+        if (Number(fila.idTrabajador) !== Number(idTrabajador)) {
+            throw new Error('Este trabajo no te pertenece')
+        }
+        if (fila.estado !== 'EN PROCESO') {
+            throw new Error('Solo podés cancelar trabajos en proceso')
+        }
+ 
+        await client.query(
+            `UPDATE "Cliente-Trabajador"
+             SET estado = 'CANCELADO',
+                 fecha_acabado = CURRENT_DATE,
+                 motivo_cancelacion = $2,
+                 cancelado_por = 'TRABAJADOR'
+             WHERE id = $1 AND estado = 'EN PROCESO'`,
+            [idTrabajo, motivo]
+        )
+ 
+        await client.query('COMMIT')
+ 
+        // OJO: si NotificacionServices todavía no tiene este método,
+        // agregalo (misma forma que notificarTrabajoFinalizado).
+        this.#notifSvc.notificarTrabajoCancelado({
+            idTrabajo,
+            idCliente: fila.idCliente,
+            canceladoPor: 'TRABAJADOR',
+            motivo,
+        }).catch(err => console.error('[Notif] Error notificarTrabajoCancelado:', err.message))
+ 
+        return { idTrabajo, idCliente: fila.idCliente, cancelado: true }
+    } catch (err) {
+        try { await client.query('ROLLBACK') } catch (_) {}
+        console.error('Error en cancelarTrabajo:', err)
+        throw err
+    } finally {
+        await client.end()
+    }
+}
 actualizarPerfil = async (idTrabajador, body) => {
     const client = new Client(config)
     try {

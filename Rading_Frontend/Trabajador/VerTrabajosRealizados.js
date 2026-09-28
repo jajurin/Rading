@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList,
   TouchableOpacity, ActivityIndicator, SafeAreaView,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import API_URL from '../configS';
@@ -35,17 +36,15 @@ export default function VerTrabajosRealizados({ route, navigation }) {
   const [trabajos, setTrabajos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [ultimoTexto, setUltimoTexto] = useState('');
 
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
-  useEffect(() => {
-    fetchTrabajos();
-  }, []);
-
-  const fetchTrabajos = async (texto = '') => {
+  const fetchTrabajos = useCallback(async (texto = '') => {
     try {
       setLoading(true);
       setError(null);
+      setUltimoTexto(texto);
       const res = await fetch(`${API_URL}/trabajador/trabajosRealizados/${idTrabajador}`);
       const data = await res.json();
       const lista = Array.isArray(data) ? data : [];
@@ -60,6 +59,33 @@ export default function VerTrabajosRealizados({ route, navigation }) {
     } finally {
       setLoading(false);
     }
+  }, [idTrabajador]);
+
+  // Se recarga cada vez que la pantalla vuelve a tener foco (por ejemplo,
+  // al volver de calificar a un cliente) para reflejar el estado actualizado.
+  useFocusEffect(
+    useCallback(() => {
+      fetchTrabajos(ultimoTexto);
+    }, [fetchTrabajos])
+  );
+
+  const irACalificar = (item) => {
+    navigation.navigate('clasifcarcliente', {
+      idTrabajo: item.id,
+      idTrabajador,
+      cliente: {
+        id: item.idCliente,
+        nombre: item.nombre,
+        apellido: item.apellido,
+        foto: item.clienteFoto,
+      },
+      trabajo: {
+        servicio_nombre: item.servicio_nombre,
+        fijo: item.fijo,
+        precio: item.precio,
+        fecha: formatDate(item.fecha_acabado),
+      },
+    });
   };
 
   // Componente movido dentro del componente principal para acceder a styles
@@ -135,6 +161,25 @@ export default function VerTrabajosRealizados({ route, navigation }) {
             </Text>
           </View>
         </View>
+
+        {/* Calificar cliente / ya calificado */}
+        {terminado && !item.yaCalificado && (
+          <TouchableOpacity
+            style={styles.calificarBtn}
+            activeOpacity={0.85}
+            onPress={() => irACalificar(item)}
+          >
+            <Ionicons name="star-outline" size={14} color="#fff" />
+            <Text style={styles.calificarBtnText}>Calificar cliente</Text>
+          </TouchableOpacity>
+        )}
+
+        {terminado && item.yaCalificado && (
+          <View style={styles.calificadoBadge}>
+            <Ionicons name="checkmark-circle" size={14} color="#22c55e" />
+            <Text style={styles.calificadoBadgeText}>Ya calificaste a este cliente</Text>
+          </View>
+        )}
       </View>
     );
   };
@@ -340,5 +385,34 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     backgroundColor: isDark ? colors.border : '#1565D8',
     marginHorizontal: 4,
     alignSelf: 'stretch',
+  },
+
+  // Calificar cliente
+  calificarBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#F5A623',
+    paddingVertical: 10,
+    marginHorizontal: 14,
+    marginBottom: 12,
+    marginTop: -3,
+    borderRadius: 10,
+  },
+  calificarBtnText: { color: '#fff', fontSize: 12.5, fontWeight: '700' },
+  calificadoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    marginHorizontal: 14,
+    marginBottom: 12,
+  },
+  calificadoBadgeText: {
+    color: isDark ? '#22c55e' : '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

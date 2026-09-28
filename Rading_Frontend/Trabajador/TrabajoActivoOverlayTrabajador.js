@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Modal, View, Text, Image, TouchableOpacity,
-  StyleSheet, ScrollView, ActivityIndicator,
+  StyleSheet, ScrollView, ActivityIndicator, TextInput,
+  Pressable, KeyboardAvoidingView, Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import API_URL from '../configS';
@@ -11,6 +12,14 @@ import { useTheme } from "../ThemeContext";
 
 const AVATAR_CLIENTE = (nombre = '', apellido = '') =>
   `https://ui-avatars.com/api/?name=${nombre}+${apellido}&background=0D47C7&color=fff&size=150`;
+
+const MOTIVOS_CANCELACION = [
+  "No pude llegar a tiempo",
+  "El cliente no está / no responde",
+  "Problema de seguridad en el lugar",
+  "El trabajo no era lo acordado",
+  "Otro",
+];
 
 const TrabajoItem = ({ trabajo, onSelect, isSelected, styles }) => (
   <TouchableOpacity
@@ -45,7 +54,7 @@ const TrabajoItem = ({ trabajo, onSelect, isSelected, styles }) => (
   </TouchableOpacity>
 );
 
-const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar, styles, navigation }) => {
+const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar, onCancelar, styles, navigation }) => {
   const yaLlego = !!trabajo.trabajo_iniciado_en;
   const yaTermino = trabajo.estado === 'TERMINADO';
 
@@ -154,7 +163,117 @@ const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar, styles, navig
         <Ionicons name="chatbox-outline" size={18} color="#fff" />
         <Text style={styles.chatText}>Chatear con el cliente</Text>
       </TouchableOpacity>
+
+      {/* Cancelar: disponible mientras el trabajo esté en proceso (con o
+          sin llegada confirmada), no una vez terminado. */}
+      {!yaTermino && (
+        <TouchableOpacity
+          style={styles.cancelarButton}
+          onPress={() => onCancelar(trabajo)}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="close-circle-outline" size={17} color="#E4483C" />
+          <Text style={styles.cancelarText}>Cancelar trabajo</Text>
+        </TouchableOpacity>
+      )}
     </View>
+  );
+};
+
+/**
+ * Modal para pedir el motivo antes de cancelar. Vive en este archivo
+ * porque solo se usa desde acá; si en algún momento se necesita también
+ * en TrabajoActivoTrabajador (la barra flotante), conviene extraerlo a
+ * un componente compartido en vez de duplicarlo.
+ */
+const CancelarTrabajoModal = ({ visible, onClose, onConfirm, styles, isDark, colors }) => {
+  const [motivoSeleccionado, setMotivoSeleccionado] = useState(null);
+  const [motivoTexto, setMotivoTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setMotivoSeleccionado(null);
+      setMotivoTexto("");
+      setEnviando(false);
+    }
+  }, [visible]);
+
+  const motivoFinal = motivoSeleccionado === "Otro" ? motivoTexto.trim() : motivoSeleccionado;
+  const puedeConfirmar = !!motivoFinal && !enviando;
+
+  const confirmar = async () => {
+    if (!puedeConfirmar) return;
+    try {
+      setEnviando(true);
+      await onConfirm(motivoFinal);
+    } catch (err) {
+      console.error('Error cancelando trabajo:', err);
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.cancelOverlay}
+      >
+        <Pressable style={StyleSheet.absoluteFill} onPress={enviando ? undefined : onClose} />
+
+        <View style={styles.cancelCard}>
+          <Text style={styles.cancelTitulo}>Cancelar trabajo</Text>
+          <Text style={styles.cancelSubtitulo}>Contanos por qué — se lo mostramos al cliente.</Text>
+
+          <View style={styles.cancelMotivos}>
+            {MOTIVOS_CANCELACION.map((m) => {
+              const activo = motivoSeleccionado === m;
+              return (
+                <TouchableOpacity
+                  key={m}
+                  style={[styles.cancelMotivoItem, activo && styles.cancelMotivoItemActivo]}
+                  onPress={() => setMotivoSeleccionado(m)}
+                >
+                  <View style={[styles.cancelRadio, activo && styles.cancelRadioActivo]}>
+                    {activo && <View style={styles.cancelRadioDot} />}
+                  </View>
+                  <Text style={[styles.cancelMotivoTexto, activo && styles.cancelMotivoTextoActivo]}>
+                    {m}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {motivoSeleccionado === "Otro" && (
+            <TextInput
+              style={styles.cancelInput}
+              placeholder="Escribí el motivo..."
+              placeholderTextColor={colors.textSecondary ?? "#8A8FA3"}
+              value={motivoTexto}
+              onChangeText={setMotivoTexto}
+              multiline
+              maxLength={200}
+            />
+          )}
+
+          <View style={styles.cancelBtnRow}>
+            <TouchableOpacity style={styles.cancelBtnSecundario} onPress={onClose} disabled={enviando}>
+              <Text style={styles.cancelBtnSecundarioTexto}>Volver</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.cancelBtnPeligro, !puedeConfirmar && styles.cancelBtnDeshabilitado]}
+              onPress={confirmar}
+              disabled={!puedeConfirmar}
+            >
+              <Text style={styles.cancelBtnPeligroTexto}>
+                {enviando ? "Cancelando..." : "Confirmar cancelación"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 };
 
@@ -176,6 +295,9 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
   // Controla qué modal de confirmación (llegada / fin) está abierto y sobre qué trabajo
   const [confirmacion, setConfirmacion] = useState(null); // { tipo: 'llegada' | 'fin', trabajo }
 
+  // Trabajo sobre el que se abrió el modal de cancelación (null = cerrado)
+  const [trabajoACancelar, setTrabajoACancelar] = useState(null);
+
   useEffect(() => {
     if (visible && esIdValido(idTrabajador)) {
       fetchTrabajos();
@@ -184,6 +306,7 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
       setTrabajos([]);
       setTrabajoSeleccionado(null);
       setConfirmacion(null);
+      setTrabajoACancelar(null);
     }
   }, [visible, idTrabajador]);
 
@@ -216,6 +339,21 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
   };
 
   const cerrarConfirmacion = () => setConfirmacion(null);
+
+  const handleCancelarConfirmado = async (motivo) => {
+    const idTrabajo = trabajoACancelar.id;
+    const res = await fetch(`${API_URL}/trabajador/${idTrabajo}/cancelar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idTrabajador, motivo }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.message || 'No se pudo cancelar el trabajo');
+    }
+    setTrabajoACancelar(null);
+    await fetchTrabajos();
+  };
 
   if (!visible) return null;
 
@@ -284,6 +422,7 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
                       onChat={onChat}
                       onIniciar={(t) => setConfirmacion({ tipo: 'llegada', trabajo: t })}
                       onFinalizar={(t) => setConfirmacion({ tipo: 'fin', trabajo: t })}
+                      onCancelar={(t) => setTrabajoACancelar(t)}
                       styles={styles}
                       navigation={navigation}
                     />
@@ -318,6 +457,21 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
 />
           )}
         </Modal>
+      )}
+
+      {/* Modal de motivo de cancelación. Se monta/desmonta del todo (en vez
+          de solo alternar `visible`) porque el Modal de RN Web a veces no
+          limpia bien su overlay si el componente sigue vivo por detrás —
+          eso era lo que hacía que en compu no se viera cerrar del todo. */}
+      {trabajoACancelar && (
+        <CancelarTrabajoModal
+          visible
+          onClose={() => setTrabajoACancelar(null)}
+          onConfirm={handleCancelarConfirmado}
+          styles={styles}
+          isDark={isDark}
+          colors={colors}
+        />
       )}
     </Modal>
   );
@@ -375,4 +529,48 @@ const createStyles = (colors, isDark) => StyleSheet.create({
   llegadaText: { color: "#0d2a6e", fontSize: 14, fontWeight: "800" },
   finalizarButton: { backgroundColor: "#1e9e5a", borderRadius: 12, paddingVertical: 13, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10 },
   finalizarText: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  cancelarButton: { marginTop: 10, borderRadius: 12, paddingVertical: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1.5, borderColor: "#E4483C" },
+  cancelarText: { color: "#E4483C", fontSize: 13.5, fontWeight: "800" },
+
+  /* Modal de motivo de cancelación.
+     En mobile se comporta como bottom sheet (pegado abajo, solo esquinas
+     superiores redondeadas). En web eso queda pegado al borde real del
+     navegador y no al del teléfono simulado, así que ahí lo centramos
+     como un diálogo normal. */
+  cancelOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(10,18,48,0.55)",
+    justifyContent: Platform.OS === "web" ? "center" : "flex-end",
+    alignItems: Platform.OS === "web" ? "center" : "stretch",
+    padding: Platform.OS === "web" ? 20 : 0,
+  },
+  cancelCard: {
+    backgroundColor: isDark ? colors.surface : "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderBottomLeftRadius: Platform.OS === "web" ? 24 : 0,
+    borderBottomRightRadius: Platform.OS === "web" ? 24 : 0,
+    paddingHorizontal: 20,
+    paddingTop: 22,
+    paddingBottom: 28,
+    width: Platform.OS === "web" ? "100%" : undefined,
+    maxWidth: Platform.OS === "web" ? 420 : undefined,
+  },
+  cancelTitulo: { fontSize: 18, fontWeight: "800", color: isDark ? colors.text : "#0d2a6e" },
+  cancelSubtitulo: { fontSize: 13, fontWeight: "500", color: colors.textSecondary ?? "#8A8FA3", marginTop: 4, marginBottom: 16 },
+  cancelMotivos: { gap: 8 },
+  cancelMotivoItem: { flexDirection: "row", alignItems: "center", paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1, borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(10,18,48,0.08)" },
+  cancelMotivoItemActivo: { borderColor: "#1565D8", backgroundColor: isDark ? "rgba(21,101,216,0.14)" : "rgba(21,101,216,0.06)" },
+  cancelRadio: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: isDark ? "rgba(255,255,255,0.3)" : "rgba(10,18,48,0.25)", alignItems: "center", justifyContent: "center", marginRight: 10 },
+  cancelRadioActivo: { borderColor: "#1565D8" },
+  cancelRadioDot: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: "#1565D8" },
+  cancelMotivoTexto: { fontSize: 13.5, fontWeight: "600", color: isDark ? "rgba(255,255,255,0.85)" : "#0d2a6e", flexShrink: 1 },
+  cancelMotivoTextoActivo: { color: isDark ? "#fff" : "#0D47C7" },
+  cancelInput: { marginTop: 12, borderRadius: 14, borderWidth: 1, borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(10,18,48,0.08)", paddingHorizontal: 12, paddingVertical: 10, minHeight: 70, textAlignVertical: "top", fontSize: 13.5, color: isDark ? colors.text : "#0d2a6e" },
+  cancelBtnRow: { flexDirection: "row", gap: 10, marginTop: 20 },
+  cancelBtnSecundario: { flex: 1, paddingVertical: 13, borderRadius: 14, alignItems: "center", backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(10,18,48,0.06)" },
+  cancelBtnSecundarioTexto: { fontSize: 14, fontWeight: "700", color: isDark ? colors.text : "#0d2a6e" },
+  cancelBtnPeligro: { flex: 1.4, paddingVertical: 13, borderRadius: 14, alignItems: "center", backgroundColor: "#E4483C" },
+  cancelBtnDeshabilitado: { opacity: 0.45 },
+  cancelBtnPeligroTexto: { fontSize: 14, fontWeight: "800", color: "#fff" },
 });

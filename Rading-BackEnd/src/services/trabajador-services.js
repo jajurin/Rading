@@ -86,6 +86,41 @@ confirmarFin = async (idTrabajo, codigo) => {
 
     return resultado
 }
+
+/**
+ * El trabajador cancela un trabajo que está EN PROCESO. Requiere motivo
+ * (se lo mostramos al cliente por chat). Delega la validación de estado
+ * al repo (solo se puede cancelar EN PROCESO y si el trabajo es suyo).
+ */
+cancelarTrabajo = async (idTrabajo, idTrabajador, motivo) => {
+    if (!idTrabajo || !idTrabajador) throw new Error('Faltan idTrabajo o idTrabajador')
+    if (!motivo || !String(motivo).trim()) throw new Error('Falta el motivo de la cancelación')
+
+    const resultado = await this.#repo.cancelarTrabajo(idTrabajo, idTrabajador, motivo.trim())
+
+    try {
+        const estado = await this.#repo.obtenerEstado(idTrabajo)
+        const chatId = await this.#chatRepo.buscarOCrearChat(estado.idCliente, estado.idTrabajador)
+        await this.#chatRepo.enviarMensaje({
+            chatId,
+            enviadorId: estado.idUsuarioTrabajador,
+            contenido: `El trabajador canceló el trabajo. Motivo: ${motivo.trim()}`,
+            tipo: 'TEXTO',
+        })
+
+        await this.#notifSvc.notificarTrabajoCancelado({
+            idTrabajo,
+            idCliente: estado.idCliente,
+            canceladoPor: 'TRABAJADOR',
+            motivo: motivo.trim(),
+        })
+    } catch (err) {
+        console.error(`No se pudo notificar cancelarTrabajo del trabajo ${idTrabajo}:`, err)
+    }
+
+    return resultado
+}
+
     editarOferta = async (idOferta, idTrabajador, datos) => {
     if (!idOferta || !idTrabajador || datos?.precio == null) {
         throw new Error('Faltan idOferta, idTrabajador o precio')
@@ -121,8 +156,23 @@ enviarOferta = async (idTrabajo, idTrabajador, datos) => {
 }
 
 cerrarSubastasVencidas = async () => {
-    return await this.#repo.cerrarSubastasVencidas()
+    return await this.#repo.avisarSubastasVencidas()
 }
+
+/**
+ * El trabajador califica al cliente al terminar un trabajo. Guarda la
+ * calificación general, los 4 aspectos puntuales, si volvería a trabajar
+ * con el cliente, las etiquetas rápidas (en "razon") y el comentario
+ * libre ("descripcion"). Solo "estrellas" es obligatorio; todo lo demás
+ * es opcional y puede llegar como null/undefined desde el front.
+ */
+calificarCliente = async (idTrabajo, idTrabajador, datos = {}) => {
+    if (!idTrabajo || !idTrabajador || datos.estrellas == null) {
+        throw new Error('Faltan idTrabajo, idTrabajador o estrellas')
+    }
+    return await this.#repo.calificarCliente(idTrabajo, idTrabajador, datos)
+}
+
     registrarTrabajador = async (body) => {
         const trabajador = new Trabajador(
             body.nombre, body.apellido, body.email, body.direccion,

@@ -9,14 +9,14 @@ import {
   StatusBar,
   TextInput,
   Alert,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { useTheme } from '../ThemeContext';
-
-// import API_URL from '../configS';
+import API_URL from '../configS';
 
 // ── Paleta (misma que HomeTrabajador) ───────────────────────────────────
 const NAVY         = '#0F1B4C';
@@ -38,21 +38,6 @@ const FIJO_BORDER  = 'rgba(109,40,217,0.28)';
 const SUBASTA      = '#B4740E';
 const SUBASTA_BG   = 'rgba(217,142,10,0.12)';
 const SUBASTA_BORDER = 'rgba(217,142,10,0.32)';
-
-// ── Datos hardcodeados de ejemplo (reemplazar por route.params reales) ──
-const CLIENTE_MOCK = {
-  nombre: 'Marina',
-  apellido: 'Gómez',
-  foto: null,
-};
-
-const TRABAJO_MOCK = {
-  servicio_nombre: 'Electricista',
-  fijo: true,
-  precio: 15000,
-  fecha: '2 de septiembre, 2026',
-  duracion: '1h 40min',
-};
 
 const LABELS_ESTRELLAS = ['', 'Muy mala', 'Mala', 'Buena', 'Muy buena', 'Excelente'];
 
@@ -123,7 +108,11 @@ function ModalidadBadge({ fijo, styles }) {
 }
 
 // ── Selector grande de estrellas (calificación general) ─────────────────
-function EstrellasGrandes({ value, onChange, styles }) {
+// El color de la estrella "vacía" depende del tema: en modo oscuro un navy
+// casi negro es invisible sobre la card oscura, así que usamos un blanco
+// translúcido en ese caso.
+function EstrellasGrandes({ value, onChange, styles, isDark }) {
+  const colorVacia = isDark ? 'rgba(255,255,255,0.22)' : 'rgba(15,27,76,0.16)';
   return (
     <View style={styles.estrellasGrandesRow}>
       {[1, 2, 3, 4, 5].map((n) => (
@@ -136,7 +125,7 @@ function EstrellasGrandes({ value, onChange, styles }) {
           <Ionicons
             name={n <= value ? 'star' : 'star-outline'}
             size={40}
-            color={n <= value ? AMBER : 'rgba(15,27,76,0.16)'}
+            color={n <= value ? AMBER : colorVacia}
             style={{ marginHorizontal: 3 }}
           />
         </TouchableOpacity>
@@ -146,7 +135,8 @@ function EstrellasGrandes({ value, onChange, styles }) {
 }
 
 // ── Selector chico de estrellas (por aspecto) ────────────────────────────
-function EstrellasChicas({ value, onChange }) {
+function EstrellasChicas({ value, onChange, isDark }) {
+  const colorVacia = isDark ? 'rgba(255,255,255,0.24)' : 'rgba(15,27,76,0.18)';
   return (
     <View style={{ flexDirection: 'row' }}>
       {[1, 2, 3, 4, 5].map((n) => (
@@ -159,7 +149,7 @@ function EstrellasChicas({ value, onChange }) {
           <Ionicons
             name={n <= value ? 'star' : 'star-outline'}
             size={17}
-            color={n <= value ? AMBER : 'rgba(15,27,76,0.18)'}
+            color={n <= value ? AMBER : colorVacia}
             style={{ marginLeft: 2 }}
           />
         </TouchableOpacity>
@@ -172,9 +162,10 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
-  const cliente = route?.params?.cliente ?? CLIENTE_MOCK;
-  const trabajo = route?.params?.trabajo ?? TRABAJO_MOCK;
+  const cliente = route?.params?.cliente ?? {};
+  const trabajo = route?.params?.trabajo ?? {};
   const idTrabajo = route?.params?.idTrabajo ?? null;
+  const idTrabajador = route?.params?.idTrabajador ?? null;
 
   const [general, setGeneral] = useState(0);
   const [aspectos, setAspectos] = useState({});
@@ -188,42 +179,86 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
   const toggleTag = (id) =>
     setTags((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
 
-  const puedeEnviar = general > 0;
+  const puedeEnviar = general > 0 && !enviando;
+
+  // Alert.alert de React Native, en web (react-native-web), en muchas
+  // versiones NO muestra ningún diálogo y NO ejecuta el callback del botón
+  // — solo tira un console.warn. Si dependemos de ese callback para hacer
+  // goBack(), en web la pantalla se queda "trabada" aunque el envío haya
+  // funcionado. Por eso en web usamos window.alert (bloqueante, sí ejecuta
+  // lo que sigue) y en nativo seguimos usando Alert.alert normal.
+  const avisar = (titulo, mensaje, onAceptar) => {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.alert) {
+        window.alert(`${titulo}\n\n${mensaje}`);
+      }
+      onAceptar?.();
+    } else {
+      Alert.alert(titulo, mensaje, [{ text: 'OK', onPress: () => onAceptar?.() }]);
+    }
+  };
 
   const handleEnviar = async () => {
     if (!puedeEnviar) return;
+
+    // Chequeo temprano: sin esto la request va a fallar en el backend con
+    // "Faltan idTrabajo, idTrabajador o estrellas" y no se ve claro por qué.
+    if (!idTrabajo || !idTrabajador) {
+      avisar(
+        'No se pudo enviar',
+        'Falta información del trabajo. Volvé atrás e intentá de nuevo desde la lista de trabajos.'
+      );
+      return;
+    }
+
     setEnviando(true);
+
+    const razon = tags.length
+      ? tags.map((id) => TAGS_RAPIDOS.find((t) => t.id === id)?.label).filter(Boolean).join(', ')
+      : null;
 
     const payload = {
       idTrabajo,
-      calificacionGeneral: general,
-      aspectos,
-      volveriaATrabajar: volveria,
-      tags,
-      comentario: comentario.trim(),
+      idTrabajador,
+      estrellas: general,
+      razon,
+      descripcion: comentario.trim() || null,
+      puntualidad: aspectos.puntualidad || null,
+      trato: aspectos.trato || null,
+      claridad: aspectos.claridad || null,
+      pago: aspectos.pago || null,
+      volveria: volveria === 'si' ? true : volveria === 'no' ? false : null,
     };
 
-    // Ejemplo de envío real (descomentar y ajustar cuando conectes con tu API):
-    //
-    // try {
-    //   await fetch(`${API_URL}/trabajador/calificarCliente`, {
-    //     method: 'POST',
-    //     headers: { 'Content-Type': 'application/json' },
-    //     body: JSON.stringify(payload),
-    //   });
-    // } catch (err) {
-    //   console.error('Error al enviar calificación:', err);
-    // } finally {
-    //   setEnviando(false);
-    // }
+    try {
+      const resp = await fetch(`${API_URL}/trabajador/calificarCliente`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-    console.log('Calificación enviada (hardcode):', payload);
-    setTimeout(() => {
+      let data = {};
+      try {
+        data = await resp.json();
+      } catch (_) {
+        // El backend puede responder sin body en algún error inesperado;
+        // no dejamos que esto tape el mensaje real de error.
+      }
+
+      if (!resp.ok) {
+        throw new Error(data.message || `No se pudo enviar la calificación (HTTP ${resp.status})`);
+      }
+
+      // Se confirma el envío y recién ahí se sale de la pantalla.
+      avisar('¡Gracias!', 'Tu calificación fue enviada.', () => {
+        navigation?.goBack?.();
+      });
+    } catch (err) {
+      console.error('Error al enviar calificación:', err);
+      avisar('Error', err.message || 'No se pudo enviar la calificación. Probá de nuevo.');
+    } finally {
       setEnviando(false);
-      Alert.alert('¡Gracias!', 'Tu calificación fue enviada.', [
-        { text: 'OK', onPress: () => navigation?.goBack?.() },
-      ]);
-    }, 600);
+    }
   };
 
   return (
@@ -295,19 +330,15 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
 
           <View style={styles.bannerInfoRow}>
             <View style={styles.bannerInfoItem}>
-              <Text style={styles.bannerInfoLabel}>Duración</Text>
-              <Text style={styles.bannerInfoValor}>{trabajo.duracion}</Text>
+              <Text style={styles.bannerInfoLabel}>Modalidad</Text>
+              <ModalidadBadge fijo={trabajo.fijo} styles={styles} />
             </View>
             <View style={styles.bannerInfoDivider} />
             <View style={styles.bannerInfoItem}>
               <Text style={styles.bannerInfoLabel}>Cobraste</Text>
               <Text style={styles.bannerInfoValor}>
-                ${Number(trabajo.precio).toLocaleString('es-AR')}
+                ${Number(trabajo.precio ?? 0).toLocaleString('es-AR')}
               </Text>
-            </View>
-            <View style={styles.bannerInfoDivider} />
-            <View style={styles.bannerInfoItem}>
-              <ModalidadBadge fijo={trabajo.fijo} styles={styles} />
             </View>
           </View>
         </LinearGradient>
@@ -317,7 +348,7 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
           <Text style={styles.cardTitle}>¿Cómo fue tu experiencia con este cliente?</Text>
           <Text style={styles.cardSubtitle}>Tu opinión ayuda a otros trabajadores</Text>
 
-          <EstrellasGrandes value={general} onChange={setGeneral} styles={styles} />
+          <EstrellasGrandes value={general} onChange={setGeneral} styles={styles} isDark={isDark} />
 
           <Text style={styles.estrellasLabel}>
             {general > 0 ? LABELS_ESTRELLAS[general] : 'Tocá una estrella para calificar'}
@@ -341,6 +372,7 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
                 <EstrellasChicas
                   value={aspectos[a.id] ?? 0}
                   onChange={(v) => setAspecto(a.id, v)}
+                  isDark={isDark}
                 />
               </View>
             ))}
@@ -457,7 +489,7 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
           <TouchableOpacity
             activeOpacity={puedeEnviar ? 0.88 : 1}
             onPress={handleEnviar}
-            disabled={!puedeEnviar || enviando}
+            disabled={!puedeEnviar}
           >
             <LinearGradient
               colors={puedeEnviar ? [INDIGO, '#1E2E9E'] : ['#C7CCE8', '#C7CCE8']}
@@ -536,7 +568,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 16,
     paddingVertical: 12, paddingHorizontal: 10,
   },
-  bannerInfoItem: { flex: 1, alignItems: 'center' },
+  bannerInfoItem: { flex: 1, alignItems: 'center', gap: 4 },
   bannerInfoLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10.5, marginBottom: 3 },
   bannerInfoValor: { color: WHITE, fontSize: 13.5, fontWeight: '800' },
   bannerInfoDivider: { width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.18)' },

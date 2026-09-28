@@ -25,7 +25,12 @@ export default class TrabajoServices {
         }
         return resultado
     }
-
+calificarCliente = async (idTrabajo, idTrabajador, datos) => {
+    if (!idTrabajo || !idTrabajador || datos?.estrellas == null) {
+        throw new Error('Faltan idTrabajo, idTrabajador o estrellas')
+    }
+    return await this.#repo.calificarCliente(idTrabajo, idTrabajador, datos)
+}
     confirmarLlegadaConCodigo = async (idTrabajo, codigo) => {
         if (!idTrabajo || !codigo) throw new Error('Faltan idTrabajo o codigo')
         const resultado = await this.#repo.confirmarLlegadaConCodigo(idTrabajo, codigo)
