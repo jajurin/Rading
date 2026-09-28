@@ -101,7 +101,7 @@ export default function Header({
       const data = await resp.json();
       if (data?.direccion) setDireccionDb(data.direccion);
     } catch (err) {
-      console.error('[Header] Error trayendo dirección:', err.message);
+      console.error('[Header] Errorr trayendo dirección:', err.message);
       setErrorDireccion(true);
     } finally {
       setCargandoDireccion(false);
