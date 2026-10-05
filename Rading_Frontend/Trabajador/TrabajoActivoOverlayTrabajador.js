@@ -8,6 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import API_URL from '../configS';
 import ConfirmarLlegadaTr from './ConfirmarLlegadaTr';
 import ConfirmarTrabajoTr from './ConfirmarTrabajoTr';
+import SeguimientoMini from "../SeguimientoMini";
 import { useTheme } from "../ThemeContext";
 
 const AVATAR_CLIENTE = (nombre = '', apellido = '') =>
@@ -54,7 +55,7 @@ const TrabajoItem = ({ trabajo, onSelect, isSelected, styles }) => (
   </TouchableOpacity>
 );
 
-const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar, onCancelar, styles, navigation }) => {
+const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar, onCancelar, onClose, idTrabajador, styles, navigation }) => {
   const yaLlego = !!trabajo.trabajo_iniciado_en;
   const yaTermino = trabajo.estado === 'TERMINADO';
 
@@ -67,7 +68,7 @@ const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar, onCancelar, s
         />
         <View style={styles.detalleWorkerInfo}>
           <TouchableOpacity
-            onPress={() => navigation.navigate('PerfilClienteParaTrabajador', { idCliente: trabajo.id })}
+            onPress={() => navigation.navigate('PerfilClienteParaTrabajador', { idCliente: trabajo.idCliente })}
             activeOpacity={0.7}
           >
             <Text style={styles.detalleNombre}>{trabajo.nombre} {trabajo.apellido}</Text>
@@ -137,6 +138,19 @@ const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar, onCancelar, s
           </View>
         )}
       </View>
+
+      {/* Mini mapa con ruta y ETA hasta el domicilio. Solo mientras va en
+          camino: desaparece cuando se confirma la llegada. */}
+      {!yaLlego && !yaTermino && (
+        <SeguimientoMini
+          trabajo={trabajo}
+          rol="trabajador"
+          idUsuarioRol={idTrabajador}
+          navigation={navigation}
+          onAbrir={onClose}
+          activo={!yaLlego}
+        />
+      )}
 
       {/* Acción principal según el estado del trabajo */}
       {!yaLlego ? (
@@ -423,6 +437,8 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
                       onIniciar={(t) => setConfirmacion({ tipo: 'llegada', trabajo: t })}
                       onFinalizar={(t) => setConfirmacion({ tipo: 'fin', trabajo: t })}
                       onCancelar={(t) => setTrabajoACancelar(t)}
+                      onClose={onClose}
+                      idTrabajador={idTrabajador}
                       styles={styles}
                       navigation={navigation}
                     />
@@ -448,13 +464,13 @@ export default function TrabajoActivoOverlayTrabajador({ visible, onClose, onCha
             />
           ) : (
             <ConfirmarTrabajoTr
-  idTrabajo={confirmacion.trabajo.id}
-  service={confirmacion.trabajo.servicio_nombre}
-  clientName={`${confirmacion.trabajo.nombre} ${confirmacion.trabajo.apellido}`}
-  durationMinutes={confirmacion.trabajo.duracionMinutos}
-  onConfirm={handleConfirmacionOk}
-  onClose={cerrarConfirmacion}
-/>
+              idTrabajo={confirmacion.trabajo.id}
+              service={confirmacion.trabajo.servicio_nombre}
+              clientName={`${confirmacion.trabajo.nombre} ${confirmacion.trabajo.apellido}`}
+              durationMinutes={confirmacion.trabajo.duracionMinutos}
+              onConfirm={handleConfirmacionOk}
+              onClose={cerrarConfirmacion}
+            />
           )}
         </Modal>
       )}

@@ -270,6 +270,7 @@ mostrarTrabajosActivos = async (idTrabajador) => {
         const sql = `
             SELECT
                 ct.id,
+                c.id AS "idCliente",
                 u.nombre,
                 u.apellido,
                 c.estrellas,
@@ -284,6 +285,8 @@ mostrarTrabajosActivos = async (idTrabajador) => {
                 ct.horario_finalizado,
                 ct.trabajo_iniciado_en,
                 ct.direccion,
+                COALESCE(ct.lat, u.lat) AS latitud,
+                COALESCE(ct.lng, u.lng) AS longitud,
                 CASE
                     WHEN ct.trabajo_iniciado_en IS NOT NULL
                     THEN EXTRACT(EPOCH FROM (now() - ct.trabajo_iniciado_en)) / 60
@@ -306,7 +309,6 @@ mostrarTrabajosActivos = async (idTrabajador) => {
         await client.end()
     }
 }
-
 mostrarMisOfertas = async (idTrabajador) => {
     const client = new Client(config)
     try {

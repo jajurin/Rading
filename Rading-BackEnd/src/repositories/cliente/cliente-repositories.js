@@ -213,7 +213,7 @@ export default class clienteRepository {
             }
         }
 
-       mostrarTrabajosActivos = async (idCliente) => {
+     mostrarTrabajosActivos = async (idCliente) => {
     const client = new Client(config)
     let result
 
@@ -223,6 +223,7 @@ export default class clienteRepository {
         const sql = `
             SELECT
                 ct.id,
+                ct."IdCliente" AS "idCliente",
                 t.id AS "idTrabajador",
                 u.nombre,
                 u.apellido,
@@ -238,6 +239,9 @@ export default class clienteRepository {
                 ct.horario_requerido,
                 ct.horario_finalizado,
                 ct.trabajo_iniciado_en,
+                ct.direccion,
+                COALESCE(ct.lat, uc.lat) AS latitud,
+                COALESCE(ct.lng, uc.lng) AS longitud,
                 CASE
                     WHEN ct.trabajo_iniciado_en IS NOT NULL
                     THEN EXTRACT(EPOCH FROM (now() - ct.trabajo_iniciado_en)) / 60
@@ -247,6 +251,8 @@ export default class clienteRepository {
             FROM "Cliente-Trabajador" ct
             INNER JOIN "Trabajador" t ON ct."IdTrabajador" = t.id
             INNER JOIN "Usuario" u ON t."IdPersona" = u.id
+            INNER JOIN "Cliente" c ON c.id = ct."IdCliente"
+            INNER JOIN "Usuario" uc ON uc.id = c."IdPersona"
             LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
             WHERE ct."IdCliente" = $1
             AND ct.estado = 'EN PROCESO'

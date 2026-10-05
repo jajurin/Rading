@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { View, StyleSheet } from 'react-native';
 import TrabajoActivoCliente from './TrabajoActivoCliente';
 import OfertaRecibidaOverlayCliente from './OfertaRecibidaOverlayCliente';
+import SeguimientoMini from '../SeguimientoMini';
 import API_URL from '../configS';
 import { useTheme } from '../ThemeContext';
 
@@ -17,10 +18,15 @@ const INTERVALO_POLLING_MS = 25000;
  * (OfertaRecibidaOverlayCliente), manejando internamente el estado
  * de visibilidad del overlay y la navegación al chat.
  *
- * 👇 Además, consulta por su cuenta (con polling) cuántas ofertas
+ * Además, consulta por su cuenta (con polling) cuántas ofertas
  * pendientes tiene el cliente, para poder mostrar la alertita (badge)
- * en la tarjeta AUNQUE el overlay esté cerrado. Antes, el cliente solo
- * se enteraba de que había ofertas nuevas si abría el overlay a mano.
+ * en la tarjeta AUNQUE el overlay esté cerrado.
+ *
+ * Si el cliente tiene un trabajo aceptado cuyo trabajador todavía
+ * va en camino (no confirmó llegada), muestra arriba de la tarjeta un mini
+ * mapa con la posición del trabajador, la ruta y el ETA. Al tocarlo se abre
+ * la pantalla completa (SeguimientoTrabajo). Desaparece solo cuando se
+ * confirma la llegada.
  *
  * Se posiciona de forma FIJA (absolute) sobre la pantalla, así que
  * no se mueve ni desaparece al hacer scroll. Por eso debe renderizarse
@@ -29,7 +35,7 @@ const INTERVALO_POLLING_MS = 25000;
  *
  * Props:
  *  - idCliente: number | string   → id del cliente logueado
- *  - navigation: objeto de navegación (para ir al Chat)
+ *  - navigation: objeto de navegación (para ir al Chat y al seguimiento)
  *  - style: estilo opcional adicional para el contenedor de la tarjeta
  */
 export default function TrabajoActivoWidget({ idCliente, usuario, navigation, style }) {
@@ -38,6 +44,7 @@ export default function TrabajoActivoWidget({ idCliente, usuario, navigation, st
 
   const [showOferta, setShowOferta] = useState(false);
   const [totalOfertas, setTotalOfertas] = useState(0);
+  const [trabajoSeguir, setTrabajoSeguir] = useState(null);
   const intervaloRef = useRef(null);
 
   const fetchTotalOfertas = useCallback(async () => {
@@ -57,33 +64,70 @@ export default function TrabajoActivoWidget({ idCliente, usuario, navigation, st
     }
   }, [idCliente]);
 
+  // Trabajo aceptado con el trabajador en camino (EN PROCESO, sin llegada
+  // confirmada) y con destino cargado. Acepta latitud/longitud o lat/lng.
+  // Si hay varios, se sigue el primero.
+  const fetchTrabajoSeguir = useCallback(async () => {
+    if (!idCliente) return;
+    try {
+      const res = await fetch(`${API_URL}/cliente/trabajosActivos/${idCliente}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const lista = Array.isArray(data) ? data : [];
+      const t = lista.find(
+        (x) =>
+          !x.trabajo_iniciado_en &&
+          (x.latitud ?? x.lat) != null &&
+          (x.longitud ?? x.lng) != null
+      );
+      // Si es el mismo trabajo, se conserva el objeto para no reiniciar el mapa
+      setTrabajoSeguir((prev) => (t && prev?.id === t.id ? prev : t ?? null));
+    } catch (e) {
+      console.error('Error al consultar trabajo en camino (widget):', e);
+    }
+  }, [idCliente]);
+
+  const refrescar = useCallback(() => {
+    fetchTotalOfertas();
+    fetchTrabajoSeguir();
+  }, [fetchTotalOfertas, fetchTrabajoSeguir]);
+
   // Primer chequeo al montar + polling mientras el widget esté vivo.
   useEffect(() => {
-    fetchTotalOfertas();
+    refrescar();
 
-    intervaloRef.current = setInterval(fetchTotalOfertas, INTERVALO_POLLING_MS);
+    intervaloRef.current = setInterval(refrescar, INTERVALO_POLLING_MS);
     return () => {
       if (intervaloRef.current) clearInterval(intervaloRef.current);
     };
-  }, [fetchTotalOfertas]);
+  }, [refrescar]);
 
   // Al abrir la tarjeta (que dispara el overlay), volvemos a chequear ya
   // mismo por si el badge estaba desactualizado.
   const handleAbrirOverlay = useCallback(() => {
     setShowOferta(true);
-    fetchTotalOfertas();
-  }, [fetchTotalOfertas]);
+    refrescar();
+  }, [refrescar]);
 
   // Al cerrar el overlay, el cliente pudo haber visto/aceptado ofertas:
-  // refrescamos el conteo para que el badge quede al día.
+  // refrescamos para que el badge y el mini mapa queden al día.
   const handleCerrarOverlay = useCallback(() => {
     setShowOferta(false);
-    fetchTotalOfertas();
-  }, [fetchTotalOfertas]);
+    refrescar();
+  }, [refrescar]);
 
   return (
     <>
       <View style={[styles.floatingWrapper, style]}>
+        {trabajoSeguir && !showOferta && (
+          <SeguimientoMini
+            trabajo={trabajoSeguir}
+            rol="cliente"
+            idUsuarioRol={idCliente}
+            navigation={navigation}
+            activo={!showOferta}
+          />
+        )}
         <TrabajoActivoCliente onPress={handleAbrirOverlay} badgeCount={totalOfertas} />
       </View>
 

@@ -10,11 +10,12 @@ import trabajoRoutes from './routes/trabajo-routes.js'
 import notificacionRoutes from "./routes/notificacion-routes.js"
 import configuracionRoutes from "./routes/configuracion-routes.js"
 import uploadRoutes from "./routes/upload-routes.js"
+import ubicacionRoutes from "./routes/ubicacion-routes.js"   // 👈 NUEVO (ajustá el nombre si tu archivo se llama distinto)
 import path from "path"
 
 const app = express();
 app.use(cors());
-app.use(express.json()); 
+app.use(express.json());
 app.use('/solicitud', solicitudRouter)
 app.use("/trabajador", trabajadorRoutes);
 app.use("/cliente", clienteRoutes);
@@ -25,5 +26,6 @@ app.use('/trabajo', trabajoRoutes)
 app.use('/notificacion', notificacionRoutes)
 app.use('/configuracion', configuracionRoutes)
 app.use('/upload', uploadRoutes)
+app.use('/', ubicacionRoutes)   // 👈 NUEVO: raíz, porque los paths ya traen /trabajador/... y /cliente/...
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')))
 export default app;
