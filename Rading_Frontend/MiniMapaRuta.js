@@ -13,9 +13,8 @@ const WebView = Platform.OS === "web" ? null : require("react-native-webview").W
 //  - Nada depende del evento 'load'.
 //  - El iframe avisa 'mapa-listo' y el padre recién ahí le manda los datos.
 //  - ResizeObserver: el mapa nace dentro de un Modal animado y puede medir 0 px.
-//  - La ruta se asegura de forma idempotente (fuente + borde + línea) y se
-//    reintenta en cada 'idle': antes, si addSource andaba y addLayer fallaba,
-//    la fuente quedaba creada sin capa y nunca se reintentaba.
+//  - La ruta se dibuja en un canvas sobre el mapa (no con capas GeoJSON, que
+//    dependen de un Web Worker y fallan en algunos WebView).
 const buildHtml = (destino, refitSiempre) => `<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet"/>
@@ -68,46 +67,40 @@ const buildHtml = (destino, refitSiempre) => `<!DOCTYPE html><html><head>
   // Si el contenedor cambia de tamaño (animación del Modal, scroll), se recalcula
   try { new ResizeObserver(function () { map.resize(); }).observe(document.getElementById('m')); } catch (_) {}
 
-  // Puntos llegan como [lat,lng]; GeoJSON/MapLibre necesitan [lng,lat]
-  function datosRuta() {
-    var coords = [];
-    if (ultimo && ultimo.puntos) {
-      coords = ultimo.puntos.map(function (p) { return [p[1], p[0]]; });
-    }
-    return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } };
-  }
+  // La ruta se dibuja en un <canvas> propio, proyectando cada punto con map.project().
+  // Antes era una fuente GeoJSON + capas: las fuentes GeoJSON de MapLibre necesitan un
+  // Web Worker, y dentro de un WebView con HTML en línea ese worker puede no arrancar:
+  // el mapa base (raster) se ve igual, pero la línea nunca aparece. El canvas no
+  // depende del worker, ni del estilo, ni de 'style.load'.
+  var cv = document.createElement('canvas');
+  cv.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none';
+  map.getCanvasContainer().appendChild(cv);   // antes que los marcadores: quedan encima
+  var cx = cv.getContext('2d');
 
-  // Idempotente: crea lo que falte (fuente, borde, línea) y actualiza los datos.
-  function asegurarRuta() {
-    try {
-      var datos = datosRuta();
-      if (!map.getSource('ruta')) {
-        map.addSource('ruta', { type: 'geojson', data: datos });
-      }
-      if (!map.getLayer('ruta-borde')) {
-        map.addLayer({ id: 'ruta-borde', type: 'line', source: 'ruta',
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: { 'line-color': '#ffffff', 'line-width': 9, 'line-opacity': 0.9 } });
-      }
-      if (!map.getLayer('ruta')) {
-        map.addLayer({ id: 'ruta', type: 'line', source: 'ruta',
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: { 'line-color': '#3D4EEA', 'line-width': 5, 'line-opacity': 1 } });
-      }
-      map.getSource('ruta').setData(datos);
-      return true;
-    } catch (err) {
-      console.warn('asegurarRuta:', err && err.message);
-      return false;
+  function pintarRuta() {
+    var el = map.getContainer(), w = el.clientWidth, h = el.clientHeight;
+    var r = window.devicePixelRatio || 1;
+    if (!w || !h) return;
+    if (cv.width !== Math.round(w * r) || cv.height !== Math.round(h * r)) {
+      cv.width = Math.round(w * r); cv.height = Math.round(h * r);
+      cv.style.width = w + 'px'; cv.style.height = h + 'px';
     }
+    cx.setTransform(r, 0, 0, r, 0, 0);
+    cx.clearRect(0, 0, w, h);
+    if (!ultimo || !ultimo.puntos || ultimo.puntos.length < 2) return;
+    cx.lineCap = 'round'; cx.lineJoin = 'round';
+    function trazar() {
+      cx.beginPath();
+      for (var i = 0; i < ultimo.puntos.length; i++) {
+        var q = map.project([ultimo.puntos[i][1], ultimo.puntos[i][0]]);  // [lat,lng] -> [lng,lat]
+        if (i === 0) cx.moveTo(q.x, q.y); else cx.lineTo(q.x, q.y);
+      }
+      cx.stroke();
+    }
+    cx.strokeStyle = 'rgba(255,255,255,0.9)'; cx.lineWidth = 9; trazar();
+    cx.strokeStyle = '#3D4EEA'; cx.lineWidth = 5; trazar();
   }
-
-  map.on('style.load', asegurarRuta);
-  if (map.isStyleLoaded()) asegurarRuta();
-  // Red de seguridad: si hay ruta y todavía no hay capa, reintenta cuando el mapa descansa
-  map.on('idle', function () {
-    if (ultimo && ultimo.puntos && ultimo.puntos.length && !map.getLayer('ruta')) asegurarRuta();
-  });
+  map.on('render', pintarRuta);   // se repinta en cada movimiento / zoom / resize
 
   // Mueve el marcador suavemente en ~1 s en vez de "saltar"
   function animar(desde, hasta) {
@@ -130,10 +123,10 @@ const buildHtml = (destino, refitSiempre) => `<!DOCTYPE html><html><head>
       actual = origen;
     }
 
-    asegurarRuta();
+    pintarRuta();
+    map.triggerRepaint();
     if (msg.puntos && msg.puntos.length) {
-      console.log('ruta: ' + msg.puntos.length + ' puntos, capa = ' + !!map.getLayer('ruta') +
-        ', primero = ' + JSON.stringify(msg.puntos[0]));
+      console.log('ruta: ' + msg.puntos.length + ' puntos, primero = ' + JSON.stringify(msg.puntos[0]));
     }
 
     // Mini mapa: reencuadra siempre. Pantalla completa: solo la primera vez,

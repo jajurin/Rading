@@ -32,7 +32,9 @@ export default function useSeguimiento({ trabajo, rol, idUsuarioRol, activo = tr
 
   // ── Trabajador: GPS propio + reporte al backend ──
   const gpsActivo = activo && esTrabajador && !!destino;
-  const { coords: miUbicacion, denegado } = useMiUbicacion(gpsActivo);
+  // useMiUbicacion devuelve { coords, error, permiso }: antes se leía `denegado`, que no existe
+  const { coords: miUbicacion, permiso } = useMiUbicacion(gpsActivo);
+  const denegado = permiso === false;
   const dejarDeReportar = useRef(false);
 
   useEffect(() => {
@@ -67,10 +69,19 @@ export default function useSeguimiento({ trabajo, rol, idUsuarioRol, activo = tr
   const km = ruta ? ruta.distanciaKm : kmRecta;
   const etaMin = ruta ? ruta.duracionMin : kmRecta != null ? etaAproximadoMin(kmRecta) : null;
 
+  // Línea de la ruta. Si OSRM todavía no respondió (o falló) se dibuja una recta
+  // origen -> destino para que A y B siempre queden unidos. useMemo: MiniMapaRuta
+  // reencuadra el mapa cada vez que cambia la identidad de `puntos`.
+  const puntos = useMemo(() => {
+    if (ruta?.puntos) return ruta.puntos;
+    if (origen && destino) return [[origen.lat, origen.lng], [destino.lat, destino.lng]];
+    return null;
+  }, [ruta, origen?.lat, origen?.lng, destino]);
+
   return {
     destino,
     origen,
-    puntos: ruta?.puntos ?? null,
+    puntos,
     km,
     etaMin,
     aproximado,
