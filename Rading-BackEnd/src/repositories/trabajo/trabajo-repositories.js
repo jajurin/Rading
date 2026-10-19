@@ -1,6 +1,5 @@
+import { Client } from '../../configs/db.js'
 import config from '../../configs/dbconfig.js'
-import pkg from 'pg'
-const { Client } = pkg
 
 export default class trabajoRepository {
 

@@ -1,6 +1,5 @@
+import { Client } from '../../configs/db.js'
 import config from '../../configs/dbconfig.js'
-import pkg from 'pg'
-const { Client } = pkg
 
 // Si la última posición tiene más de esto, se considera vieja (el celu del
 // trabajador dejó de reportar: app cerrada, sin señal, etc.)

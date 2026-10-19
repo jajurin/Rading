@@ -1,7 +1,6 @@
 import config from '../../configs/dbconfig.js'
+import { Client } from '../../configs/db.js'
 import NotificacionServices from '../../services/notificacion-services.js'
-import pkg from 'pg'
-const { Client } = pkg
 
 export default class chatRepository {
     #notifSvc = new NotificacionServices()

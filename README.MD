@@ -166,4 +166,4 @@ const createStyles = (colors, isDark) => StyleSheet.create({
 2. Ir a **Configuración** y activar el **modo oscuro**.
 3. Navegar por las distintas ventanas (Home, Chats, Perfil, etc.): todas se muestran con la paleta oscura.
 4. Volver a Configuración y desactivarlo: todas vuelven al modo claro.
-5. Cerrar sesión y volver a entrar: la preferencia se mantiene.
+5. Cerrar sesión y volver a entrar: la preferencia se mantiene

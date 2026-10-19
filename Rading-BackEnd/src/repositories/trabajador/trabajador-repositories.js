@@ -1,8 +1,8 @@
+import { Client } from '../../configs/db.js'
 import config from '../../configs/dbconfig.js'
 import usuarioRepository from '../general/usuario-repositories.js'
 import NotificacionServices from '../../services/notificacion-services.js'
-import pkg from 'pg'
-const { Client } = pkg
+
 const DURACION_SUBASTA_HORAS = 2
 const MAX_INTENTOS = 5
 const CODIGO_VALIDEZ_MIN = 15

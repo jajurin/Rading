@@ -1,6 +1,5 @@
-import config from "../configs/dbconfig.js";
-import pkg from "pg";
-const { Client } = pkg;
+import { Client } from '../../configs/db.js'
+import config from '../../configs/dbconfig.js'
 
 // Mapea el nombre camelCase (como lo usa el front) a la columna real
 // en minúsculas de la tabla configuracionusuario.

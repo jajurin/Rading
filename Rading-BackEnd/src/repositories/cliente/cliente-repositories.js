@@ -1,8 +1,7 @@
+import { Client } from '../../configs/db.js'
 import config from '../../configs/dbconfig.js'
 import usuarioRepository from '../general/usuario-repositories.js'
 import NotificacionServices from '../../services/notificacion-services.js'
-import pkg from 'pg'
-const { Client } = pkg
 
 export default class clienteRepository {
     #usuarioRepo = new usuarioRepository()
