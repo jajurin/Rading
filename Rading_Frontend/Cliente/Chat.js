@@ -731,6 +731,14 @@ export default function ChatCliente({ route, navigation }) {
     </View>
   );
 
+  const formatearTiempoAudio = (ms) => {
+    if (!ms || isNaN(ms)) return "0:00";
+    const totalSegundos = Math.floor(ms / 1000);
+    const minutos = Math.floor(totalSegundos / 60);
+    const segundos = totalSegundos % 60;
+    return `${minutos}:${segundos < 10 ? '0' : ''}${segundos}`;
+  };
+
   const BurbujaAudio = ({ item, esCliente, contacto }) => {
     const [reproduciendo, setReproduciendo] = useState(false);
     const [cargando, setCargando] = useState(false);
