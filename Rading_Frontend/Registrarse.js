@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   StyleSheet, Text, View, TextInput, TouchableOpacity,
@@ -15,18 +15,42 @@ import { useTheme } from './ThemeContext';
 const BLUE      = '#1565D8';
 const BLUE_DARK = '#0D47A8';
 const BLUE_SOFT = '#EAF1FD';
-const INK       = '#1A202C';
-const MUTED     = '#8A94A6';
 const DANGER    = '#E53E3E';
 const OK        = '#2F9E5B';
 
-// ─── InputField reutilizable (sin cambios) ─────────────────────────────────
+// ─── Geocoding (funciona en web y en mobile) ───────────────────────────────
+// En WEB el navegador NO permite setear "User-Agent" y los headers custom
+// disparan preflight de CORS, así que ahí no se manda ningún header.
+// En MOBILE (React Native) no hay CORS y Nominatim pide un User-Agent propio.
+// Cambiá el contacto por un mail/URL real de tu app (lo pide la política de uso).
+const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
+const DEBOUNCE_MS = 1000; // Nominatim permite máx. 1 request por segundo
+
+const buscarEnNominatim = (texto, signal) =>
+  axios.get(NOMINATIM_URL, {
+    params: {
+      q: texto,
+      format: 'json',
+      addressdetails: 1,
+      limit: 5,
+      countrycodes: 'ar',
+      'accept-language': 'es', // como parámetro, no como header
+    },
+    headers: Platform.OS === 'web' ? {} : { 'User-Agent': 'RadingApp/1.0 (contacto@rading.app)' },
+    signal,
+    timeout: 8000,
+  });
+
+// ─── InputField reutilizable ───────────────────────────────────────────────
+// Arma sus propios estilos, no hace falta pasarle "inputStyles".
 function InputField({
   label, placeholder, secureTextEntry, keyboardType, value, onChangeText,
-  error, editable = true, icon, rightSlot, inputStyles,
+  error, editable = true, icon, rightSlot,
 }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const inputStyles = useMemo(() => createInputStyles(colors, isDark), [colors, isDark]);
   const [focus, setFocus] = useState(false);
+
   return (
     <View style={inputStyles.wrapper}>
       <Text style={inputStyles.label}>{label}</Text>
@@ -71,7 +95,7 @@ function InputField({
   );
 }
 
-// ─── Encabezado de sección (sin cambios) ───────────────────────────────────
+// ─── Encabezado de sección ─────────────────────────────────────────────────
 function SectionHeader({ icon, title, subtitle, styles }) {
   return (
     <View style={styles.sectionHeader}>
@@ -90,12 +114,12 @@ function SectionHeader({ icon, title, subtitle, styles }) {
 export default function Registrarse({ route, navigation }) {
   const { colors, isDark, syncUsuario } = useTheme();
 
-  // ── react-hook-form: reemplaza el useState(form) + useState(errores) manual
   const {
     control,
     handleSubmit,
-    watch,
+    getValues,
     setValue,
+    clearErrors,
     formState: { errors },
   } = useForm({
     defaultValues: {
@@ -106,7 +130,7 @@ export default function Registrarse({ route, navigation }) {
     mode: 'onSubmit',
   });
 
-  // lat/lng no se validan como campo de formulario, siguen como estado aparte
+  // lat/lng no se validan como campo de formulario
   const [lat, setLat] = useState(null);
   const [lng, setLng] = useState(null);
 
@@ -119,7 +143,11 @@ export default function Registrarse({ route, navigation }) {
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
   const [direccionValidada, setDireccionValidada] = useState(false);
   const [buscandoDireccion, setBuscandoDireccion] = useState(false);
+  const [errorBusqueda, setErrorBusqueda] = useState('');
+  const direccionValidadaRef = useRef(false); // el ref evita leer un valor viejo en `validate`
   const debounceRef = useRef(null);
+  const abortRef = useRef(null);
+  const requestIdRef = useRef(0);
 
   // ── Fecha
   const [mostrarPickerModal, setMostrarPickerModal] = useState(false);
@@ -130,7 +158,15 @@ export default function Registrarse({ route, navigation }) {
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const inputStyles = useMemo(() => createInputStyles(colors, isDark), [colors, isDark]);
 
-  // ── Helpers de validación (mismas reglas de antes, usadas dentro de `rules`)
+  // Limpiar timers y requests pendientes al salir de la pantalla
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, []);
+
+  // ── Helpers de validación
   const validarDNI      = (dni) => { const s = dni.replace(/\D/g, ''); return s.length >= 7 && s.length <= 8; };
   const validarTelefono = (tel) => { const s = tel.replace(/\D/g, ''); return s.length >= 10 && s.length <= 13; };
   const calcularEdad    = (f)   => {
@@ -149,46 +185,69 @@ export default function Registrarse({ route, navigation }) {
     }
     const fechaStr = `${anio}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
     if (isNaN(new Date(fechaStr).getTime())) { alert('Fecha inválida'); return; }
-    // antes: setForm(...). ahora: setValue de react-hook-form, con validación disparada
     setValue('fechaNac', fechaStr, { shouldValidate: true });
     setMostrarPickerModal(false);
   };
 
-  // ── Dirección autocomplete (misma lógica, ahora recibe el onChange del Controller)
+  // ── Dirección autocomplete
   const buscarDireccion = (texto, onChange) => {
     onChange(texto);
+    direccionValidadaRef.current = false;
     setDireccionValidada(false);
     setLat(null);
     setLng(null);
-    if (texto.length < 4) { setSugerencias([]); return; }
+    setErrorBusqueda('');
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (abortRef.current) abortRef.current.abort();
+
+    if (texto.trim().length < 4) {
+      setSugerencias([]);
+      setMostrarSugerencias(false);
+      setBuscandoDireccion(false);
+      return;
+    }
+
     debounceRef.current = setTimeout(async () => {
+      const miId = ++requestIdRef.current;
+      const controller = new AbortController();
+      abortRef.current = controller;
       setBuscandoDireccion(true);
       try {
-        const res = await axios.get('https://nominatim.openstreetmap.org/search', {
-          params: { q: texto, format: 'json', addressdetails: 1, limit: 5, countrycodes: 'ar' },
-          headers: { 'Accept-Language': 'es', 'User-Agent': 'RadingApp/1.0' },
-        });
+        const res = await buscarEnNominatim(texto.trim(), controller.signal);
+        // Si mientras esperaba el usuario siguió escribiendo, ignoramos esta respuesta
+        if (miId !== requestIdRef.current) return;
         setSugerencias(res.data);
         setMostrarSugerencias(true);
       } catch (e) {
-        console.error(e);
+        if (axios.isCancel?.(e) || e.name === 'CanceledError' || e.name === 'AbortError') return;
+        if (miId !== requestIdRef.current) return;
+        setSugerencias([]);
+        if (e.response?.status === 429) {
+          setErrorBusqueda('Demasiadas búsquedas seguidas. Esperá unos segundos y probá de nuevo.');
+        } else {
+          setErrorBusqueda('No se pudo buscar la dirección. Revisá tu conexión.');
+        }
       } finally {
-        setBuscandoDireccion(false);
+        if (miId === requestIdRef.current) setBuscandoDireccion(false);
       }
-    }, 600);
+    }, DEBOUNCE_MS);
   };
 
   const elegirDireccion = (item) => {
+    // Primero marcamos como validada (ref), después seteamos el valor y validamos
+    direccionValidadaRef.current = true;
+    setDireccionValidada(true);
     setValue('direccion', item.display_name, { shouldValidate: true });
+    clearErrors('direccion');
     setLat(parseFloat(item.lat));
     setLng(parseFloat(item.lon));
     setSugerencias([]);
     setMostrarSugerencias(false);
-    setDireccionValidada(true);
+    setErrorBusqueda('');
   };
 
-  // ── Submit: handleSubmit de RHF ya corrió todas las `rules` antes de llegar acá
+  // ── Submit
   const onSubmit = async (data) => {
     setEnviando(true);
     try {
@@ -206,7 +265,6 @@ export default function Registrarse({ route, navigation }) {
       const respData = await response.json();
       if (!response.ok) { alert(respData.message || 'Error al registrar'); return; }
 
-      // Guardar user ID y sincronizar tema con el usuario
       if (respData.idUsuario) {
         await AsyncStorage.setItem('@rading_user_id', String(respData.idUsuario));
         syncUsuario(respData.idUsuario);
@@ -224,7 +282,12 @@ export default function Registrarse({ route, navigation }) {
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: BLUE }}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView
+        style={styles.container}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+      >
 
         {/* HEADER */}
         <LinearGradient colors={[BLUE_DARK, BLUE]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
@@ -290,7 +353,7 @@ export default function Registrarse({ route, navigation }) {
             )}
           />
 
-          {/* Fecha de nacimiento — campo custom, se controla con Controller igual */}
+          {/* Fecha de nacimiento */}
           <Controller
             control={control}
             name="fechaNac"
@@ -321,7 +384,7 @@ export default function Registrarse({ route, navigation }) {
             )}
           />
 
-          {/* Modal fecha (sin cambios) */}
+          {/* Modal fecha */}
           <Modal visible={mostrarPickerModal} transparent animationType="fade">
             <View style={styles.modalOverlay}>
               <View style={styles.modalCard}>
@@ -391,13 +454,13 @@ export default function Registrarse({ route, navigation }) {
             )}
           />
 
-          {/* Dirección con autocomplete — mismo mecanismo de siempre, ahora controlado por RHF */}
+          {/* Dirección con autocomplete */}
           <Controller
             control={control}
             name="direccion"
             rules={{
               required: 'Seleccioná una dirección de la lista',
-              validate: () => direccionValidada || 'Seleccioná una dirección de la lista',
+              validate: () => direccionValidadaRef.current || 'Seleccioná una dirección de la lista',
             }}
             render={({ field: { value, onChange } }) => (
               <View style={inputStyles.wrapper}>
@@ -412,12 +475,21 @@ export default function Registrarse({ route, navigation }) {
                     onChangeText={(texto) => buscarDireccion(texto, onChange)}
                     autoCapitalize="none"
                   />
+                  {buscandoDireccion && <Text style={styles.verTexto}>Buscando…</Text>}
                   {direccionValidada && <Ionicons name="checkmark-circle" size={18} color={OK} />}
                 </View>
+
                 {errors.direccion ? (
                   <View style={inputStyles.errorRow}>
                     <Ionicons name="alert-circle" size={12} color={DANGER} />
                     <Text style={inputStyles.errorText}>{errors.direccion.message}</Text>
+                  </View>
+                ) : null}
+
+                {errorBusqueda ? (
+                  <View style={inputStyles.errorRow}>
+                    <Ionicons name="information-circle" size={12} color={DANGER} />
+                    <Text style={inputStyles.errorText}>{errorBusqueda}</Text>
                   </View>
                 ) : null}
 
@@ -435,6 +507,12 @@ export default function Registrarse({ route, navigation }) {
                       </TouchableOpacity>
                     ))}
                   </View>
+                )}
+
+                {mostrarSugerencias && !buscandoDireccion && sugerencias.length === 0 && !errorBusqueda && value.trim().length >= 4 && (
+                  <Text style={[styles.sugerenciaTexto, { marginTop: 8 }]}>
+                    No encontramos esa dirección. Probá agregando la ciudad.
+                  </Text>
                 )}
               </View>
             )}
@@ -473,7 +551,7 @@ export default function Registrarse({ route, navigation }) {
             name="repetirContrasena"
             rules={{
               required: 'Las contraseñas no coinciden',
-              validate: (v) => v === watch('contrasena') || 'Las contraseñas no coinciden',
+              validate: (v) => v === getValues('contrasena') || 'Las contraseñas no coinciden',
             }}
             render={({ field: { value, onChange } }) => (
               <InputField
@@ -493,7 +571,7 @@ export default function Registrarse({ route, navigation }) {
             )}
           />
 
-          {/* Términos (sin cambios) */}
+          {/* Términos */}
           <View style={styles.termsContainer}>
             <Ionicons name="shield-checkmark-outline" size={13} color={colors.textTertiary} style={{ marginRight: 5 }} />
             <Text style={styles.termsText}>Al registrarte aceptás nuestros </Text>
@@ -508,7 +586,7 @@ export default function Registrarse({ route, navigation }) {
             </View>
           </View>
 
-          {/* Botón continuar — ahora dispara handleSubmit(onSubmit) de RHF */}
+          {/* Botón continuar */}
           <TouchableOpacity activeOpacity={0.88} onPress={handleSubmit(onSubmit)} disabled={enviando}>
             <LinearGradient
               colors={[BLUE, BLUE_DARK]}
@@ -554,7 +632,7 @@ const createInputStyles = (colors, isDark) => StyleSheet.create({
   boxDisabled: { backgroundColor: isDark ? 'rgba(47,158,91,0.1)' : '#EAF7F0' },
   input: { flex: 1, color: colors.text, fontSize: 14.5, paddingVertical: Platform.OS === 'ios' ? 0 : 8 },
   errorRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 },
-  errorText: { color: DANGER, fontSize: 11.5, fontWeight: '500' },
+  errorText: { color: DANGER, fontSize: 11.5, fontWeight: '500', flexShrink: 1 },
 });
 
 const createStyles = (colors, isDark) => StyleSheet.create({
@@ -639,7 +717,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
   loginLinkText: { color: colors.textTertiary, fontSize: 12.5 },
   loginLinkBold: { color: BLUE, fontWeight: '800' },
 
-  // Modales compartidos
+  // Modales
   modalOverlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', alignItems: 'center' },
   modalCard: { backgroundColor: colors.card, borderRadius: 24, padding: 24, width: '86%', alignItems: 'center' },
   modalIconWrap: {
