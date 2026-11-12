@@ -12,7 +12,7 @@ import { useTheme } from '../ThemeContext';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
+import Header from '../Header';
 import API_URL from '../configS';
 import BottomNavBarTrabajador from './Navegadortrabajador';
 
@@ -351,12 +351,13 @@ export default function OfertasCercanasTrabajador() {
     );
   };
 
-  return (
+    return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
+     <Header usuario={usuario} direccion={direccion} />
+
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Ofertas cercanas</Text>
-          <Text style={styles.headerSubtitle}>{subtitulo}</Text>
         </View>
         <TouchableOpacity style={styles.filterBtn} activeOpacity={0.8}>
           <Icons.Sliders />

@@ -18,7 +18,7 @@ import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/nativ
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNavBarTrabajador from './Navegadortrabajador';
 import API_URL from '../configS';
-
+import Header from '../Header';
 // -------------------------------------------------------------------------
 // Config
 // -------------------------------------------------------------------------
@@ -191,6 +191,17 @@ export default function MisOfertasTrabajador() {
 
   const usuario = route.params?.usuario;
   const trabajadorId = usuario?.idTrabajador;
+    const [direccion, setDireccion] = useState(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!trabajadorId) return;
+      fetch(`${API_URL}/trabajador/perfil/${trabajadorId}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d?.direccion) setDireccion(d.direccion); })
+        .catch(() => {});
+    }, [trabajadorId])
+  );
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -541,8 +552,10 @@ export default function MisOfertasTrabajador() {
     );
   };
 
-  return (
+    return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
+     <Header usuario={usuario} direccion={direccion} />
+
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Mis ofertas</Text>
         <Text style={styles.headerSubtitle}>{subtitulo}</Text>

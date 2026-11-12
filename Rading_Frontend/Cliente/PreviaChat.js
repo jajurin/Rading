@@ -237,7 +237,7 @@ const res = await fetch(`${API_BASE_URL}/chat/cliente/${usuario.idCliente}?idUsu
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor={STATUS_BAR} />
-      <Header />
+      <Header usuario={usuario} />
 
       {/* Cabecera fija: título, resumen de activos y buscador. No se desliza. */}
       <View style={styles.cabeceraFija}>

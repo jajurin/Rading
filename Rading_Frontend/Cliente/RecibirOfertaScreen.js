@@ -438,7 +438,7 @@ export default function RecibirOfertasScreen({ route, navigation }) {
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? colors.statusBarBg : COLORS.white} />
 
-      <Header usuario={usuario} />
+      <Header usuario={usuario} direccion={direccion} />
 
       <View style={styles.header}>
         <View>

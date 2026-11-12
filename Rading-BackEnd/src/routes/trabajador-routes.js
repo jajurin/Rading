@@ -112,7 +112,7 @@ router.post("/registrar", async (req, res) => {
         res.status(201).json({ message: "Trabajador registrado correctamente", ...result })
     } catch (error) {
         console.error(error)
-        res.status(500).json({ message: "Error al registrar trabajador", error })
+        res.status(500).json({ message: error.message || "Error al registrar trabajador" })
     }
 })
 

@@ -130,7 +130,10 @@ export default function RegistrarseTrabajador({ route, navigation }) {
       }
 
       alert('¡Registro Profesional Completo!');
-      navigation.reset({ index: 0, routes: [{ name: 'BuscadorTrabajador' }] });
+     navigation.reset({
+  index: 0,
+  routes: [{ name: 'HomeTrabajador', params: { usuario: data.usuario } }],
+});
     } catch (e) {
       alert('No se pudo conectar al servidor');
       console.error(e);

@@ -755,49 +755,78 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
      */
  registrarTrabajador = async (trabajador) => {
     const client = new Client(config)
+    let transaccionAbierta = false
 
     try {
         const usuario = await this.#usuarioRepo.buscarPorEmail(trabajador.email)
         if (!usuario) throw new Error(`No existe un usuario con el email ${trabajador.email}`)
 
+        const servicios = Array.isArray(trabajador.servicios)
+            ? [...new Set(trabajador.servicios.map(Number).filter(Number.isInteger))]
+            : []
+        if (servicios.length === 0) throw new Error('Seleccioná al menos un servicio')
+
         await client.connect()
+        await client.query('BEGIN')
+        transaccionAbierta = true
 
         const existeTrabajador = await client.query(
             `SELECT id FROM "Trabajador" WHERE "IdPersona" = $1`,
             [usuario.id]
         )
-        if (existeTrabajador.rows.length > 0) throw new Error(`El usuario ${trabajador.email} ya es trabajador`)
+        if (existeTrabajador.rows.length > 0) {
+            throw new Error(`El usuario ${trabajador.email} ya es trabajador`)
+        }
 
-        // Insertar en Trabajador SIN servicio_id
-        const sqlTrabajador = `
-            INSERT INTO "Trabajador"
-            ("IdPersona", descripcion, "zonaTrabajo", "DispComienzo", "DispFinal", foto, estrellas)
-            VALUES ($1,$2,$3,$4,$5,$6,$7)
-            RETURNING id
-        `
-        const resultTrabajador = await client.query(sqlTrabajador, [
-            usuario.id,
-            trabajador.descripcion,
-            trabajador.zonaTrabajo,
-            trabajador.DispComienzo,
-            trabajador.DispFinal,
-            trabajador.foto,
-            trabajador.estrellas
-        ])
-
+        // 1) Trabajador
+        const resultTrabajador = await client.query(
+            `INSERT INTO "Trabajador"
+                ("IdPersona", descripcion, "zonaTrabajo", "DispComienzo", "DispFinal", foto, estrellas)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING id, foto`,
+            [
+                usuario.id,
+                trabajador.descripcion ?? '',
+                trabajador.zonaTrabajo ?? '',
+                trabajador.DispComienzo ?? null,
+                trabajador.DispFinal ?? null,
+                trabajador.foto ?? null,
+                trabajador.estrellas ?? 0,
+            ]
+        )
         const idTrabajador = resultTrabajador.rows[0].id
 
-        // Insertar cada servicio en Trabajador_Servicio
-        for (const servicioId of trabajador.servicios) {
+        // 2) Servicios
+        for (const servicioId of servicios) {
             await client.query(
                 `INSERT INTO "Trabajador_Servicio" (trabajadores_id, servicios_id) VALUES ($1, $2)`,
                 [idTrabajador, servicioId]
             )
         }
 
-        return { success: true, idUsuario: usuario.id, idTrabajador }
+        await client.query('COMMIT')
+        transaccionAbierta = false
 
+        return {
+    success: true,
+    idUsuario: usuario.id,
+    idTrabajador,
+    usuario: {
+        id: usuario.id,
+        nombre: usuario.nombre,
+        apellido: usuario.apellido,
+        email: usuario.email,
+        direccion: usuario.direccion,
+        telefono: usuario.telefono,
+        tipo: 'trabajador',
+        idTrabajador,
+        foto: resultTrabajador.rows[0].foto ?? null,
+    },
+}
     } catch (err) {
+        if (transaccionAbierta) {
+            try { await client.query('ROLLBACK') } catch (_) {}
+        }
         console.error('Error en registrarTrabajador:', err)
         throw err
     } finally {

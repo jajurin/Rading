@@ -528,7 +528,7 @@ export default function ConfiguracionTrabajador(props) {
   /* ---------------- Render ---------------- */
   return (
     <View style={styles.root}>
-      <Header usuario={usuario} />
+<Header usuario={usuario} direccion={direccion} />
 
       <ScrollView
         style={{ flex: 1 }}

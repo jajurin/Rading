@@ -437,7 +437,7 @@ export default function Configuracion(props) {
   if (cargando) {
     return (
       <View style={[styles.root, { backgroundColor: colors.background }]}>
-        <Header usuario={usuario} />
+  <Header usuario={usuario} />      
         <View style={styles.loaderFull}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loaderText, { color: colors.textSecondary }]}>
@@ -450,7 +450,7 @@ export default function Configuracion(props) {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <Header usuario={usuario} />
+     <Header usuario={usuario} /> 
 
       <View style={[styles.backBar, { borderBottomColor: colors.divider }]}>
         <TouchableOpacity

@@ -392,7 +392,7 @@ export default function ClasificarTrabajador({ route, navigation }) {
 
   return (
     <>
-      <Header usuario={usuario} />
+     <Header usuario={usuario} direccion={direccion} />
       <StatusBar barStyle={colors.statusBar} backgroundColor={colors.statusBarBg} />
 
       <ScrollView

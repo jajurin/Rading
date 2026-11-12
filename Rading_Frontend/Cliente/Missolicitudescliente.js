@@ -14,7 +14,7 @@ import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/nativ
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNavBar from './NavegadorCliente';
 import API_URL from '../configS';
-
+import Header from '../Header';
 // -------------------------------------------------------------------------
 // Config
 // -------------------------------------------------------------------------
@@ -397,9 +397,10 @@ export default function MisSolicitudesCliente() {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <Header usuario={usuario} />
+
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Mis solicitudes</Text>
-        <Text style={styles.headerSubtitle}>{subtitulo}</Text>
       </View>
 
       <FiltrosBar filtro={filtro} setFiltro={setFiltro} solicitudes={solicitudes} />

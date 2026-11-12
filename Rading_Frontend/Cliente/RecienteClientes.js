@@ -186,7 +186,7 @@ export default function RecientesClientes({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <Header usuario={usuario} />
+      <Header usuario={usuario} direccion={direccion} />
 
       <View style={styles.headerRow}>
         <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>

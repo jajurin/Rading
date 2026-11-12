@@ -112,11 +112,12 @@ export default function Header({
 
   const direccion = direccionProp ?? direccionDb ?? (errorDireccion ? 'No se pudo cargar' : 'Sin dirección');
 
-  const irAHome = () => {
-    onLogo?.();
-    const destino = usuario?.tipo === 'trabajador' ? 'HomeTrabajador' : 'HomeCliente';
-    navigation.navigate(destino, { usuario });
-  };
+const irAHome = () => {
+  onLogo?.();
+  const esTrabajador = usuario?.tipo === 'trabajador' || usuario?.idTrabajador != null;
+  const destino = esTrabajador ? 'HomeTrabajador' : 'HomeCliente';
+  navigation.navigate(destino, usuario ? { usuario } : undefined);
+};
 
   const notificacionesData = notificaciones ?? notificacionesInternas ?? [];
   const noLeidas = notificacionesData.filter((n) => !n.leida).length;

@@ -748,7 +748,7 @@ export default function PerfilTrabajador(props) {
 
   return (
     <View style={styles.root}>
-      <Header usuario={usuario} />
+      <Header usuario={usuario} direccion={direccion} />
 
       {cargando ? (
         <View style={styles.estadoVacio}>

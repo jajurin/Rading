@@ -141,7 +141,7 @@ export default function ChatCliente({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const contacto = route?.params?.contacto;
   const usuario = route?.params?.usuario;
-
+console.log('CHAT usuario:', JSON.stringify(usuario));
   const listRef = useRef(null);
   const [mensajes, setMensajes] = useState([]);
   const [texto, setTexto] = useState('');
@@ -813,7 +813,7 @@ export default function ChatCliente({ route, navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor={STATUS_BAR} />
-      <Header />
+      <Header usuario={usuario} />
 
       <View style={styles.chatHeader} onLayout={(e) => setAlturaHeader(e.nativeEvent.layout.height)}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.7}>
