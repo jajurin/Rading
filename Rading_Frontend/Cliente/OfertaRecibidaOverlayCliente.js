@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import API_URL from '../configS';
 import ConfirmarLlegadaCl from './ConfirmarLlegadaCl';
 import ConfirmarTrabajoCl from './ConfirmarTrabajoCl';
+import SeguimientoMini from "../SeguimientoMini"; // 🆕
 import { useTheme } from "../ThemeContext";
 
 const TrabajoItem = ({ trabajo, onSelect, isSelected, styles }) => (
@@ -50,7 +51,8 @@ const TrabajoItem = ({ trabajo, onSelect, isSelected, styles }) => (
   </TouchableOpacity>
 );
 
-const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar, styles, navigation }) => {
+// 🆕 ahora recibe idCliente y onClose
+const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar, onClose, idCliente, styles, navigation }) => {
   const yaLlego = !!trabajo.trabajo_iniciado_en;
   const yaTermino = trabajo.estado === 'TERMINADO';
 
@@ -141,6 +143,19 @@ const TrabajoDetalle = ({ trabajo, onChat, onIniciar, onFinalizar, styles, navig
         )}
 
       </View>
+
+      {/* 🆕 Mini mapa con la ruta del trabajador hasta el domicilio.
+          Solo mientras va en camino: desaparece al confirmar la llegada. */}
+      {!yaLlego && !yaTermino && (
+        <SeguimientoMini
+          trabajo={trabajo}
+          rol="cliente"
+          idUsuarioRol={idCliente}
+          navigation={navigation}
+          onAbrir={onClose}
+          activo={!yaLlego}
+        />
+      )}
 
       {/* Acción principal según el estado del trabajo */}
       {!yaLlego ? (
@@ -392,6 +407,8 @@ export default function OfertaRecibidaOverlayCliente({
                       onChat={handleChat}
                       onIniciar={(t) => setConfirmacion({ tipo: 'llegada', trabajo: t })}
                       onFinalizar={(t) => setConfirmacion({ tipo: 'fin', trabajo: t })}
+                      onClose={onClose}          // 🆕
+                      idCliente={idCliente}      // 🆕
                       styles={styles}
                       navigation={navigation}
                     />

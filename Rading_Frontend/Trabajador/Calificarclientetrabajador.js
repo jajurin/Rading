@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,15 +14,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path, Circle, Line } from 'react-native-svg';
+import Svg, { Path, Circle } from 'react-native-svg';
 import { useTheme } from '../ThemeContext';
 import API_URL from '../configS';
 
 // ── Paleta (misma que HomeTrabajador) ───────────────────────────────────
 const NAVY         = '#0F1B4C';
-const NAVY_SOFT    = '#161F52';
 const INDIGO       = '#2A3FD6';
-const INDIGO_SOFT  = '#5C6DF2';
 const AMBER        = '#F5A623';
 const GREEN        = '#22C55E';
 const RED          = '#EF4444';
@@ -46,17 +44,6 @@ const ASPECTOS = [
   { id: 'trato',         label: 'Respeto y trato',           icon: 'happy-outline' },
   { id: 'claridad',      label: 'Claridad al explicar',      icon: 'chatbubble-ellipses-outline' },
   { id: 'pago',          label: 'Pago acorde a lo pactado',  icon: 'cash-outline' },
-];
-
-const TAGS_RAPIDOS = [
-  { id: 'puntual',    label: 'Puntual' },
-  { id: 'buena_onda',  label: 'Buena onda' },
-  { id: 'pago_rapido', label: 'Pagó rápido' },
-  { id: 'claro',       label: 'Instrucciones claras' },
-  { id: 'recomendado', label: 'Lo recomiendo' },
-  { id: 'demorado',    label: 'Se demoró en pagar' },
-  { id: 'poco_claro',  label: 'Poco claro con el pedido' },
-  { id: 'mala_comunicacion', label: 'Mala comunicación' },
 ];
 
 const iniciales = (nombre = '', apellido = '') => {
@@ -108,9 +95,6 @@ function ModalidadBadge({ fijo, styles }) {
 }
 
 // ── Selector grande de estrellas (calificación general) ─────────────────
-// El color de la estrella "vacía" depende del tema: en modo oscuro un navy
-// casi negro es invisible sobre la card oscura, así que usamos un blanco
-// translúcido en ese caso.
 function EstrellasGrandes({ value, onChange, styles, isDark }) {
   const colorVacia = isDark ? 'rgba(255,255,255,0.22)' : 'rgba(15,27,76,0.16)';
   return (
@@ -170,9 +154,27 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
   const [general, setGeneral] = useState(0);
   const [aspectos, setAspectos] = useState({});
   const [volveria, setVolveria] = useState(null); // 'si' | 'no' | null
-  const [tags, setTags] = useState([]);
+  const [tags, setTags] = useState([]); // ids de la tabla etiqueta
   const [comentario, setComentario] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [etiquetasDisp, setEtiquetasDisp] = useState([]);
+  const [cargandoTags, setCargandoTags] = useState(true);
+
+  useEffect(() => {
+    let activo = true;
+    (async () => {
+      try {
+        const resp = await fetch(`${API_URL}/etiquetas?tipo=CLIENTE`);
+        const data = await resp.json();
+        if (activo && resp.ok) setEtiquetasDisp(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error('Error al cargar etiquetas:', err);
+      } finally {
+        if (activo) setCargandoTags(false);
+      }
+    })();
+    return () => { activo = false; };
+  }, []);
 
   const setAspecto = (id, val) => setAspectos((prev) => ({ ...prev, [id]: val }));
 
@@ -181,12 +183,8 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
 
   const puedeEnviar = general > 0 && !enviando;
 
-  // Alert.alert de React Native, en web (react-native-web), en muchas
-  // versiones NO muestra ningún diálogo y NO ejecuta el callback del botón
-  // — solo tira un console.warn. Si dependemos de ese callback para hacer
-  // goBack(), en web la pantalla se queda "trabada" aunque el envío haya
-  // funcionado. Por eso en web usamos window.alert (bloqueante, sí ejecuta
-  // lo que sigue) y en nativo seguimos usando Alert.alert normal.
+  // Alert.alert en react-native-web muchas veces no muestra nada ni ejecuta
+  // el callback; por eso en web usamos window.alert y en nativo Alert.alert.
   const avisar = (titulo, mensaje, onAceptar) => {
     if (Platform.OS === 'web') {
       if (typeof window !== 'undefined' && window.alert) {
@@ -201,8 +199,6 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
   const handleEnviar = async () => {
     if (!puedeEnviar) return;
 
-    // Chequeo temprano: sin esto la request va a fallar en el backend con
-    // "Faltan idTrabajo, idTrabajador o estrellas" y no se ve claro por qué.
     if (!idTrabajo || !idTrabajador) {
       avisar(
         'No se pudo enviar',
@@ -213,15 +209,11 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
 
     setEnviando(true);
 
-    const razon = tags.length
-      ? tags.map((id) => TAGS_RAPIDOS.find((t) => t.id === id)?.label).filter(Boolean).join(', ')
-      : null;
-
     const payload = {
       idTrabajo,
       idTrabajador,
       estrellas: general,
-      razon,
+      etiquetas: tags, // ids de la tabla etiqueta
       descripcion: comentario.trim() || null,
       puntualidad: aspectos.puntualidad || null,
       trato: aspectos.trato || null,
@@ -241,15 +233,13 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
       try {
         data = await resp.json();
       } catch (_) {
-        // El backend puede responder sin body en algún error inesperado;
-        // no dejamos que esto tape el mensaje real de error.
+        // El backend puede responder sin body en algún error inesperado.
       }
 
       if (!resp.ok) {
         throw new Error(data.message || `No se pudo enviar la calificación (HTTP ${resp.status})`);
       }
 
-      // Se confirma el envío y recién ahí se sale de la pantalla.
       avisar('¡Gracias!', 'Tu calificación fue enviada.', () => {
         navigation?.goBack?.();
       });
@@ -432,29 +422,36 @@ export default function CalificarClienteTrabajador({ route, navigation }) {
           </View>
         </View>
 
-        {/* ── Tags rápidos ────────────────────────────────────────────── */}
+        {/* ── Tags rápidos (cargados desde la tabla etiqueta) ─────────── */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Etiquetas rápidas</Text>
           <Text style={styles.cardSubtitle}>Elegí las que apliquen</Text>
 
-          <View style={styles.tagsWrap}>
-            {TAGS_RAPIDOS.map((t) => {
-              const activo = tags.includes(t.id);
-              return (
-                <TouchableOpacity
-                  key={t.id}
-                  style={[styles.tagChip, activo && styles.tagChipActive]}
-                  onPress={() => toggleTag(t.id)}
-                  activeOpacity={0.75}
-                >
-                  {activo && <Icons.Check color={WHITE} size={12} />}
-                  <Text style={[styles.tagChipText, activo && styles.tagChipTextActive]}>
-                    {t.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          {cargandoTags ? (
+            <Text style={[styles.cardSubtitle, { marginTop: 14 }]}>Cargando etiquetas...</Text>
+          ) : (
+            <View style={styles.tagsWrap}>
+              {etiquetasDisp.map((t) => {
+                const activo = tags.includes(t.id);
+                return (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={[
+                      styles.tagChip,
+                      activo && (t.positiva ? styles.tagChipActive : styles.tagChipActiveNeg),
+                    ]}
+                    onPress={() => toggleTag(t.id)}
+                    activeOpacity={0.75}
+                  >
+                    {activo && <Icons.Check color={WHITE} size={12} />}
+                    <Text style={[styles.tagChipText, activo && styles.tagChipTextActive]}>
+                      {t.nombre}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         {/* ── Comentario ──────────────────────────────────────────────── */}
@@ -625,6 +622,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     borderWidth: 1.5, borderColor: isDark ? colors.border : BORDER, backgroundColor: isDark ? colors.inputBg : BG,
   },
   tagChipActive: { backgroundColor: INDIGO, borderColor: INDIGO },
+  tagChipActiveNeg: { backgroundColor: RED, borderColor: RED },
   tagChipText: { color: isDark ? colors.textSecondary : TEXT_MUTED, fontSize: 12.5, fontWeight: '600' },
   tagChipTextActive: { color: WHITE, fontWeight: '700' },
 

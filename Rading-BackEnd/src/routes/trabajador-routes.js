@@ -3,23 +3,26 @@ import TrabajadorServices from "../services/trabajador-services.js"
 
 const router = Router()
 const svc = new TrabajadorServices()
-// POST /trabajador/calificarCliente  { idTrabajo, idTrabajador, estrellas, razon, descripcion, puntualidad, trato, claridad, pago, volveria }
+
+// POST /trabajador/calificarCliente
+// { idTrabajo, idTrabajador, estrellas, etiquetas: [ids], descripcion, puntualidad, trato, claridad, pago, volveria }
 router.post("/calificarCliente", async (req, res) => {
     try {
         const {
-            idTrabajo, idTrabajador, estrellas, razon, descripcion,
+            idTrabajo, idTrabajador, estrellas, etiquetas, descripcion,
             puntualidad, trato, claridad, pago, volveria,
         } = req.body
         const resultado = await svc.calificarCliente(idTrabajo, idTrabajador, {
-            estrellas, razon, descripcion, puntualidad, trato, claridad, pago, volveria,
+            estrellas, etiquetas, descripcion, puntualidad, trato, claridad, pago, volveria,
         })
         res.status(201).json(resultado)
     } catch (error) {
         console.error(error)
-        const status = /no te pertenece|Solo podés|Ya calificaste|Faltan/.test(error.message) ? 400 : 500
+        const status = /no te pertenece|Solo podés|Ya calificaste|Faltan|etiqueta/.test(error.message) ? 400 : 500
         res.status(status).json({ message: error.message || "Error al calificar al cliente" })
     }
 })
+
 // Valida que el id venga como número entero positivo real (rechaza
 // null, undefined, "null", strings vacíos, negativos, etc.)
 const idValido = (raw) => {

@@ -2,7 +2,7 @@ import { Client } from '../../configs/db.js'
 import config from '../../configs/dbconfig.js'
 import usuarioRepository from '../general/usuario-repositories.js'
 import NotificacionServices from '../../services/notificacion-services.js'
-
+import { guardarEtiquetas } from '../general/etiquetas-helper.js'
 const DURACION_SUBASTA_HORAS = 2
 const MAX_INTENTOS = 5
 const CODIGO_VALIDEZ_MIN = 15
@@ -450,7 +450,7 @@ calificarCliente = async (
     idTrabajador,
     {
         estrellas,
-        razon = null,
+        etiquetas = [],
         descripcion = null,
         puntualidad = null,
         trato = null,
@@ -488,21 +488,42 @@ calificarCliente = async (
             throw new Error('Ya calificaste a este cliente por este trabajo')
         }
 
-        const insertResult = await client.query(
-            `INSERT INTO "ReseñaCliente"
-                ("idTrabajador", "idCliente", "idTrabajo", estrellas, razon, descripcion,
-                 puntualidad, trato, claridad, pago, volveria, "fechaCreacion")
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
-             RETURNING *`,
-            [idTrabajador, ct.IdCliente, idTrabajo, estrellas, razon, descripcion,
-             puntualidad, trato, claridad, pago, volveria]
+                          if (!estrellas) throw new Error('Faltan las estrellas generales')
+
+        // 1) Fila de estrellas (general + aspectos)
+        const estrellasResult = await client.query(
+            `INSERT INTO "Estrellas" (general, puntualidad, trato, claridad, pago)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING id`,
+            [estrellas, puntualidad, trato, claridad, pago]
         )
 
-        // Recalcula el promedio de estrellas del cliente con todas sus reseñas
+        // 2) Grupo de etiquetas
+ 
+        // 3) La reseña guarda lo escrito + las dos FK
+                // 2) La reseña guarda lo escrito + la FK a Estrellas
+               // 2) La reseña guarda lo escrito + la FK a Estrellas
+        const insertResult = await client.query(
+            `INSERT INTO "ReseñaCliente"
+                ("idTrabajador", "idCliente", "idTrabajo", descripcion, volveria,
+                 "idEstrellas", "fechaCreacion")
+             VALUES ($1, $2, $3, $4, $5, $6, now())
+             RETURNING *`,
+            [idTrabajador, ct.IdCliente, idTrabajo, descripcion, volveria,
+             estrellasResult.rows[0].id]
+        )
+
+        // 3) Etiquetas elegidas -> reseña_etiqueta (directo a la reseña)
+        await guardarEtiquetas(client, insertResult.rows[0].id, etiquetas, 'CLIENTE')
+
+        // 5) Promedio del cliente (solo la general)
         await client.query(
             `UPDATE "Cliente"
              SET estrellas = (
-                 SELECT AVG(estrellas) FROM "ReseñaCliente" WHERE "idCliente" = $1
+                 SELECT AVG(es.general)
+                 FROM "ReseñaCliente" r
+                 INNER JOIN "Estrellas" es ON es.id = r."idEstrellas"
+                 WHERE r."idCliente" = $1
              )
              WHERE id = $1`,
             [ct.IdCliente]
@@ -550,9 +571,10 @@ calificarCliente = async (
                           AND ct.estado = 'TERMINADO'
                           AND ct.fecha_acabado = CURRENT_DATE
                     ), 0) AS trabajos_completados,
-                    (
-                        SELECT AVG(r.estrellas)
+                                                      (
+                        SELECT AVG(es.general)
                         FROM "ReseñaCliente" r
+                        INNER JOIN "Estrellas" es ON es.id = r."idEstrellas"
                         WHERE r."idTrabajador" = $1
                           AND r."fechaCreacion"::date = CURRENT_DATE
                     ) AS rating_hoy,
@@ -1329,7 +1351,6 @@ obtenerPerfil = async (idTrabajador) => {
                 t."DispFinal",
                 t.foto,
                 t.estrellas,
-                t."reseñasRec",
                 t.portada,
                 t."tarifaDesde",
                 t."tiempoRespuesta",
@@ -1378,17 +1399,25 @@ obtenerPerfil = async (idTrabajador) => {
             [idTrabajador]
         )
 
-        const resenasResult = await client.query(
-            `SELECT r.id, r.estrellas, r.razon, r.descripcion, r."fechaCreacion",
-                    u.nombre, u.apellido
+                          const resenasResult = await client.query(
+            `SELECT r.id, r.descripcion, r."fechaCreacion", r.volveria,
+                    u.nombre, u.apellido,
+                    es.general AS estrellas,
+                    es.puntualidad, es.trato, es.claridad, es.pago,
+                    COALESCE((
+                        SELECT json_agg(json_build_object('id', e.id, 'nombre', e.nombre, 'positiva', e.positiva) ORDER BY e.id)
+                        FROM "reseña_etiqueta" re
+                        INNER JOIN "etiqueta" e ON e.id = re.idetiqueta
+                        WHERE WHERE re.idreseña = r.id
+                    ), '[]') AS etiquetas
              FROM "ReseñaCliente" r
+             INNER JOIN "Estrellas" es ON es.id = r."idEstrellas"
              INNER JOIN "Cliente" c ON c.id = r."idCliente"
              INNER JOIN "Usuario" u ON u.id = c."IdPersona"
              WHERE r."idTrabajador" = $1
              ORDER BY r."fechaCreacion" DESC`,
             [idTrabajador]
         )
-
         return {
             ...trabajador,
             servicios: serviciosResult.rows,

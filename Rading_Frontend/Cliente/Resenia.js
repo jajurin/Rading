@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import Svg, { Path, Circle } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import API_URL from "../configS";
 import Header from "../Header";
 import BottomNavBar from "./NavegadorCliente";
@@ -24,7 +24,6 @@ import { useTheme } from "../ThemeContext";
 const NAVY = "#0F1B4C";
 const INDIGO = "#2A3FD6";
 const AMBER = "#F5A623";
-const GREEN = "#22C55E";
 const RED = "#EF4444";
 const BG = "#F4F6FC";
 const CARD = "#FFFFFF";
@@ -33,16 +32,7 @@ const TEXT_MUTED = "#828AA0";
 const BORDER = "rgba(15,27,76,0.07)";
 const WHITE = "#FFFFFF";
 
-// ── Datos de razones / motivos ───────────────────────────────────────────
-const REASONS = [
-  { label: "Selecciona una razón...", value: "" },
-  { label: "Excelente trabajo", value: "excellent" },
-  { label: "Buen trabajo", value: "good" },
-  { label: "Trabajo aceptable", value: "acceptable" },
-  { label: "Necesita mejorar", value: "needs_improvement" },
-  { label: "Trabajo deficiente", value: "poor" },
-];
-
+// ── Motivos de reporte ───────────────────────────────────────────────────
 const REPORT_REASONS = [
   { label: "Selecciona un motivo...", value: "" },
   { label: "Comportamiento inapropiado", value: "comportamiento_inapropiado" },
@@ -63,7 +53,7 @@ const iniciales = (nombreCompleto = "") => {
   return (a + b).toUpperCase() || "?";
 };
 
-// ── Iconos propios (mismo estilo SVG que el banner de cliente) ──────────
+// ── Iconos propios ──────────────────────────────────────────────────────
 const Icons = {
   Check: ({ color = "#FFFFFF", size = 15 }) => (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -71,17 +61,6 @@ const Icons = {
         d="M5 12.5L10 17.5L19 7"
         stroke={color}
         strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  ),
-  Back: ({ color = "#FFFFFF", size = 20 }) => (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M15 5L8 12L15 19"
-        stroke={color}
-        strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -123,8 +102,8 @@ function EstrellasGrandes({ value, onChange, styles }) {
   );
 }
 
-// ── Dropdown genérico reutilizable (razón y motivo de reporte) ──────────
-function OptionPicker({ value, onChange, options = REASONS, title = "Razón de la calificación", styles }) {
+// ── Dropdown (solo para el motivo del reporte) ──────────────────────────
+function OptionPicker({ value, onChange, options, title, styles }) {
   const [open, setOpen] = useState(false);
   const selected = options.find((r) => r.value === value) || options[0];
 
@@ -268,7 +247,9 @@ export default function ClasificarTrabajador({ route, navigation }) {
   const fotoTrabajador = trabajo?.foto ?? null;
 
   const [rating, setRating] = useState(0);
-  const [reason, setReason] = useState("");
+  const [tags, setTags] = useState([]); // ids de la tabla etiqueta
+  const [etiquetasDisp, setEtiquetasDisp] = useState([]);
+  const [cargandoTags, setCargandoTags] = useState(true);
   const [description, setDescription] = useState("");
   const [block, setBlock] = useState(false);
   const [showLowModal, setShowLowModal] = useState(false);
@@ -279,6 +260,32 @@ export default function ClasificarTrabajador({ route, navigation }) {
   const [reportReason, setReportReason] = useState("");
   const [reportDescription, setReportDescription] = useState("");
   const [enviandoReporte, setEnviandoReporte] = useState(false);
+
+  // Carga las etiquetas que aplican a un trabajador desde la base
+  useEffect(() => {
+    let activo = true;
+    (async () => {
+      try {
+        const resp = await fetch(`${API_URL}/etiquetas?tipo=TRABAJADOR`);
+        const data = await resp.json().catch(() => null);
+        if (!resp.ok) {
+          console.error("Etiquetas HTTP", resp.status, data);
+          return;
+        }
+        if (activo) setEtiquetasDisp(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Error al cargar etiquetas:", err);
+      } finally {
+        if (activo) setCargandoTags(false);
+      }
+    })();
+    return () => {
+      activo = false;
+    };
+  }, []);
+
+  const toggleTag = (id) =>
+    setTags((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
 
   const handleRate = (val) => {
     setRating(val);
@@ -295,10 +302,6 @@ export default function ClasificarTrabajador({ route, navigation }) {
       Alert.alert("Calificación requerida", "Por favor selecciona una calificación con estrellas.");
       return;
     }
-    if (!reason) {
-      Alert.alert("Razón requerida", "Por favor selecciona una razón para tu calificación.");
-      return;
-    }
     if (!trabajo?.idTrabajador || !trabajo?.idTrabajo || !usuario?.idCliente) {
       Alert.alert("Error", "Faltan datos del trabajo o del usuario para enviar la calificación.");
       return;
@@ -309,7 +312,7 @@ export default function ClasificarTrabajador({ route, navigation }) {
       idCliente: usuario.idCliente,
       idTrabajo: trabajo.idTrabajo,
       estrellas: rating,
-      razon: reason,
+      etiquetas: tags, // ids de la tabla etiqueta
       descripcion: description,
       comentarioBajaCalificacion: rating <= 2 ? lowReviewText : null,
       bloqueoSolicitado: block,
@@ -392,7 +395,7 @@ export default function ClasificarTrabajador({ route, navigation }) {
 
   return (
     <>
-     <Header usuario={usuario} direccion={direccion} />
+      <Header usuario={usuario} direccion={usuario?.direccion} />
       <StatusBar barStyle={colors.statusBar} backgroundColor={colors.statusBarBg} />
 
       <ScrollView
@@ -401,7 +404,7 @@ export default function ClasificarTrabajador({ route, navigation }) {
         contentContainerStyle={{ paddingBottom: 120 }}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── Banner del trabajador (mismo lenguaje que el banner de cliente) ── */}
+        {/* ── Banner del trabajador ── */}
         <LinearGradient
           colors={[INDIGO, "#1E2E9E"]}
           start={{ x: 0, y: 0 }}
@@ -448,7 +451,7 @@ export default function ClasificarTrabajador({ route, navigation }) {
             </View>
             <TouchableOpacity
               style={styles.verPerfilBtn}
-              onPress={() => navigation.navigate('PerfilTrabajadorParaCliente', { idTrabajador: trabajo.idTrabajador })}
+              onPress={() => navigation.navigate("PerfilTrabajadorParaCliente", { idTrabajador: trabajo.idTrabajador })}
               activeOpacity={0.7}
             >
               <Text style={styles.verPerfilBtnText}>Ver perfil</Text>
@@ -456,7 +459,7 @@ export default function ClasificarTrabajador({ route, navigation }) {
           </View>
         </LinearGradient>
 
-        {/* ── Calificación general ───────────────────────────────────── */}
+        {/* ── Calificación general (estrellas) ── */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>¿Cómo lo calificás?</Text>
           <Text style={styles.cardSubtitle}>Tu opinión ayuda a otros clientes</Text>
@@ -468,16 +471,39 @@ export default function ClasificarTrabajador({ route, navigation }) {
           </Text>
         </View>
 
-        {/* ── Razón ───────────────────────────────────────────────────── */}
+        {/* ── Etiquetas (cargadas desde la tabla etiqueta) ── */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Razón</Text>
-          <Text style={styles.cardSubtitle}>Elegí lo que mejor describe el trabajo</Text>
-          <View style={{ marginTop: 14 }}>
-            <OptionPicker value={reason} onChange={setReason} options={REASONS} title="Razón de la calificación" styles={styles} />
-          </View>
+          <Text style={styles.cardTitle}>Etiquetas</Text>
+          <Text style={styles.cardSubtitle}>Elegí las que describan el trabajo</Text>
+
+          {cargandoTags ? (
+            <Text style={[styles.cardSubtitle, { marginTop: 14 }]}>Cargando etiquetas...</Text>
+          ) : etiquetasDisp.length === 0 ? (
+            <Text style={[styles.cardSubtitle, { marginTop: 14 }]}>No se pudieron cargar las etiquetas</Text>
+          ) : (
+            <View style={styles.tagsWrap}>
+              {etiquetasDisp.map((t) => {
+                const activo = tags.includes(t.id);
+                return (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={[
+                      styles.tagChip,
+                      activo && (t.positiva ? styles.tagChipActive : styles.tagChipActiveNeg),
+                    ]}
+                    onPress={() => toggleTag(t.id)}
+                    activeOpacity={0.75}
+                  >
+                    {activo && <Icons.Check color={WHITE} size={12} />}
+                    <Text style={[styles.tagChipText, activo && styles.tagChipTextActive]}>{t.nombre}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
 
-        {/* ── Comentario ──────────────────────────────────────────────── */}
+        {/* ── Comentario ── */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Dejá un comentario</Text>
           <Text style={styles.cardSubtitle}>Opcional · lo verán otros clientes</Text>
@@ -496,7 +522,7 @@ export default function ClasificarTrabajador({ route, navigation }) {
           <Text style={styles.contadorChars}>{description.length}/300</Text>
         </View>
 
-        {/* ── Bloquear ────────────────────────────────────────────────── */}
+        {/* ── Bloquear ── */}
         <View style={styles.card}>
           <TouchableOpacity style={styles.blockRow} onPress={() => setBlock(!block)} activeOpacity={0.85}>
             <View style={[styles.checkbox, block && styles.checkboxChecked]}>
@@ -518,7 +544,7 @@ export default function ClasificarTrabajador({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* ── Botones finales ─────────────────────────────────────────── */}
+        {/* ── Botones finales ── */}
         <View style={styles.footerBtns}>
           <TouchableOpacity style={styles.omitirBtn} onPress={() => navigation?.goBack?.()} activeOpacity={0.8}>
             <Text style={styles.omitirBtnText}>Omitir por ahora</Text>
@@ -620,14 +646,14 @@ const createStyles = (colors, isDark) => StyleSheet.create({
   bannerServicio: { color: "rgba(255,255,255,0.75)", fontSize: 12.5, marginTop: 3 },
   verPerfilBtn: {
     marginLeft: 10,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: "rgba(255,255,255,0.2)",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
+    borderColor: "rgba(255,255,255,0.4)",
   },
-  verPerfilBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  verPerfilBtnText: { color: "#fff", fontSize: 12, fontWeight: "700" },
 
   card: {
     backgroundColor: isDark ? colors.card : CARD,
@@ -648,6 +674,24 @@ const createStyles = (colors, isDark) => StyleSheet.create({
 
   estrellasGrandesRow: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: 18 },
   estrellasLabel: { textAlign: "center", marginTop: 12, color: INDIGO, fontWeight: "800", fontSize: 14 },
+
+  /* Etiquetas */
+  tagsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 },
+  tagChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: isDark ? colors.border : BORDER,
+    backgroundColor: isDark ? colors.inputBg : BG,
+  },
+  tagChipActive: { backgroundColor: INDIGO, borderColor: INDIGO },
+  tagChipActiveNeg: { backgroundColor: RED, borderColor: RED },
+  tagChipText: { color: isDark ? colors.textSecondary : TEXT_MUTED, fontSize: 12.5, fontWeight: "600" },
+  tagChipTextActive: { color: WHITE, fontWeight: "700" },
 
   pickerTrigger: {
     flexDirection: "row",

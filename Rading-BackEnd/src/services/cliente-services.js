@@ -28,12 +28,14 @@ export default class ClienteServices {
         return await this.#repo.mostrarServiciosPorCategoria(categoriaId)
     }
 
+    // body: { idTrabajador, idCliente, idTrabajo, estrellas, etiquetas: [ids],
+    //         descripcion, comentarioBajaCalificacion, bloqueoSolicitado }
     crearReseñaCliente = async (body) => {
         if (!body.idTrabajador || !body.idCliente || !body.idTrabajo) {
             throw new Error('Faltan idTrabajador, idCliente o idTrabajo')
         }
-        if (!body.estrellas || !body.razon) {
-            throw new Error('Faltan estrellas o razon')
+        if (!body.estrellas) {
+            throw new Error('Faltan estrellas')
         }
         const resultado = await this.#repo.crearReseñaCliente(body)
 
@@ -61,41 +63,43 @@ export default class ClienteServices {
     // automático, ese error se propaga tal cual para que el router lo
     // traduzca a un 409.
     aceptarOferta = async (idOferta) => {
-    const resultado = await this.#repo.aceptarOferta(idOferta)
+        const resultado = await this.#repo.aceptarOferta(idOferta)
 
-    try {
-        const chatId = await this.#chatRepo.buscarOCrearChat(resultado.idCliente, resultado.idTrabajador)
-        await this.#chatRepo.enviarMensaje({
-            chatId,
-            enviadorId: resultado.idUsuarioCliente, // ✅ el cliente es quien "manda" el aviso
-            contenido: `¡Tu oferta fue aceptada! Quedaste asignado a este trabajo por $${Number(resultado.precioFinal).toLocaleString('es-AR')}.`,
-            tipo: 'TEXTO',
-        })
-    } catch (err) {
-        console.error(`No se pudo notificar la aceptación de oferta ${idOferta}:`, err)
-    }
-
-    try {
-        await this.#notifSvc.notificarOfertaAceptada({
-            idTrabajo: resultado.idTrabajo,
-            idTrabajador: resultado.idTrabajador,
-            precioFinal: resultado.precioFinal,
-        })
-        for (const r of resultado.ofertasRechazadas ?? []) {
-            await this.#notifSvc.notificarOfertaRechazada({
-                idTrabajo: resultado.idTrabajo,
-                idTrabajador: r.idTrabajador,
+        try {
+            const chatId = await this.#chatRepo.buscarOCrearChat(resultado.idCliente, resultado.idTrabajador)
+            await this.#chatRepo.enviarMensaje({
+                chatId,
+                enviadorId: resultado.idUsuarioCliente, // ✅ el cliente es quien "manda" el aviso
+                contenido: `¡Tu oferta fue aceptada! Quedaste asignado a este trabajo por $${Number(resultado.precioFinal).toLocaleString('es-AR')}.`,
+                tipo: 'TEXTO',
             })
+        } catch (err) {
+            console.error(`No se pudo notificar la aceptación de oferta ${idOferta}:`, err)
         }
-    } catch (err) {
-        console.error(`No se pudieron crear notificaciones de la oferta ${idOferta}:`, err)
+
+        try {
+            await this.#notifSvc.notificarOfertaAceptada({
+                idTrabajo: resultado.idTrabajo,
+                idTrabajador: resultado.idTrabajador,
+                precioFinal: resultado.precioFinal,
+            })
+            for (const r of resultado.ofertasRechazadas ?? []) {
+                await this.#notifSvc.notificarOfertaRechazada({
+                    idTrabajo: resultado.idTrabajo,
+                    idTrabajador: r.idTrabajador,
+                })
+            }
+        } catch (err) {
+            console.error(`No se pudieron crear notificaciones de la oferta ${idOferta}:`, err)
+        }
+
+        return resultado
     }
 
-    return resultado
-}
-mostrarMisSolicitudes = async (idCliente) => {
-    return await this.#repo.mostrarMisSolicitudes(idCliente)
-}
+    mostrarMisSolicitudes = async (idCliente) => {
+        return await this.#repo.mostrarMisSolicitudes(idCliente)
+    }
+
     contarOfertasPendientes = async (idCliente) => {
         return await this.#repo.contarOfertasPendientes(idCliente)
     }

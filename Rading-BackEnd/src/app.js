@@ -13,6 +13,7 @@ import uploadRoutes from "./routes/upload-routes.js"
 import ubicacionRoutes from "./routes/ubicacion-routes.js"
 import path from "path"
 import { limiteGeneral } from "./utils/limitadores.js"
+import etiquetasRoutes from './routes/etiquetas-routes.js'
 
 const app = express();
 
@@ -29,7 +30,7 @@ app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff')
     next()
 })
-
+app.use('/', etiquetasRoutes)
 app.use('/solicitud', solicitudRouter)
 app.use("/trabajador", trabajadorRoutes);
 app.use("/cliente", clienteRoutes);
