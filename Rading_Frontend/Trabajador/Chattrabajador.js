@@ -2,7 +2,15 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { useTheme } from '../ThemeContext';
 import Header from '../Header';
 import API_URL from '../configS';
-import { Video, ResizeMode } from 'expo-av';
+import { VideoView, useVideoPlayer } from 'expo-video';
+import {
+  useAudioRecorder,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+} from 'expo-audio';
 import {
   View, Text, StyleSheet, TouchableOpacity, TouchableWithoutFeedback,
   FlatList, Image, StatusBar, TextInput, KeyboardAvoidingView, Platform,
@@ -12,7 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import { Audio } from 'expo-av';
+
 const BLUE       = '#1565D8';
 const BLUE_DARK  = '#0d47a8';
 const BLUE_LIGHT = '#3b7ff0';
@@ -83,30 +91,135 @@ function formatearTiempoAudio(ms) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/* ───────── Componentes fuera del componente principal ───────── */
+
+const AvatarMini = ({ contacto, styles }) =>
+  contacto?.foto ? (
+    <Image source={{ uri: contacto.foto }} style={styles.avatarMini} />
+  ) : (
+    <View style={styles.avatarMiniPlaceholder}>
+      <Text style={styles.avatarMiniTexto}>{obtenerIniciales(contacto?.nombre)}</Text>
+    </View>
+  );
+
+const VideoMensaje = ({ uri, style }) => {
+  const player = useVideoPlayer(uri);
+  return <VideoView player={player} style={style} contentFit="cover" nativeControls />;
+};
+
+const BurbujaAudio = ({ item, esTrabajador, contacto, styles }) => {
+  const player = useAudioPlayer({ uri: item.texto });
+  const status = useAudioPlayerStatus(player);
+
+  const duracionMs = (status.duration || item.duracionAudio || 0) * 1000;
+  const posicionMs = (status.currentTime || 0) * 1000;
+  const progresoPct = duracionMs > 0 ? Math.min(100, (posicionMs / duracionMs) * 100) : 0;
+
+  const toggleReproducir = async () => {
+    try {
+      if (status.playing) {
+        player.pause();
+        return;
+      }
+      if (status.didJustFinish || (status.duration && status.currentTime >= status.duration)) {
+        await player.seekTo(0);
+      }
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      player.play();
+    } catch (err) {
+      console.error('Error al reproducir audio:', err);
+    }
+  };
+
+  return (
+    <View style={[styles.filaMensaje, { justifyContent: esTrabajador ? 'flex-end' : 'flex-start' }]}>
+      {!esTrabajador && <AvatarMini contacto={contacto} styles={styles} />}
+      <View
+        style={[
+          styles.burbujaAudio,
+          esTrabajador ? styles.burbujaTrabajadorMio : styles.burbujaCliente,
+          item.fallo && styles.burbujaFallo,
+        ]}
+      >
+        <TouchableOpacity onPress={toggleReproducir} style={styles.audioPlayBtn} disabled={!status.isLoaded}>
+          {!status.isLoaded ? (
+            <ActivityIndicator size="small" color={esTrabajador ? '#fff' : BLUE_DARK} />
+          ) : (
+            <Ionicons name={status.playing ? 'pause' : 'play'} size={18} color={esTrabajador ? '#fff' : BLUE_DARK} />
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.audioOndaWrap}>
+          <View
+            style={[
+              styles.audioOndaFondo,
+              { backgroundColor: esTrabajador ? 'rgba(255,255,255,0.35)' : 'rgba(21,101,216,0.18)' },
+            ]}
+          />
+          <View
+            style={[
+              styles.audioOndaProgreso,
+              { width: `${progresoPct}%`, backgroundColor: esTrabajador ? '#fff' : BLUE_DARK },
+            ]}
+          />
+        </View>
+
+        <Text style={esTrabajador ? styles.horaTrabajadorMioTexto : styles.horaClienteTexto}>
+          {formatearTiempoAudio(status.playing || posicionMs > 0 ? posicionMs : duracionMs)}
+        </Text>
+
+        {item.fallo && <Ionicons name="alert-circle" size={13} color="#FFD1D1" style={{ marginLeft: 4 }} />}
+      </View>
+    </View>
+  );
+};
+
+/* ───────── Pantalla ───────── */
+
 export default function ChatTrabajador({ route, navigation }) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const contacto = route?.params?.contacto;
   const usuario = route?.params?.usuario;
+
+  // ── Grabación de audio (expo-audio) ──
+  const grabador = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [grabando, setGrabando] = useState(false);
-  const [grabacion, setGrabacion] = useState(null);
   const [segundosGrabando, setSegundosGrabando] = useState(0);
   const intervaloGrabacionRef = useRef(null);
 
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
+  const listRef = useRef(null);
+  const [mensajes, setMensajes] = useState([]);
+  const [texto, setTexto] = useState('');
+  const [chatId, setChatId] = useState(route?.params?.chatId ?? null);
+  const [cargando, setCargando] = useState(!!route?.params?.chatId);
+  const [error, setError] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+
+  const [mostrarOpciones, setMostrarOpciones] = useState(false);
+  const [subiendoArchivo, setSubiendoArchivo] = useState(false);
+
+  // ── Overlay de "Ofertar precio" ──
+  const [mostrarOferta, setMostrarOferta] = useState(false);
+  const [ofertaPrecio, setOfertaPrecio] = useState('');
+  const [ofertaNota, setOfertaNota] = useState('');
+  const [enviandoOferta, setEnviandoOferta] = useState(false);
+  const [errorOferta, setErrorOferta] = useState(null);
+  const [alturaHeader, setAlturaHeader] = useState(0);
+  const [tecladoVisible, setTecladoVisible] = useState(false);
+
   const iniciarGrabacion = async () => {
     try {
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
+      const permiso = await AudioModule.requestRecordingPermissionsAsync();
+      if (!permiso.granted) {
         setError('Necesitamos permiso para usar el micrófono.');
         return;
       }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setGrabacion(recording);
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await grabador.prepareToRecordAsync();
+      grabador.record();
       setGrabando(true);
       setSegundosGrabando(0);
       intervaloGrabacionRef.current = setInterval(() => {
@@ -120,10 +233,7 @@ export default function ChatTrabajador({ route, navigation }) {
 
   const cancelarGrabacion = async () => {
     clearInterval(intervaloGrabacionRef.current);
-    if (grabacion) {
-      try { await grabacion.stopAndUnloadAsync(); } catch {}
-    }
-    setGrabacion(null);
+    try { await grabador.stop(); } catch {}
     setGrabando(false);
     setSegundosGrabando(0);
   };
@@ -145,16 +255,14 @@ export default function ChatTrabajador({ route, navigation }) {
 
   const detenerYEnviarGrabacion = async () => {
     clearInterval(intervaloGrabacionRef.current);
-    if (!grabacion) return;
     try {
-      await grabacion.stopAndUnloadAsync();
-      const uri = grabacion.getURI();
       const duracion = segundosGrabando;
-      setGrabacion(null);
+      await grabador.stop();
+      const uri = grabador.uri;
       setGrabando(false);
       setSegundosGrabando(0);
 
-      if (duracion < 1) return;
+      if (!uri || duracion < 1) return;
 
       await subirYEnviarArchivo(
         { uri, name: `audio_${Date.now()}.m4a`, mimeType: 'audio/m4a' },
@@ -165,26 +273,6 @@ export default function ChatTrabajador({ route, navigation }) {
       setError('No se pudo enviar el audio.');
     }
   };
-
-  const listRef = useRef(null);
-  const [mensajes, setMensajes] = useState([]);
-  const [texto, setTexto] = useState('');
-  const [chatId, setChatId] = useState(route?.params?.chatId ?? null);
-  const [cargando, setCargando] = useState(!!route?.params?.chatId);
-  const [error, setError] = useState(null);
-  const [enviando, setEnviando] = useState(false);
-
-  const [mostrarOpciones, setMostrarOpciones] = useState(false);
-  const [subiendoArchivo, setSubiendoArchivo] = useState(false);
-
-  // ── Overlay de "Ofertar precio" ──
-  const [mostrarOferta, setMostrarOferta] = useState(false);
-  const [ofertaPrecio, setOfertaPrecio] = useState('');
-  const [ofertaNota, setOfertaNota] = useState('');
-  const [enviandoOferta, setEnviandoOferta] = useState(false);
-  const [errorOferta, setErrorOferta] = useState(null);
-  const [alturaHeader, setAlturaHeader] = useState(0);
-  const [tecladoVisible, setTecladoVisible] = useState(false);
 
   useEffect(() => {
     const mostrar = Keyboard.addListener('keyboardDidShow', () => setTecladoVisible(true));
@@ -357,7 +445,7 @@ export default function ChatTrabajador({ route, navigation }) {
       return;
     }
     const resultado = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      mediaTypes: ['images', 'videos'],
       quality: 0.8,
     });
     if (!resultado.canceled && resultado.assets?.length) {
@@ -501,131 +589,6 @@ export default function ChatTrabajador({ route, navigation }) {
     });
   };
 
-  // Componentes movidos dentro del componente principal
-  const BurbujaAudio = ({ item, esTrabajador, contacto }) => {
-    const [reproduciendo, setReproduciendo] = useState(false);
-    const [cargando, setCargando] = useState(false);
-    const [posicion, setPosicion] = useState(0);
-    const [duracion, setDuracion] = useState((item.duracionAudio || 0) * 1000);
-    const sonidoRef = useRef(null);
-
-    useEffect(() => {
-      (async () => {
-        try {
-          await Audio.requestPermissionsAsync();
-          await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-        } catch (e) {
-          // Silencioso
-        }
-      })();
-    }, []);
-
-    const onStatusUpdate = useCallback((status) => {
-      if (!status.isLoaded) return;
-      setPosicion(status.positionMillis || 0);
-      if (status.durationMillis) setDuracion(status.durationMillis);
-      setReproduciendo(status.isPlaying);
-      if (status.didJustFinish) {
-        setReproduciendo(false);
-        setPosicion(0);
-      }
-    }, []);
-
-    const toggleReproducir = async () => {
-      try {
-        if (!sonidoRef.current) {
-          setCargando(true);
-          await Audio.setAudioModeAsync({
-            allowsRecordingIOS: false,
-            playsInSilentModeIOS: true,
-          });
-          const { sound } = await Audio.Sound.createAsync(
-            { uri: item.texto },
-            { progressUpdateIntervalMillis: 200 },
-            onStatusUpdate
-          );
-          sonidoRef.current = sound;
-          setCargando(false);
-          await sound.playAsync();
-          return;
-        }
-
-        const status = await sonidoRef.current.getStatusAsync();
-        if (!status.isLoaded) return;
-
-        if (status.isPlaying) {
-          await sonidoRef.current.pauseAsync();
-        } else {
-          if (status.didJustFinish || status.positionMillis >= (status.durationMillis || 0)) {
-            await sonidoRef.current.setPositionAsync(0);
-          }
-          await sonidoRef.current.playAsync();
-        }
-      } catch (err) {
-        console.error('Error al reproducir audio:', err);
-        setCargando(false);
-      }
-    };
-
-    useEffect(() => {
-      return () => { sonidoRef.current?.unloadAsync(); };
-    }, []);
-
-    const progresoPct = duracion > 0 ? Math.min(100, (posicion / duracion) * 100) : 0;
-
-    return (
-      <View style={[styles.filaMensaje, { justifyContent: esTrabajador ? 'flex-end' : 'flex-start' }]}>
-        {!esTrabajador && <AvatarMini contacto={contacto} />}
-        <View
-          style={[
-            styles.burbujaAudio,
-            esTrabajador ? styles.burbujaTrabajadorMio : styles.burbujaCliente,
-            item.fallo && styles.burbujaFallo,
-          ]}
-        >
-          <TouchableOpacity onPress={toggleReproducir} style={styles.audioPlayBtn} disabled={cargando}>
-            {cargando ? (
-              <ActivityIndicator size="small" color={esTrabajador ? '#fff' : BLUE_DARK} />
-            ) : (
-              <Ionicons name={reproduciendo ? 'pause' : 'play'} size={18} color={esTrabajador ? '#fff' : BLUE_DARK} />
-            )}
-          </TouchableOpacity>
-
-          <View style={styles.audioOndaWrap}>
-            <View
-              style={[
-                styles.audioOndaFondo,
-                { backgroundColor: esTrabajador ? 'rgba(255,255,255,0.35)' : 'rgba(21,101,216,0.18)' },
-              ]}
-            />
-            <View
-              style={[
-                styles.audioOndaProgreso,
-                { width: `${progresoPct}%`, backgroundColor: esTrabajador ? '#fff' : BLUE_DARK },
-              ]}
-            />
-          </View>
-
-          <Text style={esTrabajador ? styles.horaTrabajadorMioTexto : styles.horaClienteTexto}>
-            {formatearTiempoAudio(reproduciendo || posicion > 0 ? posicion : duracion)}
-          </Text>
-
-          {item.fallo && <Ionicons name="alert-circle" size={13} color="#FFD1D1" style={{ marginLeft: 4 }} />}
-        </View>
-      </View>
-    );
-  };
-
-  const AvatarMini = ({ contacto }) => {
-    return contacto?.foto ? (
-      <Image source={{ uri: contacto.foto }} style={styles.avatarMini} />
-    ) : (
-      <View style={styles.avatarMiniPlaceholder}>
-        <Text style={styles.avatarMiniTexto}>{obtenerIniciales(contacto?.nombre)}</Text>
-      </View>
-    );
-  };
-
   const renderBurbujaTexto = (item) => {
     const esTrabajador = item.autor === 'trabajador';
     return (
@@ -635,7 +598,7 @@ export default function ChatTrabajador({ route, navigation }) {
           { justifyContent: esTrabajador ? 'flex-end' : 'flex-start' },
         ]}
       >
-        {!esTrabajador && <AvatarMini contacto={contacto} />}
+        {!esTrabajador && <AvatarMini contacto={contacto} styles={styles} />}
         <View
           style={[
             styles.burbuja,
@@ -676,7 +639,7 @@ export default function ChatTrabajador({ route, navigation }) {
           { justifyContent: esTrabajador ? 'flex-end' : 'flex-start' },
         ]}
       >
-        {!esTrabajador && <AvatarMini contacto={contacto} />}
+        {!esTrabajador && <AvatarMini contacto={contacto} styles={styles} />}
         <View
           style={[
             styles.burbujaImagenWrap,
@@ -684,13 +647,7 @@ export default function ChatTrabajador({ route, navigation }) {
             item.fallo && styles.burbujaFallo,
           ]}
         >
-          <Video
-            source={{ uri: item.texto }}
-            style={styles.imagenChat}
-            resizeMode={ResizeMode.COVER}
-            useNativeControls
-            isLooping={false}
-          />
+          <VideoMensaje uri={item.texto} style={styles.imagenChat} />
           <View style={[styles.filaHora, { paddingHorizontal: 4, paddingTop: 4 }]}>
             <Text style={esTrabajador ? styles.horaTrabajadorMioTexto : styles.horaClienteTexto}>
               {item.fallo ? 'No se pudo enviar' : item.hora}
@@ -721,7 +678,7 @@ export default function ChatTrabajador({ route, navigation }) {
           { justifyContent: esTrabajador ? 'flex-end' : 'flex-start' },
         ]}
       >
-        {!esTrabajador && <AvatarMini contacto={contacto} />}
+        {!esTrabajador && <AvatarMini contacto={contacto} styles={styles} />}
         <TouchableOpacity
           activeOpacity={0.9}
           style={[
@@ -761,7 +718,7 @@ export default function ChatTrabajador({ route, navigation }) {
           { justifyContent: esTrabajador ? 'flex-end' : 'flex-start' },
         ]}
       >
-        {!esTrabajador && <AvatarMini contacto={contacto} />}
+        {!esTrabajador && <AvatarMini contacto={contacto} styles={styles} />}
         <View style={[styles.tarjetaOferta, item.fallo && styles.burbujaFallo]}>
           <View style={styles.tarjetaOfertaBadge}>
             <Ionicons name="pricetag" size={12} color={BLUE_DARK} />
@@ -793,7 +750,7 @@ export default function ChatTrabajador({ route, navigation }) {
   const renderTarjetaPropuestaCliente = (item) => {
     return (
       <View style={[styles.filaMensaje, { justifyContent: 'flex-start' }]}>
-        <AvatarMini contacto={contacto} />
+        <AvatarMini contacto={contacto} styles={styles} />
         <View style={[styles.tarjetaOferta, item.fallo && styles.burbujaFallo]}>
           <View style={styles.tarjetaOfertaBadge}>
             <Ionicons name="hammer" size={12} color={BLUE_DARK} />
@@ -833,7 +790,7 @@ export default function ChatTrabajador({ route, navigation }) {
     if (item.tipo === 'propuestaCliente') return renderTarjetaPropuestaCliente(item);
     if (item.tipo === 'imagen') return renderBurbujaImagen(item);
     if (item.tipo === 'video') return renderBurbujaVideo(item);
-    if (item.tipo === 'audio') return <BurbujaAudio item={item} esTrabajador={item.autor === 'trabajador'} contacto={contacto} />;
+    if (item.tipo === 'audio') return <BurbujaAudio item={item} esTrabajador={item.autor === 'trabajador'} contacto={contacto} styles={styles} />;
     return renderBurbujaTexto(item);
   };
 

@@ -393,8 +393,10 @@ export default class clienteRepository {
                     u.telefono,
                     c.categoria_id,
                     c.estrellas,
-                    c."reseñasEnv",
-                    c."reseñasRec"
+                    (SELECT COUNT(*) FROM "ReseñaCliente" r
+                      WHERE r."idCliente" = c.id AND r.autor = 'CLIENTE')::int AS "reseñasEnv",
+                    (SELECT COUNT(*) FROM "ReseñaCliente" r
+                      WHERE r."idCliente" = c.id AND r.autor = 'TRABAJADOR')::int AS "reseñasRec"
                 FROM "Cliente" c
                 INNER JOIN "Usuario" u ON c."IdPersona" = u.id
             `
@@ -463,7 +465,25 @@ export default class clienteRepository {
         return result?.rows ?? []
     }
 
-    mostrarRecientes = async (idCliente, limite = 6) => {
+    mostrarCategorias = async () => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+            const result = await client.query(
+                `SELECT id, nombre FROM "CategoriaServicio" ORDER BY nombre`
+            )
+            return result?.rows ?? []
+        } catch (err) {
+            console.error('Error en mostrarCategorias:', err)
+            throw err
+        } finally {
+            await client.end()
+        }
+    }
+
+    // Un registro por TRABAJO terminado (no por trabajador), para poder
+    // calificar cada trabajo por separado.
+    mostrarRecientes = async (idCliente, limite = 50) => {
         const client = new Client(config)
         let result
 
@@ -471,33 +491,29 @@ export default class clienteRepository {
             await client.connect()
 
             const sql = `
-                SELECT * FROM (
-                    SELECT DISTINCT ON (t.id)
-                        t.id AS "idTrabajador",
-                        ct.id AS "idTrabajo",
-                        u.nombre,
-                        u.apellido,
-                        t.foto,
-                        ct.estado,
-                        ct.fecha_iniciado,
-                        ct.fecha_acabado,
-                        ct.precio,
-                        ct."estrellasCliente",
-                        s.nombre AS servicio_nombre
-                    FROM "Cliente-Trabajador" ct
-                    INNER JOIN "Trabajador" t ON ct."IdTrabajador" = t.id
-                    INNER JOIN "Usuario" u ON t."IdPersona" = u.id
-                    LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
-                    WHERE ct."IdCliente" = $1
-                      AND ct.estado <> 'EN PROCESO'
-                    ORDER BY t.id, ct.fecha_iniciado DESC
-                ) sub
-                ORDER BY fecha_iniciado DESC
+                SELECT
+                    ct.id AS "idTrabajo",
+                    t.id AS "idTrabajador",
+                    u.nombre,
+                    u.apellido,
+                    t.foto,
+                    ct.estado,
+                    ct.fecha_iniciado,
+                    ct.fecha_acabado,
+                    ct.precio,
+                    ct."estrellasCliente",
+                    s.nombre AS servicio_nombre
+                FROM "Cliente-Trabajador" ct
+                INNER JOIN "Trabajador" t ON ct."IdTrabajador" = t.id
+                INNER JOIN "Usuario" u ON t."IdPersona" = u.id
+                LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+                WHERE ct."IdCliente" = $1
+                  AND ct."IdTrabajador" IS NOT NULL
+                  AND ct.estado = 'TERMINADO'
+                ORDER BY COALESCE(ct.fecha_acabado, ct.fecha_iniciado) DESC, ct.id DESC
                 LIMIT $2
             `
-
             result = await client.query(sql, [idCliente, limite])
-
         } catch (err) {
             console.error('Error en mostrarRecientes:', err)
             throw err
@@ -508,6 +524,8 @@ export default class clienteRepository {
         return result?.rows ?? []
     }
 
+    // El cliente califica al trabajador por un trabajo terminado.
+    // estrellas puede ser un número o { general, puntualidad, trato, claridad, pago }
     crearReseñaCliente = async (reseña) => {
         const client = new Client(config)
 
@@ -515,56 +533,91 @@ export default class clienteRepository {
             await client.connect()
             await client.query('BEGIN')
 
-            const sqlInsert = `
-                INSERT INTO "ReseñaCliente"
-                ("idTrabajador", "idCliente", "idTrabajo", estrellas, descripcion, "comentarioBajaCalificacion", "bloqueoSolicitado", "fechaCreacion")
-                VALUES ($1, $2, $3, $4, $5, $6, $7, now())
-                RETURNING id
-            `
-            const values = [
-                reseña.idTrabajador,
-                reseña.idCliente,
-                reseña.idTrabajo,
-                reseña.estrellas,
-                reseña.descripcion,
-                reseña.comentarioBajaCalificacion ?? null,
-                reseña.bloqueoSolicitado ?? false
-            ]
+            // Validación: el trabajo existe, es del cliente y está terminado
+            const ctResult = await client.query(
+                `SELECT "IdCliente", "IdTrabajador", estado
+                 FROM "Cliente-Trabajador"
+                 WHERE id = $1
+                 FOR UPDATE`,
+                [reseña.idTrabajo]
+            )
+            const ct = ctResult.rows[0]
+            if (!ct) throw new Error('El trabajo no existe')
+            if (Number(ct.IdCliente) !== Number(reseña.idCliente)) {
+                throw new Error('Este trabajo no te pertenece')
+            }
+            if (Number(ct.IdTrabajador) !== Number(reseña.idTrabajador)) {
+                throw new Error('El trabajador no corresponde a este trabajo')
+            }
+            if (ct.estado !== 'TERMINADO') {
+                throw new Error('Solo podés calificar trabajos terminados')
+            }
 
-            const resultInsert = await client.query(sqlInsert, values)
+            // Anti-duplicado: solo cuenta las reseñas hechas por el cliente
+            const yaExiste = await client.query(
+                `SELECT 1 FROM "ReseñaCliente"
+                 WHERE "idTrabajo" = $1 AND "idCliente" = $2 AND autor = 'CLIENTE'`,
+                [reseña.idTrabajo, reseña.idCliente]
+            )
+            if (yaExiste.rowCount > 0) throw new Error('Ya calificaste este trabajo')
+
+            const e = typeof reseña.estrellas === 'object' && reseña.estrellas !== null
+                ? reseña.estrellas
+                : { general: reseña.estrellas }
+
+            if (!e.general) throw new Error('Faltan las estrellas generales')
+
+            const resultEstrellas = await client.query(
+                `INSERT INTO "Estrellas" (general, puntualidad, trato, claridad, pago)
+                 VALUES ($1, $2, $3, $4, $5)
+                 RETURNING id`,
+                [e.general, e.puntualidad ?? null, e.trato ?? null, e.claridad ?? null, e.pago ?? null]
+            )
+            const idEstrellas = resultEstrellas.rows[0].id
+
+            const resultInsert = await client.query(
+                `INSERT INTO "ReseñaCliente"
+                 ("idTrabajador", "idCliente", "idTrabajo", "idEstrellas", descripcion,
+                  "comentarioBajaCalificacion", "bloqueoSolicitado", volveria, autor, "fechaCreacion")
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'CLIENTE', now())
+                 RETURNING id`,
+                [
+                    reseña.idTrabajador,
+                    reseña.idCliente,
+                    reseña.idTrabajo,
+                    idEstrellas,
+                    reseña.descripcion ?? null,
+                    reseña.comentarioBajaCalificacion ?? null,
+                    reseña.bloqueoSolicitado ?? false,
+                    reseña.volveria ?? null,
+                ]
+            )
             const idReseña = resultInsert.rows[0].id
 
-            // Tags: van a reseña_etiqueta (el cliente califica al trabajador → tipo TRABAJADOR)
+            // Etiquetas: el cliente califica al trabajador → tipo TRABAJADOR
             await guardarEtiquetas(client, idReseña, reseña.etiquetas, 'TRABAJADOR')
 
-            // Recalcula promedio real a partir de todas las reseñas del trabajador
+            // Promedio del trabajador: solo reseñas hechas por clientes
             const resultPromedio = await client.query(
-                `SELECT AVG(estrellas)::numeric(3,2) AS promedio, COUNT(*) AS total
-                 FROM "ReseñaCliente"
-                 WHERE "idTrabajador" = $1`,
+                `SELECT AVG(es.general)::numeric(3,2) AS promedio, COUNT(*)::int AS total
+                 FROM "ReseñaCliente" r
+                 INNER JOIN "Estrellas" es ON es.id = r."idEstrellas"
+                 WHERE r."idTrabajador" = $1 AND r.autor = 'CLIENTE'`,
                 [reseña.idTrabajador]
             )
             const { promedio, total } = resultPromedio.rows[0]
 
             await client.query(
-                `UPDATE "Trabajador" SET estrellas = $1, "reseñasRec" = $2 WHERE id = $3`,
-                [promedio, total, reseña.idTrabajador]
+                `UPDATE "Trabajador" SET estrellas = $1 WHERE id = $2`,
+                [promedio, reseña.idTrabajador]
             )
 
-            // guarda la nota puntual en el trabajo calificado
             await client.query(
                 `UPDATE "Cliente-Trabajador" SET "estrellasCliente" = $1 WHERE id = $2`,
-                [reseña.estrellas, reseña.idTrabajo]
+                [e.general, reseña.idTrabajo]
             )
 
             await client.query('COMMIT')
-
-            this.#notifSvc.notificarReseña({
-                idTrabajo: reseña.idTrabajo,
-                idTrabajador: reseña.idTrabajador,
-                idCliente: reseña.idCliente,
-                estrellas: reseña.estrellas,
-            }).catch(err => console.error('[Notif] Error notificarReseña:', err.message))
 
             return { id: idReseña, nuevoPromedio: promedio, totalReseñas: total }
 
@@ -732,7 +785,7 @@ export default class clienteRepository {
             }
 
         } catch (err) {
-            await client.query('ROLLBACK')
+            try { await client.query('ROLLBACK') } catch (_) {}
             console.error('Error en aceptarOferta:', err.message)
             throw err
         } finally {
@@ -779,8 +832,8 @@ export default class clienteRepository {
 
     /**
      * Perfil completo de un cliente: datos de Usuario + Cliente.
-     * Requiere las columnas nuevas (FotoPerfil, foto, saldo, etc.) — si alguna
-     * no existe todavía, el error de Postgres lo deja bien claro.
+     * reseñasEnv = reseñas que el cliente escribió sobre trabajadores.
+     * reseñasRec = reseñas que los trabajadores escribieron sobre el cliente.
      */
     obtenerPerfil = async (idCliente) => {
         const client = new Client(config)
@@ -800,8 +853,10 @@ export default class clienteRepository {
                     u.lng,
                     c.categoria_id,
                     c.estrellas,
-                    c."reseñasEnv",
-                    c."reseñasRec",
+                    (SELECT COUNT(*) FROM "ReseñaCliente" r
+                      WHERE r."idCliente" = c.id AND r.autor = 'CLIENTE')::int AS "reseñasEnv",
+                    (SELECT COUNT(*) FROM "ReseñaCliente" r
+                      WHERE r."idCliente" = c.id AND r.autor = 'TRABAJADOR')::int AS "reseñasRec",
                     c.foto,
                     c.saldo,
                     c."favoritosCount",

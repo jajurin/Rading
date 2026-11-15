@@ -28,15 +28,23 @@ export default class ClienteServices {
         return await this.#repo.mostrarServiciosPorCategoria(categoriaId)
     }
 
-    // body: { idTrabajador, idCliente, idTrabajo, estrellas, etiquetas: [ids],
-    //         descripcion, comentarioBajaCalificacion, bloqueoSolicitado }
+    // body: { idTrabajador, idCliente, idTrabajo,
+    //         estrellas: número | { general, puntualidad, trato, claridad, pago },
+    //         etiquetas: [ids], descripcion, volveria,
+    //         comentarioBajaCalificacion, bloqueoSolicitado }
     crearReseñaCliente = async (body) => {
         if (!body.idTrabajador || !body.idCliente || !body.idTrabajo) {
             throw new Error('Faltan idTrabajador, idCliente o idTrabajo')
         }
-        if (!body.estrellas) {
+
+        const general = typeof body.estrellas === 'object' && body.estrellas !== null
+            ? body.estrellas.general
+            : body.estrellas
+
+        if (!general) {
             throw new Error('Faltan estrellas')
         }
+
         const resultado = await this.#repo.crearReseñaCliente(body)
 
         try {
@@ -44,7 +52,7 @@ export default class ClienteServices {
                 idTrabajo: body.idTrabajo,
                 idTrabajador: body.idTrabajador,
                 idCliente: body.idCliente,
-                estrellas: body.estrellas,
+                estrellas: general,
             })
         } catch (err) {
             console.error('No se pudo notificar la reseña nueva:', err)
@@ -57,8 +65,7 @@ export default class ClienteServices {
         return await this.#repo.buscarOfertasPorTrabajo(idTrabajo)
     }
 
-    // 👇 ahora, además de aceptar, avisa por chat al trabajador ganador
-    // (antes solo pasaba esto en el cierre automático de SubastaServices).
+    // Además de aceptar, avisa por chat al trabajador ganador.
     // Si el repo tira error porque perdió la carrera contra el cierre
     // automático, ese error se propaga tal cual para que el router lo
     // traduzca a un 409.
@@ -69,7 +76,7 @@ export default class ClienteServices {
             const chatId = await this.#chatRepo.buscarOCrearChat(resultado.idCliente, resultado.idTrabajador)
             await this.#chatRepo.enviarMensaje({
                 chatId,
-                enviadorId: resultado.idUsuarioCliente, // ✅ el cliente es quien "manda" el aviso
+                enviadorId: resultado.idUsuarioCliente, // el cliente "manda" el aviso
                 contenido: `¡Tu oferta fue aceptada! Quedaste asignado a este trabajo por $${Number(resultado.precioFinal).toLocaleString('es-AR')}.`,
                 tipo: 'TEXTO',
             })

@@ -3,7 +3,15 @@ import { useTheme } from '../ThemeContext';
 import Header from '../Header';
 import BottomNavBar from './NavegadorCliente';
 import API_URL from '../configS';
-import { Video, ResizeMode, Audio } from 'expo-av';
+import { VideoView, useVideoPlayer } from 'expo-video';
+import {
+  useAudioRecorder,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+} from 'expo-audio';
 import {
   View,
   Text,
@@ -96,28 +104,6 @@ const mapearMensaje = (m, idUsuario) => {
   };
 };
 
-const mapearOferta = (o, idTrabajo, servicioNombreOverride = null) => ({
-  id: o.id,
-  idTrabajo,
-  idTrabajador: o.idTrabajador,
-  nombre: `${o.nombre ?? ''} ${o.apellido ?? ''}`.trim(),
-  rating: Number(o.estrellas ?? 0),
-  distancia: o.distancia ?? null,
-  costoExtraMin: Number(o.costoExtraMin ?? 0),
-  costoExtraMax: Number(o.costoExtraMax ?? 0),
-  precio: Number(o.precio ?? o.precioSolicitud ?? 0),
-  servicioNombre: servicioNombreOverride,
-  fijo: Boolean(o.fijo),
-  emergencia: Boolean(o.emergencia),
-  subastaTermina: o.subastaTermina ?? null,
-});
-
-const normalizar = (str = '') =>
-  str
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-
 const calcularCategoriaUrgencia = (fechaLimite) => {
   if (!fechaLimite) return null;
   const ahora = new Date();
@@ -136,12 +122,108 @@ const formatearFechaHora = (fecha) => {
   return `${fechaStr} ${horaStr}`;
 };
 
+const formatearTiempoAudio = (ms) => {
+  if (!ms || isNaN(ms)) return '0:00';
+  const totalSegundos = Math.floor(ms / 1000);
+  const minutos = Math.floor(totalSegundos / 60);
+  const segundos = totalSegundos % 60;
+  return `${minutos}:${segundos < 10 ? '0' : ''}${segundos}`;
+};
+
+/* ───────── Componentes fuera del componente principal ───────── */
+
+const AvatarMini = ({ contacto, styles }) =>
+  contacto?.foto ? (
+    <Image source={{ uri: contacto.foto }} style={styles.avatarMini} />
+  ) : (
+    <View style={styles.avatarMiniPlaceholder}>
+      <Text style={styles.avatarMiniTexto}>{obtenerIniciales(contacto?.nombre)}</Text>
+    </View>
+  );
+
+const VideoMensaje = ({ uri, style }) => {
+  const player = useVideoPlayer(uri);
+  return <VideoView player={player} style={style} contentFit="cover" nativeControls />;
+};
+
+const BurbujaAudio = ({ item, esCliente, contacto, styles }) => {
+  const player = useAudioPlayer({ uri: item.texto });
+  const status = useAudioPlayerStatus(player);
+
+  const duracionMs = (status.duration || item.duracionAudio || 0) * 1000;
+  const posicionMs = (status.currentTime || 0) * 1000;
+  const progresoPct = duracionMs > 0 ? Math.min(100, (posicionMs / duracionMs) * 100) : 0;
+
+  const toggleReproducir = async () => {
+    try {
+      if (status.playing) {
+        player.pause();
+        return;
+      }
+      if (status.didJustFinish || (status.duration && status.currentTime >= status.duration)) {
+        await player.seekTo(0);
+      }
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      player.play();
+    } catch (err) {
+      console.error('Error al reproducir audio:', err);
+    }
+  };
+
+  return (
+    <View style={[styles.filaMensaje, { justifyContent: esCliente ? 'flex-end' : 'flex-start' }]}>
+      {!esCliente && <AvatarMini contacto={contacto} styles={styles} />}
+      <View style={[styles.burbujaAudio, esCliente ? styles.burbujaCliente : styles.burbujaTrabajador, item.fallo && styles.burbujaFallo]}>
+        <TouchableOpacity onPress={toggleReproducir} style={styles.audioPlayBtn} disabled={!status.isLoaded}>
+          {!status.isLoaded ? (
+            <ActivityIndicator size="small" color={esCliente ? '#fff' : BLUE_DARK} />
+          ) : (
+            <Ionicons name={status.playing ? 'pause' : 'play'} size={18} color={esCliente ? '#fff' : BLUE_DARK} />
+          )}
+        </TouchableOpacity>
+        <View style={styles.audioOndaWrap}>
+          <View style={[styles.audioOndaFondo, { backgroundColor: esCliente ? 'rgba(255,255,255,0.35)' : 'rgba(21,101,216,0.18)' }]} />
+          <View style={[styles.audioOndaProgreso, { width: `${progresoPct}%`, backgroundColor: esCliente ? '#fff' : BLUE_DARK }]} />
+        </View>
+        <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>
+          {formatearTiempoAudio(status.playing || posicionMs > 0 ? posicionMs : duracionMs)}
+        </Text>
+        {item.fallo && <Ionicons name="alert-circle" size={13} color="#FFD1D1" style={{ marginLeft: 4 }} />}
+      </View>
+    </View>
+  );
+};
+
+const Toggle2Opciones = ({ opciones, activo, onChange, styles, colorActivo = BLUE_DARK }) => (
+  <View style={styles.toggle2Track}>
+    {opciones.map((opt, i) => {
+      const seleccionado = activo === i;
+      return (
+        <TouchableOpacity key={opt} style={[styles.toggle2Btn, seleccionado && { backgroundColor: colorActivo }]} onPress={() => onChange(i)} activeOpacity={0.8}>
+          <Text style={[styles.toggle2Text, seleccionado && styles.toggle2TextActivo]}>{opt}</Text>
+        </TouchableOpacity>
+      );
+    })}
+  </View>
+);
+
+const ImagenPropuestaThumb = ({ uri, onQuitar, deshabilitado, styles }) => (
+  <View style={styles.propImagenThumbWrap}>
+    <Image source={{ uri }} style={styles.propImagenThumb} />
+    <TouchableOpacity style={styles.propImagenThumbQuitar} onPress={onQuitar} disabled={deshabilitado} hitSlop={6}>
+      <Ionicons name="close" size={12} color="#fff" />
+    </TouchableOpacity>
+  </View>
+);
+
+/* ───────── Pantalla ───────── */
+
 export default function ChatCliente({ route, navigation }) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const contacto = route?.params?.contacto;
   const usuario = route?.params?.usuario;
-console.log('CHAT usuario:', JSON.stringify(usuario));
+
   const listRef = useRef(null);
   const [mensajes, setMensajes] = useState([]);
   const [texto, setTexto] = useState('');
@@ -161,9 +243,9 @@ console.log('CHAT usuario:', JSON.stringify(usuario));
   const [mostrarConfirmVaciar, setMostrarConfirmVaciar] = useState(false);
   const [vaciandoChat, setVaciandoChat] = useState(false);
 
-  // ── Grabación de audio ──
+  // ── Grabación de audio (expo-audio) ──
+  const grabador = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [grabando, setGrabando] = useState(false);
-  const [grabacion, setGrabacion] = useState(null);
   const [segundosGrabando, setSegundosGrabando] = useState(0);
   const intervaloGrabacionRef = useRef(null);
 
@@ -443,7 +525,10 @@ console.log('CHAT usuario:', JSON.stringify(usuario));
     setMostrarOpciones(false);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') { setError('Necesitamos permiso para acceder a tus fotos.'); return; }
-    const resultado = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, quality: 0.8 });
+    const resultado = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images', 'videos'],
+      quality: 0.8,
+    });
     if (!resultado.canceled && resultado.assets?.length) subirYEnviarArchivo(resultado.assets[0]);
   };
   const tomarFoto = async () => {
@@ -461,33 +546,45 @@ console.log('CHAT usuario:', JSON.stringify(usuario));
     if (archivo) subirYEnviarArchivo(archivo);
   };
 
-  // ── Grabación de audio ──
+  // ── Grabación de audio (expo-audio) ──
   const iniciarGrabacion = async () => {
     try {
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') { setError('Necesitamos permiso para usar el micrófono.'); return; }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      setGrabacion(recording); setGrabando(true); setSegundosGrabando(0);
+      const permiso = await AudioModule.requestRecordingPermissionsAsync();
+      if (!permiso.granted) { setError('Necesitamos permiso para usar el micrófono.'); return; }
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await grabador.prepareToRecordAsync();
+      grabador.record();
+      setGrabando(true);
+      setSegundosGrabando(0);
       intervaloGrabacionRef.current = setInterval(() => setSegundosGrabando((s) => s + 1), 1000);
-    } catch (err) { console.error('Error al iniciar grabación:', err); setError('No se pudo iniciar la grabación.'); }
+    } catch (err) {
+      console.error('Error al iniciar grabación:', err);
+      setError('No se pudo iniciar la grabación.');
+    }
   };
   const cancelarGrabacion = async () => {
     clearInterval(intervaloGrabacionRef.current);
-    if (grabacion) { try { await grabacion.stopAndUnloadAsync(); } catch {} }
-    setGrabacion(null); setGrabando(false); setSegundosGrabando(0);
+    try { await grabador.stop(); } catch {}
+    setGrabando(false);
+    setSegundosGrabando(0);
   };
   const detenerYEnviarGrabacion = async () => {
     clearInterval(intervaloGrabacionRef.current);
-    if (!grabacion) return;
     try {
-      await grabacion.stopAndUnloadAsync();
-      const uri = grabacion.getURI();
       const duracion = segundosGrabando;
-      setGrabacion(null); setGrabando(false); setSegundosGrabando(0);
-      if (duracion < 1) return;
-      await subirYEnviarArchivo({ uri, name: `audio_${Date.now()}.m4a`, mimeType: 'audio/m4a' }, { duracionAudio: duracion });
-    } catch (err) { console.error('Error al detener grabación:', err); setError('No se pudo enviar el audio.'); }
+      await grabador.stop();
+      const uri = grabador.uri;
+      setGrabando(false);
+      setSegundosGrabando(0);
+      if (!uri || duracion < 1) return;
+      await subirYEnviarArchivo(
+        { uri, name: `audio_${Date.now()}.m4a`, mimeType: 'audio/m4a' },
+        { duracionAudio: duracion }
+      );
+    } catch (err) {
+      console.error('Error al detener grabación:', err);
+      setError('No se pudo enviar el audio.');
+    }
   };
 
   // ── Propuesta ──
@@ -514,7 +611,7 @@ console.log('CHAT usuario:', JSON.stringify(usuario));
     setErrorImagenesProp(null);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') { setErrorImagenesProp('Necesitamos permiso para acceder a tus fotos.'); return; }
-    const resultado = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7, allowsMultipleSelection: true, selectionLimit: MAX_IMAGENES_PROPUESTA });
+    const resultado = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7, allowsMultipleSelection: true, selectionLimit: MAX_IMAGENES_PROPUESTA });
     if (!resultado.canceled && resultado.assets?.length) setPropImagenes((prev) => [...prev, ...resultado.assets].slice(0, MAX_IMAGENES_PROPUESTA));
   };
   const tomarFotoPropuesta = async () => {
@@ -619,7 +716,7 @@ console.log('CHAT usuario:', JSON.stringify(usuario));
     const esCliente = item.autor === 'cliente';
     return (
       <TouchableOpacity activeOpacity={esCliente && !item.fallo ? 0.85 : 1} onLongPress={() => abrirEdicion(item)} style={[styles.filaMensaje, { justifyContent: esCliente ? 'flex-end' : 'flex-start' }]}>
-        {!esCliente && <AvatarMini contacto={contacto} />}
+        {!esCliente && <AvatarMini contacto={contacto} styles={styles} />}
         <View style={[styles.burbuja, esCliente ? styles.burbujaCliente : styles.burbujaTrabajador, item.fallo && styles.burbujaFallo]}>
           <Text style={esCliente ? styles.textoBurbujaCliente : styles.textoBurbujaTrabajador}>{item.texto}</Text>
           <View style={styles.filaHora}>
@@ -636,9 +733,9 @@ console.log('CHAT usuario:', JSON.stringify(usuario));
     const esCliente = item.autor === 'cliente';
     return (
       <View style={[styles.filaMensaje, { justifyContent: esCliente ? 'flex-end' : 'flex-start' }]}>
-        {!esCliente && <AvatarMini contacto={contacto} />}
+        {!esCliente && <AvatarMini contacto={contacto} styles={styles} />}
         <View style={[styles.burbujaImagenWrap, esCliente ? styles.burbujaImagenCliente : styles.burbujaImagenTrabajador, item.fallo && styles.burbujaFallo]}>
-          <Video source={{ uri: item.texto }} style={styles.imagenChat} resizeMode={ResizeMode.COVER} useNativeControls isLooping={false} />
+          <VideoMensaje uri={item.texto} style={styles.imagenChat} />
           <View style={[styles.filaHora, { paddingHorizontal: 4, paddingTop: 4 }]}>
             <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>{item.fallo ? 'No se pudo enviar' : item.hora}</Text>
             {esCliente && !item.fallo && (<Ionicons name={item.leido ? 'checkmark-done' : 'checkmark'} size={14} color={esCliente ? 'rgba(255,255,255,0.85)' : '#A0AEC0'} style={{ marginLeft: 4 }} />)}
@@ -653,7 +750,7 @@ console.log('CHAT usuario:', JSON.stringify(usuario));
     const esCliente = item.autor === 'cliente';
     return (
       <View style={[styles.filaMensaje, { justifyContent: esCliente ? 'flex-end' : 'flex-start' }]}>
-        {!esCliente && <AvatarMini contacto={contacto} />}
+        {!esCliente && <AvatarMini contacto={contacto} styles={styles} />}
         <TouchableOpacity activeOpacity={0.9} style={[styles.burbujaImagenWrap, esCliente ? styles.burbujaImagenCliente : styles.burbujaImagenTrabajador, item.fallo && styles.burbujaFallo]}>
           <Image source={{ uri: item.texto }} style={styles.imagenChat} resizeMode="cover" />
           <View style={[styles.filaHora, { paddingHorizontal: 4, paddingTop: 4 }]}>
@@ -670,7 +767,7 @@ console.log('CHAT usuario:', JSON.stringify(usuario));
     const esCliente = item.autor === 'cliente';
     return (
       <View style={[styles.filaMensaje, { justifyContent: esCliente ? 'flex-end' : 'flex-start' }]}>
-        {!esCliente && <AvatarMini contacto={contacto} />}
+        {!esCliente && <AvatarMini contacto={contacto} styles={styles} />}
         <View style={[styles.tarjetaServicio, item.fallo && styles.burbujaFallo]}>
           <View style={styles.tarjetaServicioBadgeRow}>
             <View style={styles.tarjetaServicioBadge}>
@@ -704,110 +801,8 @@ console.log('CHAT usuario:', JSON.stringify(usuario));
     if (item.tipo === 'servicio') return renderTarjetaServicio(item);
     if (item.tipo === 'imagen') return renderBurbujaImagen(item);
     if (item.tipo === 'video') return renderBurbujaVideo(item);
-    if (item.tipo === 'audio') return <BurbujaAudio item={item} esCliente={item.autor === 'cliente'} contacto={contacto} />;
+    if (item.tipo === 'audio') return <BurbujaAudio item={item} esCliente={item.autor === 'cliente'} contacto={contacto} styles={styles} />;
     return renderBurbujaTexto(item);
-  };
-
-  // Componentes movidos dentro del componente principal
-  const Toggle2Opciones = ({ opciones, activo, onChange, colorActivo = BLUE_DARK }) => (
-    <View style={styles.toggle2Track}>
-      {opciones.map((opt, i) => {
-        const seleccionado = activo === i;
-        return (
-          <TouchableOpacity key={opt} style={[styles.toggle2Btn, seleccionado && { backgroundColor: colorActivo }]} onPress={() => onChange(i)} activeOpacity={0.8}>
-            <Text style={[styles.toggle2Text, seleccionado && styles.toggle2TextActivo]}>{opt}</Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-
-  const ImagenPropuestaThumb = ({ uri, onQuitar, deshabilitado }) => (
-    <View style={styles.propImagenThumbWrap}>
-      <Image source={{ uri }} style={styles.propImagenThumb} />
-      <TouchableOpacity style={styles.propImagenThumbQuitar} onPress={onQuitar} disabled={deshabilitado} hitSlop={6}>
-        <Ionicons name="close" size={12} color="#fff" />
-      </TouchableOpacity>
-    </View>
-  );
-
-  const formatearTiempoAudio = (ms) => {
-    if (!ms || isNaN(ms)) return "0:00";
-    const totalSegundos = Math.floor(ms / 1000);
-    const minutos = Math.floor(totalSegundos / 60);
-    const segundos = totalSegundos % 60;
-    return `${minutos}:${segundos < 10 ? '0' : ''}${segundos}`;
-  };
-
-  const BurbujaAudio = ({ item, esCliente, contacto }) => {
-    const [reproduciendo, setReproduciendo] = useState(false);
-    const [cargando, setCargando] = useState(false);
-    const [posicion, setPosicion] = useState(0);
-    const [duracion, setDuracion] = useState((item.duracionAudio || 0) * 1000);
-    const sonidoRef = useRef(null);
-
-    useEffect(() => {
-      (async () => {
-        try {
-          await Audio.requestPermissionsAsync();
-          await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-        } catch (e) {}
-      })();
-    }, []);
-
-    const onStatusUpdate = useCallback((status) => {
-      if (!status.isLoaded) return;
-      setPosicion(status.positionMillis || 0);
-      if (status.durationMillis) setDuracion(status.durationMillis);
-      setReproduciendo(status.isPlaying);
-      if (status.didJustFinish) { setReproduciendo(false); setPosicion(0); }
-    }, []);
-
-    const toggleReproducir = async () => {
-      try {
-        if (!sonidoRef.current) {
-          setCargando(true);
-          await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
-          const { sound } = await Audio.Sound.createAsync({ uri: item.texto }, { progressUpdateIntervalMillis: 200 }, onStatusUpdate);
-          sonidoRef.current = sound; setCargando(false); await sound.playAsync(); return;
-        }
-        const status = await sonidoRef.current.getStatusAsync();
-        if (!status.isLoaded) return;
-        if (status.isPlaying) { await sonidoRef.current.pauseAsync(); }
-        else { if (status.didJustFinish || status.positionMillis >= (status.durationMillis || 0)) { await sonidoRef.current.setPositionAsync(0); } await sonidoRef.current.playAsync(); }
-      } catch (err) { console.error('Error al reproducir audio:', err); setCargando(false); }
-    };
-
-    useEffect(() => { return () => { sonidoRef.current?.unloadAsync(); }; }, []);
-
-    const progresoPct = duracion > 0 ? Math.min(100, (posicion / duracion) * 100) : 0;
-
-    return (
-      <View style={[styles.filaMensaje, { justifyContent: esCliente ? 'flex-end' : 'flex-start' }]}>
-        {!esCliente && <AvatarMini contacto={contacto} />}
-        <View style={[styles.burbujaAudio, esCliente ? styles.burbujaCliente : styles.burbujaTrabajador, item.fallo && styles.burbujaFallo]}>
-          <TouchableOpacity onPress={toggleReproducir} style={styles.audioPlayBtn} disabled={cargando}>
-            {cargando ? (<ActivityIndicator size="small" color={esCliente ? '#fff' : BLUE_DARK} />) : (<Ionicons name={reproduciendo ? 'pause' : 'play'} size={18} color={esCliente ? '#fff' : BLUE_DARK} />)}
-          </TouchableOpacity>
-          <View style={styles.audioOndaWrap}>
-            <View style={[styles.audioOndaFondo, { backgroundColor: esCliente ? 'rgba(255,255,255,0.35)' : 'rgba(21,101,216,0.18)' }]} />
-            <View style={[styles.audioOndaProgreso, { width: `${progresoPct}%`, backgroundColor: esCliente ? '#fff' : BLUE_DARK }]} />
-          </View>
-          <Text style={esCliente ? styles.horaClienteTexto : styles.horaTrabajadorTexto}>{formatearTiempoAudio(reproduciendo || posicion > 0 ? posicion : duracion)}</Text>
-          {item.fallo && <Ionicons name="alert-circle" size={13} color="#FFD1D1" style={{ marginLeft: 4 }} />}
-        </View>
-      </View>
-    );
-  };
-
-  const AvatarMini = ({ contacto }) => {
-    return contacto?.foto ? (
-      <Image source={{ uri: contacto.foto }} style={styles.avatarMini} />
-    ) : (
-      <View style={styles.avatarMiniPlaceholder}>
-        <Text style={styles.avatarMiniTexto}>{obtenerIniciales(contacto?.nombre)}</Text>
-      </View>
-    );
   };
 
   return (
@@ -1054,7 +1049,7 @@ console.log('CHAT usuario:', JSON.stringify(usuario));
             <Text style={styles.propLabel}>Fotos (opcional)</Text>
             <View style={styles.propImagenesRow}>
               {propImagenes.map((img, idx) => (
-                <ImagenPropuestaThumb key={img.assetId ?? img.uri ?? idx} uri={img.uri} onQuitar={() => quitarImagenPropuesta(idx)} deshabilitado={subiendoImagenesProp} />
+                <ImagenPropuestaThumb key={img.assetId ?? img.uri ?? idx} uri={img.uri} onQuitar={() => quitarImagenPropuesta(idx)} deshabilitado={subiendoImagenesProp} styles={styles} />
               ))}
               {propImagenes.length < MAX_IMAGENES_PROPUESTA && (
                 <View style={styles.propImagenesBotonesWrap}>
@@ -1070,12 +1065,12 @@ console.log('CHAT usuario:', JSON.stringify(usuario));
             {errorImagenesProp && <Text style={styles.propError}>{errorImagenesProp}</Text>}
 
             <Text style={styles.propLabel}>¿Es una emergencia?</Text>
-            <Toggle2Opciones opciones={['No', 'Sí, es urgente']} activo={propEmergencia ? 1 : 0} onChange={(i) => onCambiarPropEmergencia(i === 1)} />
+            <Toggle2Opciones styles={styles} opciones={['No', 'Sí, es urgente']} activo={propEmergencia ? 1 : 0} onChange={(i) => onCambiarPropEmergencia(i === 1)} />
 
             {!propEmergencia && (
               <>
                 <Text style={styles.propLabel}>¿Tenés un plazo o fecha límite?</Text>
-                <Toggle2Opciones opciones={['No, sin apuro', 'Sí, elegir fecha']} activo={propTienePlazo ? 1 : 0} onChange={(i) => { const activar = i === 1; setPropTienePlazo(activar); if (activar && !propFechaLimite) setPropFechaLimite(new Date()); invalidarAnalisisPropPrevio(); }} />
+                <Toggle2Opciones styles={styles} opciones={['No, sin apuro', 'Sí, elegir fecha']} activo={propTienePlazo ? 1 : 0} onChange={(i) => { const activar = i === 1; setPropTienePlazo(activar); if (activar && !propFechaLimite) setPropFechaLimite(new Date()); invalidarAnalisisPropPrevio(); }} />
                 {propTienePlazo && (
                   <View style={styles.propPlazoRow}>
                     <TouchableOpacity style={styles.propPlazoBox} onPress={() => setPropMostrarPickerFecha(true)}>

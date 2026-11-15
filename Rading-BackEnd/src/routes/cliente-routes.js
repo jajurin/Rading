@@ -166,8 +166,9 @@
     })
     // POST /cliente/resenia
     // POST /cliente/resenia
-    router.post("/resenia", async (req, res) => {
-        try {
+  router.post("/resenia", async (req, res) => {
+    console.log('📝 POST /cliente/resenia', req.body)
+    try {
             const result = await svc.crearReseñaCliente(req.body)
             res.status(201).json({ message: "Reseña creada correctamente", ...result })
         } catch (error) {

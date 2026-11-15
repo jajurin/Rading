@@ -132,12 +132,12 @@ export default function RecientesClientes({ route, navigation }) {
             <Text style={styles.cardName} numberOfLines={1}>
               {item.nombre} {item.apellido}
             </Text>
-            <View style={styles.servicioRow}>
-              <Ionicons name="calendar-outline" size={11} color="#94A3B8" />
-              <Text style={styles.servicioText} numberOfLines={1}>
-                Último trabajo: {formatDate(item.fecha_iniciado)}
-              </Text>
-            </View>
+           <View style={styles.servicioRow}>
+  <Ionicons name="construct-outline" size={11} color="#94A3B8" />
+  <Text style={styles.servicioText} numberOfLines={1}>
+    {item.servicio_nombre ?? 'Servicio'} · {formatDate(item.fecha_iniciado)}
+  </Text>
+</View>
           </View>
 
           <View style={styles.precioBox}>
@@ -186,7 +186,7 @@ export default function RecientesClientes({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <Header usuario={usuario} direccion={direccion} />
+      <Header usuario={usuario}  />
 
       <View style={styles.headerRow}>
         <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>
@@ -218,13 +218,13 @@ export default function RecientesClientes({ route, navigation }) {
       ) : (
         <FlatList
           data={recientes}
-          keyExtractor={(item, index) => item.id?.toString() ?? index.toString()}
+keyExtractor={(item) => String(item.idTrabajo)}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <Text style={styles.resultCount}>
-              {recientes.length} trabajador{recientes.length !== 1 ? 'es' : ''}
-            </Text>
+  {recientes.length} trabajo{recientes.length !== 1 ? 's' : ''}
+</Text>
           }
           renderItem={({ item }) => (
             <TrabajadorRecienteCard item={item} onPress={irAContratar} />

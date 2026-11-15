@@ -166,10 +166,11 @@ function mapearPerfilTrabajador(db) {
     portfolio: parsearJson(db.portfolio, []),
 
     resenas: (db.resenas ?? []).map((r) => ({
-      nombre: `${r.nombre ?? ''} ${r.apellido ?? ''}`.trim(),
-      comentario: r.descripcion ?? r.razon ?? '',
-      estrellas: r.estrellas ?? 0,
-    })),
+  id: r.id,
+  nombre: `${r.nombre ?? ''} ${r.apellido ?? ''}`.trim(),
+  comentario: r.descripcion ?? r.razon ?? '',
+  estrellas: r.estrellas ?? 0,
+})),
   };
 }
 
@@ -439,10 +440,18 @@ export default function PerfilTrabajador({ route, navigation }) {
             <Text style={styles.textoVacio}>Todavía no cargó servicios.</Text>
           ) : (
             perfil.servicios.map((s, i) => (
-              <View key={s.id ?? i} style={[styles.servicioFila, i === perfil.servicios.length - 1 && { borderBottomWidth: 0 }]}>
-                <Text style={styles.servicioNombre}>{s.nombre}</Text>
-                <Text style={styles.servicioPrecio}>{s.precio ? `desde $${s.precio}` : 'Sin precio cargado'}</Text>
-              </View>
+<View
+  key={`${s.id ?? 'servicio'}-${i}`}
+  style={[
+    styles.servicioFila,
+    i === perfil.servicios.length - 1 && { borderBottomWidth: 0 },
+  ]}
+>
+  <Text style={styles.servicioNombre}>{s.nombre}</Text>
+  <Text style={styles.servicioPrecio}>
+    {s.precio ? `desde $${s.precio}` : 'Sin precio cargado'}
+  </Text>
+</View>
             ))
           )}
         </SeccionCard>
@@ -541,27 +550,36 @@ export default function PerfilTrabajador({ route, navigation }) {
           )}
         </SeccionCard>
 
-        {/* Reseñas */}
-        <SeccionCard titulo="Reseñas recientes" style={{ marginBottom: 8 }}>
-          {perfil.resenas.length === 0 ? (
-            <Text style={styles.textoVacio}>Todavía no tiene reseñas.</Text>
-          ) : (
-            perfil.resenas.slice(0, 5).map((r, i) => (
-              <View key={i} style={[styles.resenaFila, i === perfil.resenas.length - 1 && { borderBottomWidth: 0 }]}>
-                <View style={styles.resenaAvatar}>
-                  <Text style={styles.resenaAvatarTexto}>{(r.nombre ?? '?').charAt(0)}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <View style={styles.resenaTopRow}>
-                    <Text style={styles.resenaNombre}>{r.nombre}</Text>
-                    <Estrellas valor={r.estrellas} size={12} />
-                  </View>
-                  <Text style={styles.resenaComentario}>{r.comentario}</Text>
-                </View>
-              </View>
-            ))
-          )}
-        </SeccionCard>
+       {/* Reseñas */}
+<SeccionCard titulo="Reseñas recientes" style={{ marginBottom: 8 }}>
+  {perfil.resenas.length === 0 ? (
+    <Text style={styles.textoVacio}>Todavía no tiene reseñas.</Text>
+  ) : (
+    perfil.resenas.slice(0, 5).map((r, i) => (
+      <View
+        key={`${r.id}-${i}`}
+        style={[
+          styles.resenaFila,
+          i === perfil.resenas.length - 1 && { borderBottomWidth: 0 },
+        ]}
+      >
+        <View style={styles.resenaAvatar}>
+          <Text style={styles.resenaAvatarTexto}>
+            {(r.nombre ?? '?').charAt(0)}
+          </Text>
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <View style={styles.resenaTopRow}>
+            <Text style={styles.resenaNombre}>{r.nombre}</Text>
+            <Estrellas valor={r.estrellas} size={12} />
+          </View>
+          <Text style={styles.resenaComentario}>{r.comentario}</Text>
+        </View>
+      </View>
+    ))
+  )}
+</SeccionCard>
       </ScrollView>
     </View>
   );

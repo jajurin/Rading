@@ -265,7 +265,7 @@ export default function CrearSolicitud({ route, navigation }) {
       return;
     }
     const resultado = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       quality: 0.7,
       allowsMultipleSelection: true,
       selectionLimit: MAX_IMAGENES,
@@ -284,7 +284,7 @@ export default function CrearSolicitud({ route, navigation }) {
     }
     const resultado = await ImagePicker.launchCameraAsync({ quality: 0.7 });
     if (!resultado.canceled && resultado.assets?.length) {
-      setImagenes((prev) => [...prev, ...resultado.assets[0]].slice(0, MAX_IMAGENES));
+     setImagenes((prev) => [...prev, resultado.assets[0]].slice(0, MAX_IMAGENES));
     }
   }, []);
 

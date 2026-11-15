@@ -9,536 +9,537 @@ const CODIGO_VALIDEZ_MIN = 15
 const generarCodigoNumerico = () => String(Math.floor(1000 + Math.random() * 9000)) // 4 dígitos
 
 export default class trabajadorRepository {
- #usuarioRepo = new usuarioRepository()
- #notifSvc = new NotificacionServices()
+    #usuarioRepo = new usuarioRepository()
+    #notifSvc = new NotificacionServices()
 
     /**
      * Busca clientes por nombre/apellido (texto libre).
      * Si se pasan ids, filtra solo entre esos ids (usado tras aplicar filtros).
      */
     buscarCliente = async (texto, ids = []) => {
-    const client = new Client(config)
-    let result
+        const client = new Client(config)
+        let result
 
-    try {
-        await client.connect()
+        try {
+            await client.connect()
 
-        let sql = `
-            SELECT
-                c.id,
-                u.nombre,
-                u.apellido,
-                u.email,
-                u.direccion,
-                u.telefono,
-                c.categoria_id,
-                c.estrellas
-            FROM "Cliente" c
-            INNER JOIN "Usuario" u ON c."IdPersona" = u.id
-            WHERE (
-                u.nombre ILIKE $1
-                OR u.apellido ILIKE $1
-            )
-        `
+            let sql = `
+                SELECT
+                    c.id,
+                    u.nombre,
+                    u.apellido,
+                    u.email,
+                    u.direccion,
+                    u.telefono,
+                    c.categoria_id,
+                    c.estrellas
+                FROM "Cliente" c
+                INNER JOIN "Usuario" u ON c."IdPersona" = u.id
+                WHERE (
+                    u.nombre ILIKE $1
+                    OR u.apellido ILIKE $1
+                )
+            `
 
-        const values = [`%${texto}%`]
+            const values = [`%${texto}%`]
 
-        if (ids.length > 0) {
-            sql += ` AND c.id = ANY($2)`
-            values.push(ids)
+            if (ids.length > 0) {
+                sql += ` AND c.id = ANY($2)`
+                values.push(ids)
+            }
+
+            result = await client.query(sql, values)
+
+        } catch (err) {
+            console.error('Error en buscarCliente:', err)
+            throw err
+        } finally {
+            await client.end()
         }
 
-        result = await client.query(sql, values)
-
-    } catch (err) {
-        console.error('Error en buscarCliente:', err)
-        throw err
-    } finally {
-        await client.end()
+        return result?.rows ?? []
     }
 
-    return result?.rows ?? []
-}
+    enviarOferta = async (idTrabajo, idTrabajador, { precio, costoExtraMin = null, costoExtraMax = null, mensaje = null }) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
 
-enviarOferta = async (idTrabajo, idTrabajador, { precio, costoExtraMin = null, costoExtraMax = null, mensaje = null }) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
+            const trabajo = await client.query(
+                `SELECT id, fijo, estado, "IdTrabajador", precio, subasta_termina
+                 FROM "Cliente-Trabajador"
+                 WHERE id = $1`,
+                [idTrabajo]
+            )
+            const ct = trabajo.rows[0]
+            if (!ct) throw new Error('La solicitud no existe')
+            if (ct.estado !== 'PENDIENTE' || ct.IdTrabajador != null) {
+                throw new Error('Esta solicitud ya no está disponible')
+            }
 
-        const trabajo = await client.query(
-            `SELECT id, fijo, estado, "IdTrabajador", precio, subasta_termina
-             FROM "Cliente-Trabajador"
-             WHERE id = $1`,
-            [idTrabajo]
-        )
-        const ct = trabajo.rows[0]
-        if (!ct) throw new Error('La solicitud no existe')
-        if (ct.estado !== 'PENDIENTE' || ct.IdTrabajador != null) {
-            throw new Error('Esta solicitud ya no está disponible')
-        }
+            // Evita que el mismo trabajador se postule/oferte dos veces mientras
+            // tenga una oferta pendiente activa (aplica a fijo y a subasta).
+            const yaOferto = await client.query(
+                `SELECT id FROM "Oferta"
+                 WHERE "idTrabajo" = $1 AND "idTrabajador" = $2 AND "ESTADO_OFERTA" = 'PENDIENTE'`,
+                [idTrabajo, idTrabajador]
+            )
+            if (yaOferto.rows.length > 0) {
+                throw new Error('Ya te postulaste a este trabajo')
+            }
 
-        // Evita que el mismo trabajador se postule/oferte dos veces mientras
-        // tenga una oferta pendiente activa (aplica a fijo y a subasta).
-        const yaOferto = await client.query(
-            `SELECT id FROM "Oferta"
-             WHERE "idTrabajo" = $1 AND "idTrabajador" = $2 AND "ESTADO_OFERTA" = 'PENDIENTE'`,
-            [idTrabajo, idTrabajador]
-        )
-        if (yaOferto.rows.length > 0) {
-            throw new Error('Ya te postulaste a este trabajo')
-        }
+            // ── Precio fijo: el trabajador se POSTULA al precio que ya fijó el
+            // cliente. NO se asigna automático — queda PENDIENTE en "Oferta" y
+            // es el cliente el que elige (vía aceptarOferta), igual que en la
+            // subasta. Puede haber varios trabajadores postulados al mismo
+            // trabajo mientras el cliente no elija a ninguno. ──
+            if (ct.fijo) {
+                const ofertaResult = await client.query(
+                    `INSERT INTO "Oferta"
+                        ("idTrabajador", "idTrabajo", precio, "costoExtraMin", "costoExtraMax", mensaje, "ESTADO_OFERTA", fecha_creado)
+                     VALUES ($1, $2, $3, $4, $5, $6, 'PENDIENTE', now())
+                     RETURNING *`,
+                    [idTrabajador, idTrabajo, ct.precio, costoExtraMin, costoExtraMax, mensaje]
+                )
 
-        // ── Precio fijo: el trabajador se POSTULA al precio que ya fijó el
-        // cliente. NO se asigna automático — queda PENDIENTE en "Oferta" y
-        // es el cliente el que elige (vía aceptarOferta), igual que en la
-        // subasta. Puede haber varios trabajadores postulados al mismo
-        // trabajo mientras el cliente no elija a ninguno. ──
-        if (ct.fijo) {
+                this.#notifSvc.notificarOfertaNueva({ idTrabajo, idTrabajador, precio: ct.precio })
+                    .catch(err => console.error('[Notif] Error notificarOfertaNueva:', err.message))
+
+                return { modo: 'fijo', oferta: ofertaResult.rows[0] }
+            }
+
+            // ── Subasta: la primera oferta arranca el reloj ──
+            let subastaTermina = ct.subasta_termina
+            if (!subastaTermina) {
+                const abrir = await client.query(
+                    `UPDATE "Cliente-Trabajador"
+                     SET subasta_termina = now() + ($2 * INTERVAL '1 hour')
+                     WHERE id = $1 AND subasta_termina IS NULL
+                     RETURNING subasta_termina`,
+                    [idTrabajo, DURACION_SUBASTA_HORAS]
+                )
+                subastaTermina = abrir.rows[0]?.subasta_termina ?? subastaTermina
+            } else if (new Date(subastaTermina) <= new Date()) {
+                throw new Error('La subasta para esta solicitud ya cerró')
+            }
+
             const ofertaResult = await client.query(
                 `INSERT INTO "Oferta"
                     ("idTrabajador", "idTrabajo", precio, "costoExtraMin", "costoExtraMax", mensaje, "ESTADO_OFERTA", fecha_creado)
                  VALUES ($1, $2, $3, $4, $5, $6, 'PENDIENTE', now())
                  RETURNING *`,
-                [idTrabajador, idTrabajo, ct.precio, costoExtraMin, costoExtraMax, mensaje]
+                [idTrabajador, idTrabajo, precio, costoExtraMin, costoExtraMax, mensaje]
             )
 
-            this.#notifSvc.notificarOfertaNueva({ idTrabajo, idTrabajador, precio: ct.precio })
+            this.#notifSvc.notificarOfertaNueva({ idTrabajo, idTrabajador, precio })
                 .catch(err => console.error('[Notif] Error notificarOfertaNueva:', err.message))
 
-            return { modo: 'fijo', oferta: ofertaResult.rows[0] }
+            return { modo: 'subasta', oferta: ofertaResult.rows[0], subastaTermina }
+        } catch (err) {
+            console.error('Error en enviarOferta:', err)
+            throw err
+        } finally {
+            await client.end()
         }
-
-        // ── Subasta: la primera oferta arranca el reloj ──
-        let subastaTermina = ct.subasta_termina
-        if (!subastaTermina) {
-            const abrir = await client.query(
-                `UPDATE "Cliente-Trabajador"
-                 SET subasta_termina = now() + ($2 * INTERVAL '1 hour')
-                 WHERE id = $1 AND subasta_termina IS NULL
-                 RETURNING subasta_termina`,
-                [idTrabajo, DURACION_SUBASTA_HORAS]
-            )
-            subastaTermina = abrir.rows[0]?.subasta_termina ?? subastaTermina
-        } else if (new Date(subastaTermina) <= new Date()) {
-            throw new Error('La subasta para esta solicitud ya cerró')
-        }
-
-        const ofertaResult = await client.query(
-            `INSERT INTO "Oferta"
-                ("idTrabajador", "idTrabajo", precio, "costoExtraMin", "costoExtraMax", mensaje, "ESTADO_OFERTA", fecha_creado)
-             VALUES ($1, $2, $3, $4, $5, $6, 'PENDIENTE', now())
-             RETURNING *`,
-            [idTrabajador, idTrabajo, precio, costoExtraMin, costoExtraMax, mensaje]
-        )
-
-        this.#notifSvc.notificarOfertaNueva({ idTrabajo, idTrabajador, precio })
-            .catch(err => console.error('[Notif] Error notificarOfertaNueva:', err.message))
-
-        return { modo: 'subasta', oferta: ofertaResult.rows[0], subastaTermina }
-    } catch (err) {
-        console.error('Error en enviarOferta:', err)
-        throw err
-    } finally {
-        await client.end()
     }
-}
 
-// Detecta subastas cuyo plazo venció y todavía nadie asignó. NO asigna
-// automáticamente al ganador — solo identifica cuál sería (menor precio,
-// empate → más vieja) y lo devuelve para avisar por chat. La decisión
-// final de asignar SIGUE siendo del cliente, vía aceptarOferta (en
-// cliente-repositories.js). Las ofertas quedan todas PENDIENTE, nada se
-// marca ACEPTADA/RECHAZADA acá.
-//
-// Requiere la columna:
-//   ALTER TABLE "Cliente-Trabajador"
-//   ADD COLUMN aviso_cierre_enviado boolean NOT NULL DEFAULT false;
-// para no reenviar el mismo aviso en cada corrida del cron.
-avisarSubastasVencidas = async () => {
-    const client = new Client(config)
-    const resultados = []
-    try {
-        await client.connect()
+    // Detecta subastas cuyo plazo venció y todavía nadie asignó. NO asigna
+    // automáticamente al ganador — solo identifica cuál sería (menor precio,
+    // empate → más vieja) y lo devuelve para avisar por chat. La decisión
+    // final de asignar SIGUE siendo del cliente, vía aceptarOferta (en
+    // cliente-repositories.js). Las ofertas quedan todas PENDIENTE, nada se
+    // marca ACEPTADA/RECHAZADA acá.
+    //
+    // Requiere la columna:
+    //   ALTER TABLE "Cliente-Trabajador"
+    //   ADD COLUMN aviso_cierre_enviado boolean NOT NULL DEFAULT false;
+    // para no reenviar el mismo aviso en cada corrida del cron.
+    avisarSubastasVencidas = async () => {
+        const client = new Client(config)
+        const resultados = []
+        try {
+            await client.connect()
 
-        const vencidas = await client.query(
-            `SELECT ct.id, ct."IdCliente"
-             FROM "Cliente-Trabajador" ct
-             WHERE ct.fijo = false
-               AND ct.estado = 'PENDIENTE'
-               AND ct."IdTrabajador" IS NULL
-               AND ct.subasta_termina IS NOT NULL
-               AND ct.subasta_termina <= now()
-               AND ct.aviso_cierre_enviado = false`
-        )
+            const vencidas = await client.query(
+                `SELECT ct.id, ct."IdCliente"
+                 FROM "Cliente-Trabajador" ct
+                 WHERE ct.fijo = false
+                   AND ct.estado = 'PENDIENTE'
+                   AND ct."IdTrabajador" IS NULL
+                   AND ct.subasta_termina IS NOT NULL
+                   AND ct.subasta_termina <= now()
+                   AND ct.aviso_cierre_enviado = false`
+            )
 
-        for (const ct of vencidas.rows) {
-            try {
-                await client.query('BEGIN')
+            for (const ct of vencidas.rows) {
+                try {
+                    await client.query('BEGIN')
 
-                // Lock preventivo: si justo en este instante el cliente
-                // está aceptando una oferta a mano (aceptarOferta también
-                // usa FOR UPDATE sobre esta misma fila), esperamos acá a
-                // que termine para no leer un estado a medio escribir.
-                const fila = await client.query(
-                    `SELECT id, estado, "IdTrabajador", aviso_cierre_enviado
-                     FROM "Cliente-Trabajador"
-                     WHERE id = $1
-                     FOR UPDATE`,
-                    [ct.id]
-                )
-
-                const f = fila.rows[0]
-                if (!f || f.estado !== 'PENDIENTE' || f.IdTrabajador != null || f.aviso_cierre_enviado) {
-                    // Ya se asignó a mano, o ya se avisó antes: nada que hacer.
-                    await client.query('COMMIT')
-                    continue
-                }
-
-                const ganadora = await client.query(
-                    `SELECT o.id, o."idTrabajador", o.precio,
-                            t."IdPersona" AS "idUsuarioTrabajador",
-                            cli."IdPersona" AS "idUsuarioCliente",
-                            u.nombre, u.apellido
-                     FROM "Oferta" o
-                     INNER JOIN "Trabajador" t ON t.id = o."idTrabajador"
-                     INNER JOIN "Usuario" u ON u.id = t."IdPersona"
-                     INNER JOIN "Cliente" cli ON cli.id = $2
-                     WHERE o."idTrabajo" = $1 AND o."ESTADO_OFERTA" = 'PENDIENTE'
-                     ORDER BY o.precio ASC, o.fecha_creado ASC
-                     LIMIT 1`,
-                    [ct.id, ct.IdCliente]
-                )
-
-                if (ganadora.rows.length === 0) {
-                    // Nadie ofertó: reabre el reloj para recibir ofertas de nuevo.
-                    await client.query(
-                        `UPDATE "Cliente-Trabajador" SET subasta_termina = NULL WHERE id = $1`,
+                    // Lock preventivo: si justo en este instante el cliente
+                    // está aceptando una oferta a mano (aceptarOferta también
+                    // usa FOR UPDATE sobre esta misma fila), esperamos acá a
+                    // que termine para no leer un estado a medio escribir.
+                    const fila = await client.query(
+                        `SELECT id, estado, "IdTrabajador", aviso_cierre_enviado
+                         FROM "Cliente-Trabajador"
+                         WHERE id = $1
+                         FOR UPDATE`,
                         [ct.id]
                     )
+
+                    const f = fila.rows[0]
+                    if (!f || f.estado !== 'PENDIENTE' || f.IdTrabajador != null || f.aviso_cierre_enviado) {
+                        // Ya se asignó a mano, o ya se avisó antes: nada que hacer.
+                        await client.query('COMMIT')
+                        continue
+                    }
+
+                    const ganadora = await client.query(
+                        `SELECT o.id, o."idTrabajador", o.precio,
+                                t."IdPersona" AS "idUsuarioTrabajador",
+                                cli."IdPersona" AS "idUsuarioCliente",
+                                u.nombre, u.apellido
+                         FROM "Oferta" o
+                         INNER JOIN "Trabajador" t ON t.id = o."idTrabajador"
+                         INNER JOIN "Usuario" u ON u.id = t."IdPersona"
+                         INNER JOIN "Cliente" cli ON cli.id = $2
+                         WHERE o."idTrabajo" = $1 AND o."ESTADO_OFERTA" = 'PENDIENTE'
+                         ORDER BY o.precio ASC, o.fecha_creado ASC
+                         LIMIT 1`,
+                        [ct.id, ct.IdCliente]
+                    )
+
+                    if (ganadora.rows.length === 0) {
+                        // Nadie ofertó: reabre el reloj para recibir ofertas de nuevo.
+                        await client.query(
+                            `UPDATE "Cliente-Trabajador" SET subasta_termina = NULL WHERE id = $1`,
+                            [ct.id]
+                        )
+                        await client.query('COMMIT')
+                        continue
+                    }
+
+                    const oferta = ganadora.rows[0]
+
+                    // Único UPDATE que hacemos: marcar que ya avisamos.
+                    // No tocamos IdTrabajador, estado, ni ESTADO_OFERTA.
+                    await client.query(
+                        `UPDATE "Cliente-Trabajador"
+                         SET aviso_cierre_enviado = true
+                         WHERE id = $1 AND estado = 'PENDIENTE'`,
+                        [ct.id]
+                    )
+
                     await client.query('COMMIT')
-                    continue
+
+                    // Avisa al trabajador ganador y al cliente que la subasta cerró.
+                    this.#notifSvc.notificarCierreSubasta({
+                        idTrabajo: ct.id,
+                        idTrabajador: oferta.idTrabajador,
+                        idUsuarioTrabajador: oferta.idUsuarioTrabajador,
+                        idUsuarioCliente: oferta.idUsuarioCliente,
+                        precio: oferta.precio,
+                        nombreTrabajador: `${oferta.nombre} ${oferta.apellido}`,
+                    }).catch(err => console.error('[Notif] Error notificarCierreSubasta:', err.message))
+
+                    resultados.push({
+                        idTrabajo: ct.id,
+                        idCliente: ct.IdCliente,
+                        idOfertaGanadora: oferta.id,
+                        idTrabajador: oferta.idTrabajador,
+                        idUsuarioTrabajador: oferta.idUsuarioTrabajador,
+                        idUsuarioCliente: oferta.idUsuarioCliente,
+                        nombreTrabajador: `${oferta.nombre} ${oferta.apellido}`,
+                        precio: oferta.precio,
+                    })
+                } catch (err) {
+                    await client.query('ROLLBACK')
+                    console.error(`Error avisando cierre de subasta ${ct.id}:`, err)
                 }
-
-                const oferta = ganadora.rows[0]
-
-                // Único UPDATE que hacemos: marcar que ya avisamos.
-                // No tocamos IdTrabajador, estado, ni ESTADO_OFERTA.
-                await client.query(
-                    `UPDATE "Cliente-Trabajador"
-                     SET aviso_cierre_enviado = true
-                     WHERE id = $1 AND estado = 'PENDIENTE'`,
-                    [ct.id]
-                )
-
-                await client.query('COMMIT')
-
-                // Avisa al trabajador ganador y al cliente que la subasta cerró.
-                this.#notifSvc.notificarCierreSubasta({
-                    idTrabajo: ct.id,
-                    idTrabajador: oferta.idTrabajador,
-                    idUsuarioTrabajador: oferta.idUsuarioTrabajador,
-                    idUsuarioCliente: oferta.idUsuarioCliente,
-                    precio: oferta.precio,
-                    nombreTrabajador: `${oferta.nombre} ${oferta.apellido}`,
-                }).catch(err => console.error('[Notif] Error notificarCierreSubasta:', err.message))
-
-                resultados.push({
-                    idTrabajo: ct.id,
-                    idCliente: ct.IdCliente,
-                    idOfertaGanadora: oferta.id,
-                    idTrabajador: oferta.idTrabajador,
-                    idUsuarioTrabajador: oferta.idUsuarioTrabajador,
-                    idUsuarioCliente: oferta.idUsuarioCliente,
-                    nombreTrabajador: `${oferta.nombre} ${oferta.apellido}`,
-                    precio: oferta.precio,
-                })
-            } catch (err) {
-                await client.query('ROLLBACK')
-                console.error(`Error avisando cierre de subasta ${ct.id}:`, err)
             }
+        } finally {
+            await client.end()
         }
-    } finally {
-        await client.end()
+        return resultados
     }
-    return resultados
-}
 
-mostrarTrabajosActivos = async (idTrabajador) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
-        const sql = `
-            SELECT
-                ct.id,
-                c.id AS "idCliente",
-                u.nombre,
-                u.apellido,
-                c.estrellas,
-                ct.estado,
-                ct.fecha_iniciado,
-                ct.distancia,
-                ct.fijo,
-                ct.precio,
-                ct.servicio_id,
-                ct.emergencia,
-                ct.horario_requerido,
-                ct.horario_finalizado,
-                ct.trabajo_iniciado_en,
-                ct.direccion,
-                COALESCE(ct.lat, u.lat) AS latitud,
-                COALESCE(ct.lng, u.lng) AS longitud,
-                CASE
-                    WHEN ct.trabajo_iniciado_en IS NOT NULL
-                    THEN EXTRACT(EPOCH FROM (now() - ct.trabajo_iniciado_en)) / 60
-                    ELSE NULL
-                END AS "duracionMinutos",
-                s.nombre AS servicio_nombre
-            FROM "Cliente-Trabajador" ct
-            INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
-            INNER JOIN "Usuario" u ON c."IdPersona" = u.id
-            LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
-            WHERE ct."IdTrabajador" = $1
-            AND ct.estado = 'EN PROCESO'
-        `
-        const result = await client.query(sql, [idTrabajador])
-        return result?.rows ?? []
-    } catch (err) {
-        console.error('Error en mostrarTrabajosActivos (trabajador):', err)
-        throw err
-    } finally {
-        await client.end()
-    }
-}
-mostrarMisOfertas = async (idTrabajador) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
-        const sql = `
-            SELECT
-                o.id AS "idOferta",
-                o."idTrabajo",
-                o.precio,
-                o."costoExtraMin",
-                o."costoExtraMax",
-                o.mensaje,
-                o."ESTADO_OFERTA" AS estado,
-                o.fecha_creado,
-                ct.descripcion,
-                ct.horario_requerido,
-                ct.fijo,
-                ct.emergencia,
-                ct.estado AS "estadoTrabajo",
-                ct."IdTrabajador" AS "idTrabajadorAsignado",
-                u.nombre,
-                u.apellido,
-                s.nombre AS servicio_nombre,
-                cs.nombre AS categoria_nombre
-            FROM "Oferta" o
-            INNER JOIN "Cliente-Trabajador" ct ON ct.id = o."idTrabajo"
-            INNER JOIN "Cliente" c ON c.id = ct."IdCliente"
-            INNER JOIN "Usuario" u ON u.id = c."IdPersona"
-            LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
-            LEFT JOIN "CategoriaServicio" cs ON cs.id = s.categoria_id
-            WHERE o."idTrabajador" = $1
-            ORDER BY o.fecha_creado DESC
-        `
-        const result = await client.query(sql, [idTrabajador])
-        return result?.rows ?? []
-    } catch (err) {
-        console.error('Error en mostrarMisOfertas:', err)
-        throw err
-    } finally {
-        await client.end()
-    }
-}
-
-/**
- * El trabajador edita una oferta que ya envió, mientras siga PENDIENTE.
- * No se puede editar si ya fue ACEPTADA o RECHAZADA, ni si es de otro
- * trabajador.
- */
-editarOferta = async (idOferta, idTrabajador, { precio, costoExtraMin = null, costoExtraMax = null, mensaje = null }) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
-
-        const ofertaResult = await client.query(
-            `SELECT id, "idTrabajador", "ESTADO_OFERTA" FROM "Oferta" WHERE id = $1`,
-            [idOferta]
-        )
-        const oferta = ofertaResult.rows[0]
-        if (!oferta) throw new Error('La oferta no existe')
-        if (Number(oferta.idTrabajador) !== Number(idTrabajador)) {
-            throw new Error('Esta oferta no te pertenece')
+    mostrarTrabajosActivos = async (idTrabajador) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+            const sql = `
+                SELECT
+                    ct.id,
+                    c.id AS "idCliente",
+                    u.nombre,
+                    u.apellido,
+                    c.estrellas,
+                    ct.estado,
+                    ct.fecha_iniciado,
+                    ct.distancia,
+                    ct.fijo,
+                    ct.precio,
+                    ct.servicio_id,
+                    ct.emergencia,
+                    ct.horario_requerido,
+                    ct.horario_finalizado,
+                    ct.trabajo_iniciado_en,
+                    ct.direccion,
+                    COALESCE(ct.lat, u.lat) AS latitud,
+                    COALESCE(ct.lng, u.lng) AS longitud,
+                    CASE
+                        WHEN ct.trabajo_iniciado_en IS NOT NULL
+                        THEN EXTRACT(EPOCH FROM (now() - ct.trabajo_iniciado_en)) / 60
+                        ELSE NULL
+                    END AS "duracionMinutos",
+                    s.nombre AS servicio_nombre
+                FROM "Cliente-Trabajador" ct
+                INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
+                INNER JOIN "Usuario" u ON c."IdPersona" = u.id
+                LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+                WHERE ct."IdTrabajador" = $1
+                AND ct.estado = 'EN PROCESO'
+            `
+            const result = await client.query(sql, [idTrabajador])
+            return result?.rows ?? []
+        } catch (err) {
+            console.error('Error en mostrarTrabajosActivos (trabajador):', err)
+            throw err
+        } finally {
+            await client.end()
         }
-        if (oferta.ESTADO_OFERTA !== 'PENDIENTE') {
-            throw new Error('Solo podés editar ofertas pendientes')
-        }
-
-        const actualizada = await client.query(
-            `UPDATE "Oferta"
-             SET precio = $1, "costoExtraMin" = $2, "costoExtraMax" = $3, mensaje = $4
-             WHERE id = $5
-             RETURNING *`,
-            [precio, costoExtraMin, costoExtraMax, mensaje, idOferta]
-        )
-        return actualizada.rows[0]
-    } catch (err) {
-        console.error('Error en editarOferta:', err)
-        throw err
-    } finally {
-        await client.end()
     }
-}
+
+    mostrarMisOfertas = async (idTrabajador) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+            const sql = `
+                SELECT
+                    o.id AS "idOferta",
+                    o."idTrabajo",
+                    o.precio,
+                    o."costoExtraMin",
+                    o."costoExtraMax",
+                    o.mensaje,
+                    o."ESTADO_OFERTA" AS estado,
+                    o.fecha_creado,
+                    ct.descripcion,
+                    ct.horario_requerido,
+                    ct.fijo,
+                    ct.emergencia,
+                    ct.estado AS "estadoTrabajo",
+                    ct."IdTrabajador" AS "idTrabajadorAsignado",
+                    u.nombre,
+                    u.apellido,
+                    s.nombre AS servicio_nombre,
+                    cs.nombre AS categoria_nombre
+                FROM "Oferta" o
+                INNER JOIN "Cliente-Trabajador" ct ON ct.id = o."idTrabajo"
+                INNER JOIN "Cliente" c ON c.id = ct."IdCliente"
+                INNER JOIN "Usuario" u ON u.id = c."IdPersona"
+                LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+                LEFT JOIN "CategoriaServicio" cs ON cs.id = s.categoria_id
+                WHERE o."idTrabajador" = $1
+                ORDER BY o.fecha_creado DESC
+            `
+            const result = await client.query(sql, [idTrabajador])
+            return result?.rows ?? []
+        } catch (err) {
+            console.error('Error en mostrarMisOfertas:', err)
+            throw err
+        } finally {
+            await client.end()
+        }
+    }
+
+    /**
+     * El trabajador edita una oferta que ya envió, mientras siga PENDIENTE.
+     * No se puede editar si ya fue ACEPTADA o RECHAZADA, ni si es de otro
+     * trabajador.
+     */
+    editarOferta = async (idOferta, idTrabajador, { precio, costoExtraMin = null, costoExtraMax = null, mensaje = null }) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+
+            const ofertaResult = await client.query(
+                `SELECT id, "idTrabajador", "ESTADO_OFERTA" FROM "Oferta" WHERE id = $1`,
+                [idOferta]
+            )
+            const oferta = ofertaResult.rows[0]
+            if (!oferta) throw new Error('La oferta no existe')
+            if (Number(oferta.idTrabajador) !== Number(idTrabajador)) {
+                throw new Error('Esta oferta no te pertenece')
+            }
+            if (oferta.ESTADO_OFERTA !== 'PENDIENTE') {
+                throw new Error('Solo podés editar ofertas pendientes')
+            }
+
+            const actualizada = await client.query(
+                `UPDATE "Oferta"
+                 SET precio = $1, "costoExtraMin" = $2, "costoExtraMax" = $3, mensaje = $4
+                 WHERE id = $5
+                 RETURNING *`,
+                [precio, costoExtraMin, costoExtraMax, mensaje, idOferta]
+            )
+            return actualizada.rows[0]
+        } catch (err) {
+            console.error('Error en editarOferta:', err)
+            throw err
+        } finally {
+            await client.end()
+        }
+    }
 
     /**
      * Muestra los trabajos realizados (TERMINADO o CANCELADO) de un trabajador.
+     * yaCalificado = el trabajador ya reseñó al cliente por ese trabajo.
      */
-  mostrarTrabajosRealizados = async (idTrabajador) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
-        const sql = `
-            SELECT
-                ct.id,
-                c.id AS "idCliente",
-                u.nombre,
-                u.apellido,
-                c.estrellas,
-                c.foto AS "clienteFoto",
-                ct.estado,
-                ct.fecha_iniciado,
-                ct.fecha_acabado,
-                ct.distancia,
-                ct.fijo,
-                ct.precio,
-                ct.servicio_id,
-                ct.horario_requerido,
-                ct.horario_finalizado,
-                s.nombre AS servicio_nombre,
-                EXISTS (
-                    SELECT 1 FROM "ReseñaCliente" r
-                    WHERE r."idTrabajo" = ct.id AND r."idTrabajador" = $1
-                ) AS "yaCalificado"
-            FROM "Cliente-Trabajador" ct
-            INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
-            INNER JOIN "Usuario" u ON c."IdPersona" = u.id
-            LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
-            WHERE ct."IdTrabajador" = $1
-            AND ct.estado IN ('TERMINADO', 'CANCELADO')
-            ORDER BY ct.fecha_acabado DESC NULLS LAST, ct.id DESC
-        `
-        const result = await client.query(sql, [idTrabajador])
-        return result?.rows ?? []
-    } catch (err) {
-        console.error('Error en mostrarTrabajosRealizados:', err)
-        throw err
-    } finally {
-        await client.end()
-    }
-}
-
-/**
- * Guarda la reseña que un trabajador hace de un cliente al terminar un
- * trabajo. Incluye la calificación general, los 4 aspectos puntuales
- * (puntualidad, trato, claridad, pago), si volvería a trabajar con el
- * cliente, las etiquetas rápidas (concatenadas en "razon") y el
- * comentario libre ("descripcion").
- */
-calificarCliente = async (
-    idTrabajo,
-    idTrabajador,
-    {
-        estrellas,
-        etiquetas = [],
-        descripcion = null,
-        puntualidad = null,
-        trato = null,
-        claridad = null,
-        pago = null,
-        volveria = null,
-    }
-) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
-        await client.query('BEGIN')
-
-        const ctResult = await client.query(
-            `SELECT id, "IdCliente", "IdTrabajador", estado
-             FROM "Cliente-Trabajador"
-             WHERE id = $1
-             FOR UPDATE`,
-            [idTrabajo]
-        )
-        const ct = ctResult.rows[0]
-        if (!ct) throw new Error('El trabajo no existe')
-        if (Number(ct.IdTrabajador) !== Number(idTrabajador)) {
-            throw new Error('Este trabajo no te pertenece')
+    mostrarTrabajosRealizados = async (idTrabajador) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+            const sql = `
+                SELECT
+                    ct.id,
+                    c.id AS "idCliente",
+                    u.nombre,
+                    u.apellido,
+                    c.estrellas,
+                    c.foto AS "clienteFoto",
+                    ct.estado,
+                    ct.fecha_iniciado,
+                    ct.fecha_acabado,
+                    ct.distancia,
+                    ct.fijo,
+                    ct.precio,
+                    ct.servicio_id,
+                    ct.horario_requerido,
+                    ct.horario_finalizado,
+                    s.nombre AS servicio_nombre,
+                    EXISTS (
+                        SELECT 1 FROM "ReseñaCliente" r
+                        WHERE r."idTrabajo" = ct.id
+                          AND r."idTrabajador" = $1
+                          AND r.autor = 'TRABAJADOR'
+                    ) AS "yaCalificado"
+                FROM "Cliente-Trabajador" ct
+                INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
+                INNER JOIN "Usuario" u ON c."IdPersona" = u.id
+                LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+                WHERE ct."IdTrabajador" = $1
+                AND ct.estado IN ('TERMINADO', 'CANCELADO')
+                ORDER BY ct.fecha_acabado DESC NULLS LAST, ct.id DESC
+            `
+            const result = await client.query(sql, [idTrabajador])
+            return result?.rows ?? []
+        } catch (err) {
+            console.error('Error en mostrarTrabajosRealizados:', err)
+            throw err
+        } finally {
+            await client.end()
         }
-        if (ct.estado !== 'TERMINADO') {
-            throw new Error('Solo podés calificar trabajos terminados')
-        }
-
-        const yaExiste = await client.query(
-            `SELECT id FROM "ReseñaCliente" WHERE "idTrabajo" = $1 AND "idTrabajador" = $2`,
-            [idTrabajo, idTrabajador]
-        )
-        if (yaExiste.rows.length > 0) {
-            throw new Error('Ya calificaste a este cliente por este trabajo')
-        }
-
-                          if (!estrellas) throw new Error('Faltan las estrellas generales')
-
-        // 1) Fila de estrellas (general + aspectos)
-        const estrellasResult = await client.query(
-            `INSERT INTO "Estrellas" (general, puntualidad, trato, claridad, pago)
-             VALUES ($1, $2, $3, $4, $5)
-             RETURNING id`,
-            [estrellas, puntualidad, trato, claridad, pago]
-        )
-
-        // 2) Grupo de etiquetas
- 
-        // 3) La reseña guarda lo escrito + las dos FK
-                // 2) La reseña guarda lo escrito + la FK a Estrellas
-               // 2) La reseña guarda lo escrito + la FK a Estrellas
-        const insertResult = await client.query(
-            `INSERT INTO "ReseñaCliente"
-                ("idTrabajador", "idCliente", "idTrabajo", descripcion, volveria,
-                 "idEstrellas", "fechaCreacion")
-             VALUES ($1, $2, $3, $4, $5, $6, now())
-             RETURNING *`,
-            [idTrabajador, ct.IdCliente, idTrabajo, descripcion, volveria,
-             estrellasResult.rows[0].id]
-        )
-
-        // 3) Etiquetas elegidas -> reseña_etiqueta (directo a la reseña)
-        await guardarEtiquetas(client, insertResult.rows[0].id, etiquetas, 'CLIENTE')
-
-        // 5) Promedio del cliente (solo la general)
-        await client.query(
-            `UPDATE "Cliente"
-             SET estrellas = (
-                 SELECT AVG(es.general)
-                 FROM "ReseñaCliente" r
-                 INNER JOIN "Estrellas" es ON es.id = r."idEstrellas"
-                 WHERE r."idCliente" = $1
-             )
-             WHERE id = $1`,
-            [ct.IdCliente]
-        )
-
-        await client.query('COMMIT')
-        return insertResult.rows[0]
-    } catch (err) {
-        try { await client.query('ROLLBACK') } catch (_) {}
-        console.error('Error en calificarCliente:', err)
-        throw err
-    } finally {
-        await client.end()
     }
-}
+
+    /**
+     * Guarda la reseña que un trabajador hace de un cliente al terminar un
+     * trabajo. Incluye la calificación general, los 4 aspectos puntuales
+     * (puntualidad, trato, claridad, pago), si volvería a trabajar con el
+     * cliente, las etiquetas rápidas y el comentario libre ("descripcion").
+     */
+    calificarCliente = async (
+        idTrabajo,
+        idTrabajador,
+        {
+            estrellas,
+            etiquetas = [],
+            descripcion = null,
+            puntualidad = null,
+            trato = null,
+            claridad = null,
+            pago = null,
+            volveria = null,
+        }
+    ) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+            await client.query('BEGIN')
+
+            const ctResult = await client.query(
+                `SELECT id, "IdCliente", "IdTrabajador", estado
+                 FROM "Cliente-Trabajador"
+                 WHERE id = $1
+                 FOR UPDATE`,
+                [idTrabajo]
+            )
+            const ct = ctResult.rows[0]
+            if (!ct) throw new Error('El trabajo no existe')
+            if (Number(ct.IdTrabajador) !== Number(idTrabajador)) {
+                throw new Error('Este trabajo no te pertenece')
+            }
+            if (ct.estado !== 'TERMINADO') {
+                throw new Error('Solo podés calificar trabajos terminados')
+            }
+
+            // Anti-duplicado: solo cuenta las reseñas hechas por el trabajador
+            const yaExiste = await client.query(
+                `SELECT id FROM "ReseñaCliente"
+                 WHERE "idTrabajo" = $1 AND "idTrabajador" = $2 AND autor = 'TRABAJADOR'`,
+                [idTrabajo, idTrabajador]
+            )
+            if (yaExiste.rows.length > 0) {
+                throw new Error('Ya calificaste a este cliente por este trabajo')
+            }
+
+            if (!estrellas) throw new Error('Faltan las estrellas generales')
+
+            // 1) Fila de estrellas (general + aspectos)
+            const estrellasResult = await client.query(
+                `INSERT INTO "Estrellas" (general, puntualidad, trato, claridad, pago)
+                 VALUES ($1, $2, $3, $4, $5)
+                 RETURNING id`,
+                [estrellas, puntualidad, trato, claridad, pago]
+            )
+
+            // 2) La reseña guarda lo escrito + la FK a Estrellas (autor explícito)
+            const insertResult = await client.query(
+                `INSERT INTO "ReseñaCliente"
+                    ("idTrabajador", "idCliente", "idTrabajo", descripcion, volveria,
+                     "idEstrellas", autor, "fechaCreacion")
+                 VALUES ($1, $2, $3, $4, $5, $6, 'TRABAJADOR', now())
+                 RETURNING *`,
+                [idTrabajador, ct.IdCliente, idTrabajo, descripcion, volveria,
+                 estrellasResult.rows[0].id]
+            )
+
+            // 3) Etiquetas elegidas -> reseña_etiqueta (directo a la reseña)
+            await guardarEtiquetas(client, insertResult.rows[0].id, etiquetas, 'CLIENTE')
+
+            // 4) Promedio del cliente: solo reseñas hechas por trabajadores
+            await client.query(
+                `UPDATE "Cliente"
+                 SET estrellas = (
+                     SELECT AVG(es.general)
+                     FROM "ReseñaCliente" r
+                     INNER JOIN "Estrellas" es ON es.id = r."idEstrellas"
+                     WHERE r."idCliente" = $1 AND r.autor = 'TRABAJADOR'
+                 )
+                 WHERE id = $1`,
+                [ct.IdCliente]
+            )
+
+            await client.query('COMMIT')
+            return insertResult.rows[0]
+        } catch (err) {
+            try { await client.query('ROLLBACK') } catch (_) {}
+            console.error('Error en calificarCliente:', err)
+            throw err
+        } finally {
+            await client.end()
+        }
+    }
 
     /**
      * Resumen del día para el trabajador: ganancias, trabajos completados
@@ -546,9 +547,8 @@ calificarCliente = async (
      *
      * - ganancias_hoy y trabajos_completados: se calculan sobre
      *   "Cliente-Trabajador" con estado = 'TERMINADO' y fecha_acabado = hoy.
-     * - rating: promedio de "ReseñaCliente".estrellas recibidas hoy.
-     *   Si el trabajador no tiene reseñas hoy, devuelve null (el front puede
-     *   mostrar el estrellas general del Trabajador como fallback).
+     * - rating: promedio de las reseñas que los CLIENTES le dejaron hoy.
+     *   Si no tiene reseñas hoy, cae al promedio general del Trabajador.
      */
     obtenerResumenDiario = async (idTrabajador) => {
         const client = new Client(config)
@@ -571,11 +571,12 @@ calificarCliente = async (
                           AND ct.estado = 'TERMINADO'
                           AND ct.fecha_acabado = CURRENT_DATE
                     ), 0) AS trabajos_completados,
-                                                      (
+                    (
                         SELECT AVG(es.general)
                         FROM "ReseñaCliente" r
                         INNER JOIN "Estrellas" es ON es.id = r."idEstrellas"
                         WHERE r."idTrabajador" = $1
+                          AND r.autor = 'CLIENTE'
                           AND r."fechaCreacion"::date = CURRENT_DATE
                     ) AS rating_hoy,
                     (
@@ -610,251 +611,251 @@ calificarCliente = async (
         }
     }
 
-/**
- * Ofertas cercanas para el trabajador: solo solicitudes PENDIENTE sin
- * asignar. Calcula la distancia real (haversine) entre la ubicación
- * del trabajador (obtenida de su propio Usuario vía IdPersona) y la
- * de LA SOLICITUD (ct.lat/ct.lng en Cliente-Trabajador). Solo servicios
- * que este trabajador ofrece.
- */
-buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
+    /**
+     * Ofertas cercanas para el trabajador: solo solicitudes PENDIENTE sin
+     * asignar. Calcula la distancia real (haversine) entre la ubicación
+     * del trabajador (obtenida de su propio Usuario vía IdPersona) y la
+     * de LA SOLICITUD (ct.lat/ct.lng en Cliente-Trabajador). Solo servicios
+     * que este trabajador ofrece.
+     */
+    buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
 
-        const sql = `
-            WITH trab AS (
-                SELECT ut.lat, ut.lng
-                FROM "Trabajador" t
-                INNER JOIN "Usuario" ut ON ut.id = t."IdPersona"
-                WHERE t.id = $1
-            )
-            SELECT
-                ct.id,
-                ct.servicio_id,
-                ct.horario_requerido,
-                ct.horario_finalizado,
-                ct.fijo,
-                ct.emergencia,
-                ct.precio,
-                ct."precioEstimadoIA",
-                ct.descripcion,
-                ct.estado,
-                ct.fecha_iniciado,
-                ct.direccion,
-                ct.lat,
-                ct.lng,
-                u.nombre,
-                u.apellido,
-                c.estrellas,
-                s.nombre AS servicio_nombre,
-                cs.nombre AS categoria_nombre,
-                (
-                    6371 * acos(
-                        LEAST(1, GREATEST(-1,
-                            cos(radians(trab.lat)) * cos(radians(ct.lat)) *
-                            cos(radians(ct.lng) - radians(trab.lng)) +
-                            sin(radians(trab.lat)) * sin(radians(ct.lat))
-                        ))
-                    )
-                ) AS distancia
-            FROM "Cliente-Trabajador" ct
-            CROSS JOIN trab
-            INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
-            INNER JOIN "Usuario" u ON c."IdPersona" = u.id
-            LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
-            LEFT JOIN "CategoriaServicio" cs ON cs.id = s.categoria_id
-            WHERE ct.estado = 'PENDIENTE'
-              AND ct."IdTrabajador" IS NULL
-              AND trab.lat IS NOT NULL AND trab.lng IS NOT NULL
-              AND ct.lat IS NOT NULL AND ct.lng IS NOT NULL
-              AND ct.servicio_id IN (
-                  SELECT servicios_id
-                  FROM "Trabajador_Servicio"
-                  WHERE trabajadores_id = $1
-              )
-              AND NOT EXISTS (
-                  SELECT 1 FROM "Oferta" o
-                  WHERE o."idTrabajo" = ct.id
-                    AND o."idTrabajador" = $1
-                    AND o."ESTADO_OFERTA" = 'PENDIENTE'
-              )
-              AND (
-                  6371 * acos(
-                      LEAST(1, GREATEST(-1,
-                          cos(radians(trab.lat)) * cos(radians(ct.lat)) *
-                          cos(radians(ct.lng) - radians(trab.lng)) +
-                          sin(radians(trab.lat)) * sin(radians(ct.lat))
-                      ))
-                  )
-              ) <= $2
-            ORDER BY ct.emergencia DESC, distancia ASC
-        `
-
-        const result = await client.query(sql, [idTrabajador, radioKm])
-        return result?.rows ?? []
-    } catch (err) {
-        console.error('Error en buscarOfertasCercanas:', err)
-        throw err
-    } finally {
-        await client.end()
-    }
-}
-
-   obtenerDetalleOferta = async (idTrabajo, idTrabajador = null) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
-
-        const sql = `
-            SELECT
-                ct.id,
-                ct.descripcion,
-                ct.horario_requerido,
-                ct.horario_finalizado,
-                ct.fijo,
-                ct.emergencia,
-                ct.precio,
-                ct."precioEstimadoIA",
-                ct.estado,
-                ct.fecha_iniciado,
-                ct.lat,
-                ct.lng,
-                ct.direccion,
-                u.nombre,
-                u.apellido,
-                c.estrellas,
-                s.nombre AS servicio_nombre,
-                cs.nombre AS categoria_nombre,
-                COALESCE(
+            const sql = `
+                WITH trab AS (
+                    SELECT ut.lat, ut.lng
+                    FROM "Trabajador" t
+                    INNER JOIN "Usuario" ut ON ut.id = t."IdPersona"
+                    WHERE t.id = $1
+                )
+                SELECT
+                    ct.id,
+                    ct.servicio_id,
+                    ct.horario_requerido,
+                    ct.horario_finalizado,
+                    ct.fijo,
+                    ct.emergencia,
+                    ct.precio,
+                    ct."precioEstimadoIA",
+                    ct.descripcion,
+                    ct.estado,
+                    ct.fecha_iniciado,
+                    ct.direccion,
+                    ct.lat,
+                    ct.lng,
+                    u.nombre,
+                    u.apellido,
+                    c.estrellas,
+                    s.nombre AS servicio_nombre,
+                    cs.nombre AS categoria_nombre,
                     (
-                        SELECT json_agg(
-                            json_build_object('id', si.id, 'url', si.url)
-                            ORDER BY si.orden ASC
+                        6371 * acos(
+                            LEAST(1, GREATEST(-1,
+                                cos(radians(trab.lat)) * cos(radians(ct.lat)) *
+                                cos(radians(ct.lng) - radians(trab.lng)) +
+                                sin(radians(trab.lat)) * sin(radians(ct.lat))
+                            ))
                         )
-                        FROM "SolicitudImagen" si
-                        WHERE si."idTrabajo" = ct.id
-                    ), '[]'
-                ) AS imagenes,
-                CASE
-                    WHEN $2::int IS NOT NULL AND ct.lat IS NOT NULL AND ct.lng IS NOT NULL THEN (
-                        SELECT
-                            6371 * acos(
-                                LEAST(1, GREATEST(-1,
-                                    cos(radians(ut.lat)) * cos(radians(ct.lat)) *
-                                    cos(radians(ct.lng) - radians(ut.lng)) +
-                                    sin(radians(ut.lat)) * sin(radians(ct.lat))
-                                ))
-                            )
-                        FROM "Trabajador" t
-                        INNER JOIN "Usuario" ut ON ut.id = t."IdPersona"
-                        WHERE t.id = $2::int
-                          AND ut.lat IS NOT NULL AND ut.lng IS NOT NULL
-                    )
-                    ELSE NULL
-                END AS distancia
-            FROM "Cliente-Trabajador" ct
-            INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
-            INNER JOIN "Usuario" u ON c."IdPersona" = u.id
-            LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
-            LEFT JOIN "CategoriaServicio" cs ON cs.id = s.categoria_id
-            WHERE ct.id = $1
-        `
+                    ) AS distancia
+                FROM "Cliente-Trabajador" ct
+                CROSS JOIN trab
+                INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
+                INNER JOIN "Usuario" u ON c."IdPersona" = u.id
+                LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+                LEFT JOIN "CategoriaServicio" cs ON cs.id = s.categoria_id
+                WHERE ct.estado = 'PENDIENTE'
+                  AND ct."IdTrabajador" IS NULL
+                  AND trab.lat IS NOT NULL AND trab.lng IS NOT NULL
+                  AND ct.lat IS NOT NULL AND ct.lng IS NOT NULL
+                  AND ct.servicio_id IN (
+                      SELECT servicios_id
+                      FROM "Trabajador_Servicio"
+                      WHERE trabajadores_id = $1
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM "Oferta" o
+                      WHERE o."idTrabajo" = ct.id
+                        AND o."idTrabajador" = $1
+                        AND o."ESTADO_OFERTA" = 'PENDIENTE'
+                  )
+                  AND (
+                      6371 * acos(
+                          LEAST(1, GREATEST(-1,
+                              cos(radians(trab.lat)) * cos(radians(ct.lat)) *
+                              cos(radians(ct.lng) - radians(trab.lng)) +
+                              sin(radians(trab.lat)) * sin(radians(ct.lat))
+                          ))
+                      )
+                  ) <= $2
+                ORDER BY ct.emergencia DESC, distancia ASC
+            `
 
-        const result = await client.query(sql, [idTrabajo, idTrabajador])
-        return result?.rows?.[0] ?? null
-    } catch (err) {
-        console.error('Error en obtenerDetalleOferta:', err)
-        throw err
-    } finally {
-        await client.end()
+            const result = await client.query(sql, [idTrabajador, radioKm])
+            return result?.rows ?? []
+        } catch (err) {
+            console.error('Error en buscarOfertasCercanas:', err)
+            throw err
+        } finally {
+            await client.end()
+        }
     }
-}
+
+    obtenerDetalleOferta = async (idTrabajo, idTrabajador = null) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+
+            const sql = `
+                SELECT
+                    ct.id,
+                    ct.descripcion,
+                    ct.horario_requerido,
+                    ct.horario_finalizado,
+                    ct.fijo,
+                    ct.emergencia,
+                    ct.precio,
+                    ct."precioEstimadoIA",
+                    ct.estado,
+                    ct.fecha_iniciado,
+                    ct.lat,
+                    ct.lng,
+                    ct.direccion,
+                    u.nombre,
+                    u.apellido,
+                    c.estrellas,
+                    s.nombre AS servicio_nombre,
+                    cs.nombre AS categoria_nombre,
+                    COALESCE(
+                        (
+                            SELECT json_agg(
+                                json_build_object('id', si.id, 'url', si.url)
+                                ORDER BY si.orden ASC
+                            )
+                            FROM "SolicitudImagen" si
+                            WHERE si."idTrabajo" = ct.id
+                        ), '[]'
+                    ) AS imagenes,
+                    CASE
+                        WHEN $2::int IS NOT NULL AND ct.lat IS NOT NULL AND ct.lng IS NOT NULL THEN (
+                            SELECT
+                                6371 * acos(
+                                    LEAST(1, GREATEST(-1,
+                                        cos(radians(ut.lat)) * cos(radians(ct.lat)) *
+                                        cos(radians(ct.lng) - radians(ut.lng)) +
+                                        sin(radians(ut.lat)) * sin(radians(ct.lat))
+                                    ))
+                                )
+                            FROM "Trabajador" t
+                            INNER JOIN "Usuario" ut ON ut.id = t."IdPersona"
+                            WHERE t.id = $2::int
+                              AND ut.lat IS NOT NULL AND ut.lng IS NOT NULL
+                        )
+                        ELSE NULL
+                    END AS distancia
+                FROM "Cliente-Trabajador" ct
+                INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
+                INNER JOIN "Usuario" u ON c."IdPersona" = u.id
+                LEFT JOIN "Servicio" s ON s.id = ct.servicio_id
+                LEFT JOIN "CategoriaServicio" cs ON cs.id = s.categoria_id
+                WHERE ct.id = $1
+            `
+
+            const result = await client.query(sql, [idTrabajo, idTrabajador])
+            return result?.rows?.[0] ?? null
+        } catch (err) {
+            console.error('Error en obtenerDetalleOferta:', err)
+            throw err
+        } finally {
+            await client.end()
+        }
+    }
 
     /**
      * Registra un trabajador: inserta en Usuario y luego en Trabajador.
      * Recibe un objeto con todos los campos del modelo.
      */
- registrarTrabajador = async (trabajador) => {
-    const client = new Client(config)
-    let transaccionAbierta = false
+    registrarTrabajador = async (trabajador) => {
+        const client = new Client(config)
+        let transaccionAbierta = false
 
-    try {
-        const usuario = await this.#usuarioRepo.buscarPorEmail(trabajador.email)
-        if (!usuario) throw new Error(`No existe un usuario con el email ${trabajador.email}`)
+        try {
+            const usuario = await this.#usuarioRepo.buscarPorEmail(trabajador.email)
+            if (!usuario) throw new Error(`No existe un usuario con el email ${trabajador.email}`)
 
-        const servicios = Array.isArray(trabajador.servicios)
-            ? [...new Set(trabajador.servicios.map(Number).filter(Number.isInteger))]
-            : []
-        if (servicios.length === 0) throw new Error('Seleccioná al menos un servicio')
+            const servicios = Array.isArray(trabajador.servicios)
+                ? [...new Set(trabajador.servicios.map(Number).filter(Number.isInteger))]
+                : []
+            if (servicios.length === 0) throw new Error('Seleccioná al menos un servicio')
 
-        await client.connect()
-        await client.query('BEGIN')
-        transaccionAbierta = true
+            await client.connect()
+            await client.query('BEGIN')
+            transaccionAbierta = true
 
-        const existeTrabajador = await client.query(
-            `SELECT id FROM "Trabajador" WHERE "IdPersona" = $1`,
-            [usuario.id]
-        )
-        if (existeTrabajador.rows.length > 0) {
-            throw new Error(`El usuario ${trabajador.email} ya es trabajador`)
-        }
-
-        // 1) Trabajador
-        const resultTrabajador = await client.query(
-            `INSERT INTO "Trabajador"
-                ("IdPersona", descripcion, "zonaTrabajo", "DispComienzo", "DispFinal", foto, estrellas)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             RETURNING id, foto`,
-            [
-                usuario.id,
-                trabajador.descripcion ?? '',
-                trabajador.zonaTrabajo ?? '',
-                trabajador.DispComienzo ?? null,
-                trabajador.DispFinal ?? null,
-                trabajador.foto ?? null,
-                trabajador.estrellas ?? 0,
-            ]
-        )
-        const idTrabajador = resultTrabajador.rows[0].id
-
-        // 2) Servicios
-        for (const servicioId of servicios) {
-            await client.query(
-                `INSERT INTO "Trabajador_Servicio" (trabajadores_id, servicios_id) VALUES ($1, $2)`,
-                [idTrabajador, servicioId]
+            const existeTrabajador = await client.query(
+                `SELECT id FROM "Trabajador" WHERE "IdPersona" = $1`,
+                [usuario.id]
             )
-        }
+            if (existeTrabajador.rows.length > 0) {
+                throw new Error(`El usuario ${trabajador.email} ya es trabajador`)
+            }
 
-        await client.query('COMMIT')
-        transaccionAbierta = false
+            // 1) Trabajador
+            const resultTrabajador = await client.query(
+                `INSERT INTO "Trabajador"
+                    ("IdPersona", descripcion, "zonaTrabajo", "DispComienzo", "DispFinal", foto, estrellas)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 RETURNING id, foto`,
+                [
+                    usuario.id,
+                    trabajador.descripcion ?? '',
+                    trabajador.zonaTrabajo ?? '',
+                    trabajador.DispComienzo ?? null,
+                    trabajador.DispFinal ?? null,
+                    trabajador.foto ?? null,
+                    trabajador.estrellas ?? 0,
+                ]
+            )
+            const idTrabajador = resultTrabajador.rows[0].id
 
-        return {
-    success: true,
-    idUsuario: usuario.id,
-    idTrabajador,
-    usuario: {
-        id: usuario.id,
-        nombre: usuario.nombre,
-        apellido: usuario.apellido,
-        email: usuario.email,
-        direccion: usuario.direccion,
-        telefono: usuario.telefono,
-        tipo: 'trabajador',
-        idTrabajador,
-        foto: resultTrabajador.rows[0].foto ?? null,
-    },
-}
-    } catch (err) {
-        if (transaccionAbierta) {
-            try { await client.query('ROLLBACK') } catch (_) {}
+            // 2) Servicios
+            for (const servicioId of servicios) {
+                await client.query(
+                    `INSERT INTO "Trabajador_Servicio" (trabajadores_id, servicios_id) VALUES ($1, $2)`,
+                    [idTrabajador, servicioId]
+                )
+            }
+
+            await client.query('COMMIT')
+            transaccionAbierta = false
+
+            return {
+                success: true,
+                idUsuario: usuario.id,
+                idTrabajador,
+                usuario: {
+                    id: usuario.id,
+                    nombre: usuario.nombre,
+                    apellido: usuario.apellido,
+                    email: usuario.email,
+                    direccion: usuario.direccion,
+                    telefono: usuario.telefono,
+                    tipo: 'trabajador',
+                    idTrabajador,
+                    foto: resultTrabajador.rows[0].foto ?? null,
+                },
+            }
+        } catch (err) {
+            if (transaccionAbierta) {
+                try { await client.query('ROLLBACK') } catch (_) {}
+            }
+            console.error('Error en registrarTrabajador:', err)
+            throw err
+        } finally {
+            await client.end()
         }
-        console.error('Error en registrarTrabajador:', err)
-        throw err
-    } finally {
-        await client.end()
     }
-}
 
     mostrarTodosLosTrabajadores = async () => {
         const client = new Client(config)
@@ -878,7 +879,7 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
             result = await client.query(sql)
 
         } catch (err) {
-            console.error('Error en mostrarTodosLosClientes:', err)
+            console.error('Error en mostrarTodosLosTrabajadores:', err)
             throw err
         } finally {
             await client.end()
@@ -887,60 +888,60 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
         return result?.rows ?? []
     }
 
-   buscarSolicitudes = async (texto, ids = []) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
+    buscarSolicitudes = async (texto, ids = []) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
 
-        let sql = `
-            SELECT
-                ct.id,
-                ct.servicio_id,
-                ct.horario_requerido,
-                ct.horario_finalizado,
-                ct.distancia,
-                ct.fijo,
-                ct.emergencia,
-                ct.precio,
-                ct.estado,
-                ct.fecha_iniciado,
-                u.nombre,
-                u.apellido,
-                u.email,
-                u.telefono,
-                c.estrellas,
-                s.nombre AS especialidad
-            FROM "Cliente-Trabajador" ct
-            INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
-            INNER JOIN "Usuario" u ON c."IdPersona" = u.id
-            LEFT JOIN "Servicio" s ON ct.servicio_id = s.id
-            WHERE ct.estado = 'PENDIENTE'
-            AND ct."IdTrabajador" IS NULL
-        `
+            let sql = `
+                SELECT
+                    ct.id,
+                    ct.servicio_id,
+                    ct.horario_requerido,
+                    ct.horario_finalizado,
+                    ct.distancia,
+                    ct.fijo,
+                    ct.emergencia,
+                    ct.precio,
+                    ct.estado,
+                    ct.fecha_iniciado,
+                    u.nombre,
+                    u.apellido,
+                    u.email,
+                    u.telefono,
+                    c.estrellas,
+                    s.nombre AS especialidad
+                FROM "Cliente-Trabajador" ct
+                INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
+                INNER JOIN "Usuario" u ON c."IdPersona" = u.id
+                LEFT JOIN "Servicio" s ON ct.servicio_id = s.id
+                WHERE ct.estado = 'PENDIENTE'
+                AND ct."IdTrabajador" IS NULL
+            `
 
-        const values = []
+            const values = []
 
-        if (texto && texto.trim()) {
-            sql += ` AND (u.nombre ILIKE $1 OR u.apellido ILIKE $1)`
-            values.push(`%${texto.trim()}%`)
+            if (texto && texto.trim()) {
+                sql += ` AND (u.nombre ILIKE $1 OR u.apellido ILIKE $1)`
+                values.push(`%${texto.trim()}%`)
+            }
+
+            if (ids.length > 0) {
+                sql += ` AND ct.id = ANY($${values.length + 1})`
+                values.push(ids)
+            }
+
+            const result = await client.query(sql, values)
+            return result?.rows ?? []
+        } catch (err) {
+            console.error('Error en buscarSolicitudes:', err)
+            throw err
+        } finally {
+            await client.end()
         }
-
-        if (ids.length > 0) {
-            sql += ` AND ct.id = ANY($${values.length + 1})`
-            values.push(ids)
-        }
-
-        const result = await client.query(sql, values)
-        return result?.rows ?? []
-    } catch (err) {
-        console.error('Error en buscarSolicitudes:', err)
-        throw err
-    } finally {
-        await client.end()
     }
-}
 
- obtenerEstado = async (idTrabajo) => {
+    obtenerEstado = async (idTrabajo) => {
         const client = new Client(config)
         try {
             await client.connect()
@@ -973,655 +974,663 @@ buscarOfertasCercanas = async (idTrabajador, radioKm = 20) => {
         }
     }
 
-// ── Llegada ──────────────────────────────────────────────
+    // ── Llegada ──────────────────────────────────────────────
 
-generarCodigoLlegada = async (idTrabajo) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
-        await client.query('BEGIN')
+    generarCodigoLlegada = async (idTrabajo) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+            await client.query('BEGIN')
 
-        const filaResult = await client.query(
-            `SELECT id, estado, llegada_trabajador_at
-             FROM "Cliente-Trabajador"
-             WHERE id = $1
-             FOR UPDATE`,
-            [idTrabajo]
-        )
-        const fila = filaResult.rows[0]
-        if (!fila) throw new Error('El trabajo no existe')
-        if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
-        if (fila.llegada_trabajador_at) throw new Error('La llegada ya fue confirmada')
-
-        const codigo = generarCodigoNumerico()
-
-        const actualizado = await client.query(
-            `UPDATE "Cliente-Trabajador"
-             SET codigo_llegada = $2,
-                 codigo_llegada_generado_en = now(),
-                 codigo_llegada_intentos = 0,
-                 llegada_cliente_at = now()
-             WHERE id = $1
-             RETURNING codigo_llegada, codigo_llegada_generado_en`,
-            [idTrabajo, codigo]
-        )
-
-        await client.query('COMMIT')
-
-        this.#notifSvc.notificarCodigo({ idTrabajo, tipo: 'CODIGO_LLEGADA', codigo: actualizado.rows[0].codigo_llegada })
-            .catch(err => console.error('[Notif] Error notificarCodigo:', err.message))
-
-        return {
-            idTrabajo,
-            codigo: actualizado.rows[0].codigo_llegada,
-            generadoEn: actualizado.rows[0].codigo_llegada_generado_en,
-            validezMinutos: CODIGO_VALIDEZ_MIN,
-        }
-    } catch (err) {
-        try { await client.query('ROLLBACK') } catch (_) {}
-        console.error('Error en generarCodigoLlegada:', err)
-        throw err
-    } finally {
-        await client.end()
-    }
-}
-
-confirmarLlegada = async (idTrabajo, codigo) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
-        await client.query('BEGIN')
-
-        const filaResult = await client.query(
-            `SELECT id, estado, "IdCliente" AS "idCliente", "IdTrabajador" AS "idTrabajador",
-                    codigo_llegada, codigo_llegada_generado_en, codigo_llegada_intentos,
-                    llegada_trabajador_at
-             FROM "Cliente-Trabajador"
-             WHERE id = $1
-             FOR UPDATE`,
-            [idTrabajo]
-        )
-        const fila = filaResult.rows[0]
-        if (!fila) throw new Error('El trabajo no existe')
-        if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
-
-        if (fila.llegada_trabajador_at) {
-            await client.query('COMMIT')
-            return { idTrabajo, idCliente: fila.idCliente, idTrabajador: fila.idTrabajador, trabajoIniciadoAhora: false, yaConfirmado: true }
-        }
-
-        if (!fila.codigo_llegada) {
-            throw new Error('Todavía no se generó un código. Pedile al cliente que lo genere.')
-        }
-        if (fila.codigo_llegada_intentos >= MAX_INTENTOS) {
-            throw new Error('Superaste el máximo de intentos. Pedile al cliente un código nuevo.')
-        }
-
-        const generadoEn = new Date(fila.codigo_llegada_generado_en)
-        const expirado = (Date.now() - generadoEn.getTime()) > CODIGO_VALIDEZ_MIN * 60 * 1000
-        if (expirado) throw new Error('El código expiró. Pedile al cliente que genere uno nuevo.')
-
-        if (String(codigo).trim() !== String(fila.codigo_llegada).trim()) {
-            await client.query(
-                `UPDATE "Cliente-Trabajador" SET codigo_llegada_intentos = codigo_llegada_intentos + 1 WHERE id = $1`,
+            const filaResult = await client.query(
+                `SELECT id, estado, llegada_trabajador_at
+                 FROM "Cliente-Trabajador"
+                 WHERE id = $1
+                 FOR UPDATE`,
                 [idTrabajo]
             )
+            const fila = filaResult.rows[0]
+            if (!fila) throw new Error('El trabajo no existe')
+            if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
+            if (fila.llegada_trabajador_at) throw new Error('La llegada ya fue confirmada')
+
+            const codigo = generarCodigoNumerico()
+
+            const actualizado = await client.query(
+                `UPDATE "Cliente-Trabajador"
+                 SET codigo_llegada = $2,
+                     codigo_llegada_generado_en = now(),
+                     codigo_llegada_intentos = 0,
+                     llegada_cliente_at = now()
+                 WHERE id = $1
+                 RETURNING codigo_llegada, codigo_llegada_generado_en`,
+                [idTrabajo, codigo]
+            )
+
             await client.query('COMMIT')
-            const intentosRestantes = MAX_INTENTOS - (fila.codigo_llegada_intentos + 1)
-            throw new Error(`Código incorrecto. Te quedan ${Math.max(0, intentosRestantes)} intentos.`)
+
+            this.#notifSvc.notificarCodigo({ idTrabajo, tipo: 'CODIGO_LLEGADA', codigo: actualizado.rows[0].codigo_llegada })
+                .catch(err => console.error('[Notif] Error notificarCodigo:', err.message))
+
+            return {
+                idTrabajo,
+                codigo: actualizado.rows[0].codigo_llegada,
+                generadoEn: actualizado.rows[0].codigo_llegada_generado_en,
+                validezMinutos: CODIGO_VALIDEZ_MIN,
+            }
+        } catch (err) {
+            try { await client.query('ROLLBACK') } catch (_) {}
+            console.error('Error en generarCodigoLlegada:', err)
+            throw err
+        } finally {
+            await client.end()
         }
-
-        await client.query(
-            `UPDATE "Cliente-Trabajador"
-             SET llegada_trabajador_at = now(),
-                 trabajo_iniciado_en = COALESCE(trabajo_iniciado_en, now())
-             WHERE id = $1`,
-            [idTrabajo]
-        )
-
-        await client.query('COMMIT')
-        return { idTrabajo, idCliente: fila.idCliente, idTrabajador: fila.idTrabajador, trabajoIniciadoAhora: true }
-    } catch (err) {
-        try { await client.query('ROLLBACK') } catch (_) {}
-        console.error('Error en confirmarLlegada:', err)
-        throw err
-    } finally {
-        await client.end()
     }
-}
 
-// ── Fin de trabajo ───────────────────────────────────────
+    confirmarLlegada = async (idTrabajo, codigo) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+            await client.query('BEGIN')
 
-generarCodigoFin = async (idTrabajo) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
-        await client.query('BEGIN')
-
-        const filaResult = await client.query(
-            `SELECT id, estado, trabajo_iniciado_en, fin_trabajador_at
-             FROM "Cliente-Trabajador"
-             WHERE id = $1
-             FOR UPDATE`,
-            [idTrabajo]
-        )
-        const fila = filaResult.rows[0]
-        if (!fila) throw new Error('El trabajo no existe')
-        if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
-        if (!fila.trabajo_iniciado_en) throw new Error('Todavía no se confirmó el inicio del trabajo')
-        if (fila.fin_trabajador_at) throw new Error('El fin del trabajo ya fue confirmado')
-
-        const codigo = generarCodigoNumerico()
-
-        const actualizado = await client.query(
-            `UPDATE "Cliente-Trabajador"
-             SET codigo_fin = $2,
-                 codigo_fin_generado_en = now(),
-                 codigo_fin_intentos = 0,
-                 fin_cliente_at = now()
-             WHERE id = $1
-             RETURNING codigo_fin, codigo_fin_generado_en`,
-            [idTrabajo, codigo]
-        )
-
-        await client.query('COMMIT')
-
-        this.#notifSvc.notificarCodigo({ idTrabajo, tipo: 'CODIGO_FIN', codigo: actualizado.rows[0].codigo_fin })
-            .catch(err => console.error('[Notif] Error notificarCodigo:', err.message))
-
-        return {
-            idTrabajo,
-            codigo: actualizado.rows[0].codigo_fin,
-            generadoEn: actualizado.rows[0].codigo_fin_generado_en,
-            validezMinutos: CODIGO_VALIDEZ_MIN,
-        }
-    } catch (err) {
-        try { await client.query('ROLLBACK') } catch (_) {}
-        console.error('Error en generarCodigoFin:', err)
-        throw err
-    } finally {
-        await client.end()
-    }
-}
-
-confirmarFin = async (idTrabajo, codigo) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
-        await client.query('BEGIN')
-
-        const filaResult = await client.query(
-            `SELECT id, estado, trabajo_iniciado_en,
-                    "IdCliente" AS "idCliente", "IdTrabajador" AS "idTrabajador",
-                    codigo_fin, codigo_fin_generado_en, codigo_fin_intentos, fin_trabajador_at
-             FROM "Cliente-Trabajador"
-             WHERE id = $1
-             FOR UPDATE`,
-            [idTrabajo]
-        )
-        const fila = filaResult.rows[0]
-        if (!fila) throw new Error('El trabajo no existe')
-        if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
-        if (!fila.trabajo_iniciado_en) throw new Error('Todavía no se confirmó el inicio del trabajo')
-
-        if (fila.fin_trabajador_at) {
-            await client.query('COMMIT')
-            return { idTrabajo, idCliente: fila.idCliente, idTrabajador: fila.idTrabajador, trabajoTerminadoAhora: false, yaConfirmado: true }
-        }
-
-        if (!fila.codigo_fin) throw new Error('Todavía no se generó un código. Pedile al cliente que lo genere.')
-        if (fila.codigo_fin_intentos >= MAX_INTENTOS) {
-            throw new Error('Superaste el máximo de intentos. Pedile al cliente un código nuevo.')
-        }
-
-        const generadoEn = new Date(fila.codigo_fin_generado_en)
-        const expirado = (Date.now() - generadoEn.getTime()) > CODIGO_VALIDEZ_MIN * 60 * 1000
-        if (expirado) throw new Error('El código expiró. Pedile al cliente que genere uno nuevo.')
-
-        if (String(codigo).trim() !== String(fila.codigo_fin).trim()) {
-            await client.query(
-                `UPDATE "Cliente-Trabajador" SET codigo_fin_intentos = codigo_fin_intentos + 1 WHERE id = $1`,
+            const filaResult = await client.query(
+                `SELECT id, estado, "IdCliente" AS "idCliente", "IdTrabajador" AS "idTrabajador",
+                        codigo_llegada, codigo_llegada_generado_en, codigo_llegada_intentos,
+                        llegada_trabajador_at
+                 FROM "Cliente-Trabajador"
+                 WHERE id = $1
+                 FOR UPDATE`,
                 [idTrabajo]
             )
+            const fila = filaResult.rows[0]
+            if (!fila) throw new Error('El trabajo no existe')
+            if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
+
+            if (fila.llegada_trabajador_at) {
+                await client.query('COMMIT')
+                return { idTrabajo, idCliente: fila.idCliente, idTrabajador: fila.idTrabajador, trabajoIniciadoAhora: false, yaConfirmado: true }
+            }
+
+            if (!fila.codigo_llegada) {
+                throw new Error('Todavía no se generó un código. Pedile al cliente que lo genere.')
+            }
+            if (fila.codigo_llegada_intentos >= MAX_INTENTOS) {
+                throw new Error('Superaste el máximo de intentos. Pedile al cliente un código nuevo.')
+            }
+
+            const generadoEn = new Date(fila.codigo_llegada_generado_en)
+            const expirado = (Date.now() - generadoEn.getTime()) > CODIGO_VALIDEZ_MIN * 60 * 1000
+            if (expirado) throw new Error('El código expiró. Pedile al cliente que genere uno nuevo.')
+
+            if (String(codigo).trim() !== String(fila.codigo_llegada).trim()) {
+                await client.query(
+                    `UPDATE "Cliente-Trabajador" SET codigo_llegada_intentos = codigo_llegada_intentos + 1 WHERE id = $1`,
+                    [idTrabajo]
+                )
+                await client.query('COMMIT')
+                const intentosRestantes = MAX_INTENTOS - (fila.codigo_llegada_intentos + 1)
+                throw new Error(`Código incorrecto. Te quedan ${Math.max(0, intentosRestantes)} intentos.`)
+            }
+
+            await client.query(
+                `UPDATE "Cliente-Trabajador"
+                 SET llegada_trabajador_at = now(),
+                     trabajo_iniciado_en = COALESCE(trabajo_iniciado_en, now())
+                 WHERE id = $1`,
+                [idTrabajo]
+            )
+
             await client.query('COMMIT')
-            const intentosRestantes = MAX_INTENTOS - (fila.codigo_fin_intentos + 1)
-            throw new Error(`Código incorrecto. Te quedan ${Math.max(0, intentosRestantes)} intentos.`)
+            return { idTrabajo, idCliente: fila.idCliente, idTrabajador: fila.idTrabajador, trabajoIniciadoAhora: true }
+        } catch (err) {
+            try { await client.query('ROLLBACK') } catch (_) {}
+            console.error('Error en confirmarLlegada:', err)
+            throw err
+        } finally {
+            await client.end()
         }
-
-        await client.query(
-            `UPDATE "Cliente-Trabajador"
-             SET fin_trabajador_at = now(),
-                 estado = 'TERMINADO',
-                 fecha_acabado = CURRENT_DATE
-             WHERE id = $1 AND estado = 'EN PROCESO'`,
-            [idTrabajo]
-        )
-
-        await client.query('COMMIT')
-
-        this.#notifSvc.notificarTrabajoFinalizado({ idTrabajo })
-            .catch(err => console.error('[Notif] Error notificarTrabajoFinalizado:', err.message))
-
-        return { idTrabajo, idCliente: fila.idCliente, idTrabajador: fila.idTrabajador, trabajoTerminadoAhora: true }
-    } catch (err) {
-        try { await client.query('ROLLBACK') } catch (_) {}
-        console.error('Error en confirmarFin:', err)
-        throw err
-    } finally {
-        await client.end()
     }
-}
 
-/**
- * Filtra solicitudes PENDIENTE. Cuando se pasa distanciaMax, la distancia
- * se calcula EN VIVO (haversine) entre la ubicación actual del trabajador
- * (idTrabajador) y la de cada solicitud (ct.lat/ct.lng) — igual que en
- * buscarOfertasCercanas. Antes esto comparaba contra ct.distancia, una
- * columna estática que no depende de quién está buscando, así que el
- * filtro de distancia nunca reflejaba la posición real del trabajador.
- */
-filtrarSolicitudes = async (idTrabajador, estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta, precioMin, precioMax) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
+    // ── Fin de trabajo ───────────────────────────────────────
 
-        const usarDistancia = !!(distanciaMax && idTrabajador)
+    generarCodigoFin = async (idTrabajo) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+            await client.query('BEGIN')
 
-        let sql = `
-            SELECT DISTINCT ct.id
-            FROM "Cliente-Trabajador" ct
-            INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
-        `
+            const filaResult = await client.query(
+                `SELECT id, estado, trabajo_iniciado_en, fin_trabajador_at
+                 FROM "Cliente-Trabajador"
+                 WHERE id = $1
+                 FOR UPDATE`,
+                [idTrabajo]
+            )
+            const fila = filaResult.rows[0]
+            if (!fila) throw new Error('El trabajo no existe')
+            if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
+            if (!fila.trabajo_iniciado_en) throw new Error('Todavía no se confirmó el inicio del trabajo')
+            if (fila.fin_trabajador_at) throw new Error('El fin del trabajo ya fue confirmado')
 
-        if (usarDistancia) {
-            sql += `
-                CROSS JOIN (
-                    SELECT ut.lat, ut.lng
-                    FROM "Trabajador" t
-                    INNER JOIN "Usuario" ut ON ut.id = t."IdPersona"
-                    WHERE t.id = $1
-                ) trab
+            const codigo = generarCodigoNumerico()
+
+            const actualizado = await client.query(
+                `UPDATE "Cliente-Trabajador"
+                 SET codigo_fin = $2,
+                     codigo_fin_generado_en = now(),
+                     codigo_fin_intentos = 0,
+                     fin_cliente_at = now()
+                 WHERE id = $1
+                 RETURNING codigo_fin, codigo_fin_generado_en`,
+                [idTrabajo, codigo]
+            )
+
+            await client.query('COMMIT')
+
+            this.#notifSvc.notificarCodigo({ idTrabajo, tipo: 'CODIGO_FIN', codigo: actualizado.rows[0].codigo_fin })
+                .catch(err => console.error('[Notif] Error notificarCodigo:', err.message))
+
+            return {
+                idTrabajo,
+                codigo: actualizado.rows[0].codigo_fin,
+                generadoEn: actualizado.rows[0].codigo_fin_generado_en,
+                validezMinutos: CODIGO_VALIDEZ_MIN,
+            }
+        } catch (err) {
+            try { await client.query('ROLLBACK') } catch (_) {}
+            console.error('Error en generarCodigoFin:', err)
+            throw err
+        } finally {
+            await client.end()
+        }
+    }
+
+    confirmarFin = async (idTrabajo, codigo) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+            await client.query('BEGIN')
+
+            const filaResult = await client.query(
+                `SELECT id, estado, trabajo_iniciado_en,
+                        "IdCliente" AS "idCliente", "IdTrabajador" AS "idTrabajador",
+                        codigo_fin, codigo_fin_generado_en, codigo_fin_intentos, fin_trabajador_at
+                 FROM "Cliente-Trabajador"
+                 WHERE id = $1
+                 FOR UPDATE`,
+                [idTrabajo]
+            )
+            const fila = filaResult.rows[0]
+            if (!fila) throw new Error('El trabajo no existe')
+            if (fila.estado !== 'EN PROCESO') throw new Error('Este trabajo no está en proceso')
+            if (!fila.trabajo_iniciado_en) throw new Error('Todavía no se confirmó el inicio del trabajo')
+
+            if (fila.fin_trabajador_at) {
+                await client.query('COMMIT')
+                return { idTrabajo, idCliente: fila.idCliente, idTrabajador: fila.idTrabajador, trabajoTerminadoAhora: false, yaConfirmado: true }
+            }
+
+            if (!fila.codigo_fin) throw new Error('Todavía no se generó un código. Pedile al cliente que lo genere.')
+            if (fila.codigo_fin_intentos >= MAX_INTENTOS) {
+                throw new Error('Superaste el máximo de intentos. Pedile al cliente un código nuevo.')
+            }
+
+            const generadoEn = new Date(fila.codigo_fin_generado_en)
+            const expirado = (Date.now() - generadoEn.getTime()) > CODIGO_VALIDEZ_MIN * 60 * 1000
+            if (expirado) throw new Error('El código expiró. Pedile al cliente que genere uno nuevo.')
+
+            if (String(codigo).trim() !== String(fila.codigo_fin).trim()) {
+                await client.query(
+                    `UPDATE "Cliente-Trabajador" SET codigo_fin_intentos = codigo_fin_intentos + 1 WHERE id = $1`,
+                    [idTrabajo]
+                )
+                await client.query('COMMIT')
+                const intentosRestantes = MAX_INTENTOS - (fila.codigo_fin_intentos + 1)
+                throw new Error(`Código incorrecto. Te quedan ${Math.max(0, intentosRestantes)} intentos.`)
+            }
+
+            await client.query(
+                `UPDATE "Cliente-Trabajador"
+                 SET fin_trabajador_at = now(),
+                     estado = 'TERMINADO',
+                     fecha_acabado = CURRENT_DATE
+                 WHERE id = $1 AND estado = 'EN PROCESO'`,
+                [idTrabajo]
+            )
+
+            await client.query('COMMIT')
+
+            this.#notifSvc.notificarTrabajoFinalizado({ idTrabajo })
+                .catch(err => console.error('[Notif] Error notificarTrabajoFinalizado:', err.message))
+
+            return { idTrabajo, idCliente: fila.idCliente, idTrabajador: fila.idTrabajador, trabajoTerminadoAhora: true }
+        } catch (err) {
+            try { await client.query('ROLLBACK') } catch (_) {}
+            console.error('Error en confirmarFin:', err)
+            throw err
+        } finally {
+            await client.end()
+        }
+    }
+
+    /**
+     * Filtra solicitudes PENDIENTE. Cuando se pasa distanciaMax, la distancia
+     * se calcula EN VIVO (haversine) entre la ubicación actual del trabajador
+     * (idTrabajador) y la de cada solicitud (ct.lat/ct.lng) — igual que en
+     * buscarOfertasCercanas. Antes esto comparaba contra ct.distancia, una
+     * columna estática que no depende de quién está buscando, así que el
+     * filtro de distancia nunca reflejaba la posición real del trabajador.
+     */
+    filtrarSolicitudes = async (idTrabajador, estrellas, servicio_id, fijo, emergencia, distanciaMax, horarioDesde, horarioHasta, precioMin, precioMax) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+
+            const usarDistancia = !!(distanciaMax && idTrabajador)
+
+            let sql = `
+                SELECT DISTINCT ct.id
+                FROM "Cliente-Trabajador" ct
+                INNER JOIN "Cliente" c ON ct."IdCliente" = c.id
             `
-        }
 
-        sql += `
-            WHERE ct.estado = 'PENDIENTE'
-            AND ct."IdTrabajador" IS NULL
-        `
+            if (usarDistancia) {
+                sql += `
+                    CROSS JOIN (
+                        SELECT ut.lat, ut.lng
+                        FROM "Trabajador" t
+                        INNER JOIN "Usuario" ut ON ut.id = t."IdPersona"
+                        WHERE t.id = $1
+                    ) trab
+                `
+            }
 
-        const values = []
-        let i = 1
-
-        if (usarDistancia) {
-            values.push(Number(idTrabajador))
-            i = 2
-        }
-
-        if (estrellas) {
-            sql += ` AND c.estrellas >= $${i++}`
-            values.push(Number(estrellas))
-        }
-
-        if (servicio_id) {
-            sql += ` AND ct.servicio_id = $${i++}`
-            values.push(Number(servicio_id))
-        }
-
-        // fijo: 'true' = fijo, 'false' = subasta
-        if (fijo !== undefined && fijo !== null && fijo !== '') {
-            sql += ` AND ct.fijo = $${i++}`
-            values.push(fijo === 'true')
-        }
-
-        if (emergencia !== undefined && emergencia !== null && emergencia !== '') {
-            sql += ` AND ct.emergencia = $${i++}`
-            values.push(emergencia === 'true')
-        }
-
-        if (usarDistancia) {
             sql += `
-                AND trab.lat IS NOT NULL AND trab.lng IS NOT NULL
-                AND ct.lat IS NOT NULL AND ct.lng IS NOT NULL
-                AND (
-                    6371 * acos(
-                        LEAST(1, GREATEST(-1,
-                            cos(radians(trab.lat)) * cos(radians(ct.lat)) *
-                            cos(radians(ct.lng) - radians(trab.lng)) +
-                            sin(radians(trab.lat)) * sin(radians(ct.lat))
-                        ))
-                    )
-                ) <= $${i++}
+                WHERE ct.estado = 'PENDIENTE'
+                AND ct."IdTrabajador" IS NULL
             `
-            values.push(Number(distanciaMax))
-        }
 
-        // horario_requerido: filtrar por rango
-        if (horarioDesde) {
-            sql += ` AND ct.horario_requerido <= $${i++}`
-            values.push(horarioDesde)
-        }
-        if (horarioHasta) {
-            sql += ` AND ct.horario_finalizado <= $${i++}`
-            values.push(horarioHasta)
-        }
-        if (precioMin) {
-            sql += ` AND ct.precio >= $${i++}`
-            values.push(Number(precioMin))
-        }
-        if (precioMax) {
-            sql += ` AND ct.precio <= $${i++}`
-            values.push(Number(precioMax))
-        }
+            const values = []
+            let i = 1
 
-        const result = await client.query(sql, values)
-        return result?.rows ?? []
-    } catch (err) {
-        console.error('Error en filtrarSolicitudes:', err)
-        throw err
-    } finally {
-        await client.end()
+            if (usarDistancia) {
+                values.push(Number(idTrabajador))
+                i = 2
+            }
+
+            if (estrellas) {
+                sql += ` AND c.estrellas >= $${i++}`
+                values.push(Number(estrellas))
+            }
+
+            if (servicio_id) {
+                sql += ` AND ct.servicio_id = $${i++}`
+                values.push(Number(servicio_id))
+            }
+
+            // fijo: 'true' = fijo, 'false' = subasta
+            if (fijo !== undefined && fijo !== null && fijo !== '') {
+                sql += ` AND ct.fijo = $${i++}`
+                values.push(fijo === 'true')
+            }
+
+            if (emergencia !== undefined && emergencia !== null && emergencia !== '') {
+                sql += ` AND ct.emergencia = $${i++}`
+                values.push(emergencia === 'true')
+            }
+
+            if (usarDistancia) {
+                sql += `
+                    AND trab.lat IS NOT NULL AND trab.lng IS NOT NULL
+                    AND ct.lat IS NOT NULL AND ct.lng IS NOT NULL
+                    AND (
+                        6371 * acos(
+                            LEAST(1, GREATEST(-1,
+                                cos(radians(trab.lat)) * cos(radians(ct.lat)) *
+                                cos(radians(ct.lng) - radians(trab.lng)) +
+                                sin(radians(trab.lat)) * sin(radians(ct.lat))
+                            ))
+                        )
+                    ) <= $${i++}
+                `
+                values.push(Number(distanciaMax))
+            }
+
+            // horario_requerido: filtrar por rango
+            if (horarioDesde) {
+                sql += ` AND ct.horario_requerido <= $${i++}`
+                values.push(horarioDesde)
+            }
+            if (horarioHasta) {
+                sql += ` AND ct.horario_finalizado <= $${i++}`
+                values.push(horarioHasta)
+            }
+            if (precioMin) {
+                sql += ` AND ct.precio >= $${i++}`
+                values.push(Number(precioMin))
+            }
+            if (precioMax) {
+                sql += ` AND ct.precio <= $${i++}`
+                values.push(Number(precioMax))
+            }
+
+            const result = await client.query(sql, values)
+            return result?.rows ?? []
+        } catch (err) {
+            console.error('Error en filtrarSolicitudes:', err)
+            throw err
+        } finally {
+            await client.end()
+        }
     }
-}
 
-/**
- * Perfil completo de un trabajador: datos de Usuario + Trabajador +
- * servicios + reseñas recibidas + métricas derivadas.
- * Requiere las columnas nuevas (tarifaDesde, portada, etc.) — si alguna
- * no existe todavía, el error de Postgres lo deja bien claro.
- */
-obtenerPerfil = async (idTrabajador) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
+    /**
+     * Perfil completo de un trabajador: datos de Usuario + Trabajador +
+     * servicios + reseñas recibidas (hechas por clientes) + métricas derivadas.
+     */
+    obtenerPerfil = async (idTrabajador) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
 
-        const sqlTrabajador = `
-            SELECT
-                t.id,
-                t."IdPersona",
-                u.nombre,
-                u.apellido,
-                u.email,
-                u.direccion,
-                u.telefono,
-                u.lat,
-                u.lng,
-                t.descripcion,
-                t."zonaTrabajo",
-                t."DispComienzo",
-                t."DispFinal",
-                t.foto,
-                t.estrellas,
-                t.portada,
-                t."tarifaDesde",
-                t."tiempoRespuesta",
-                t."tasaAceptacion",
-                t."añosExperiencia",
-                t."identidadVerificada",
-                t."antecedentesVerificados",
-                t.matricula,
-                t."matriculaVerificada",
-                t."seguroVigente",
-                t."atiendeEmergencias",
-                t.idiomas,
-                t."metodosPago",
-                t.educacion,
-                t.experiencia,
-                t.aptitudes,
-                t.portfolio,
-                t.disponibilidad,
-                (
-                    SELECT COUNT(*) FROM "Cliente-Trabajador" ct
-                    WHERE ct."IdTrabajador" = t.id AND ct.estado = 'TERMINADO'
-                ) AS "trabajosRealizados",
-                (
-                    SELECT cs.nombre
-                    FROM "Trabajador_Servicio" ts
-                    INNER JOIN "Servicio" s ON s.id = ts.servicios_id
-                    INNER JOIN "CategoriaServicio" cs ON cs.id = s.categoria_id
-                    WHERE ts.trabajadores_id = t.id
-                    ORDER BY ts.id ASC
-                    LIMIT 1
-                ) AS categoria
-            FROM "Trabajador" t
-            INNER JOIN "Usuario" u ON t."IdPersona" = u.id
-            WHERE t.id = $1
-        `
-        const trabajadorResult = await client.query(sqlTrabajador, [idTrabajador])
-        const trabajador = trabajadorResult.rows[0]
-        if (!trabajador) return null
+            const sqlTrabajador = `
+                SELECT
+                    t.id,
+                    t."IdPersona",
+                    u.nombre,
+                    u.apellido,
+                    u.email,
+                    u.direccion,
+                    u.telefono,
+                    u.lat,
+                    u.lng,
+                    t.descripcion,
+                    t."zonaTrabajo",
+                    t."DispComienzo",
+                    t."DispFinal",
+                    t.foto,
+                    t.estrellas,
+                    t.portada,
+                    t."tarifaDesde",
+                    t."tiempoRespuesta",
+                    t."tasaAceptacion",
+                    t."añosExperiencia",
+                    t."identidadVerificada",
+                    t."antecedentesVerificados",
+                    t.matricula,
+                    t."matriculaVerificada",
+                    t."seguroVigente",
+                    t."atiendeEmergencias",
+                    t.idiomas,
+                    t."metodosPago",
+                    t.educacion,
+                    t.experiencia,
+                    t.aptitudes,
+                    t.portfolio,
+                    t.disponibilidad,
+                    (
+                        SELECT COUNT(*) FROM "Cliente-Trabajador" ct
+                        WHERE ct."IdTrabajador" = t.id AND ct.estado = 'TERMINADO'
+                    ) AS "trabajosRealizados",
+                    (
+                        SELECT COUNT(*) FROM "ReseñaCliente" r
+                        WHERE r."idTrabajador" = t.id AND r.autor = 'CLIENTE'
+                    )::int AS "reseñasRec",
+                    (
+                        SELECT cs.nombre
+                        FROM "Trabajador_Servicio" ts
+                        INNER JOIN "Servicio" s ON s.id = ts.servicios_id
+                        INNER JOIN "CategoriaServicio" cs ON cs.id = s.categoria_id
+                        WHERE ts.trabajadores_id = t.id
+                        ORDER BY ts.id ASC
+                        LIMIT 1
+                    ) AS categoria
+                FROM "Trabajador" t
+                INNER JOIN "Usuario" u ON t."IdPersona" = u.id
+                WHERE t.id = $1
+            `
+            const trabajadorResult = await client.query(sqlTrabajador, [idTrabajador])
+            const trabajador = trabajadorResult.rows[0]
+            if (!trabajador) return null
 
-        const serviciosResult = await client.query(
-            `SELECT s.id, s.nombre, s.categoria_id, ts.precio
-             FROM "Trabajador_Servicio" ts
-             INNER JOIN "Servicio" s ON s.id = ts.servicios_id
-             WHERE ts.trabajadores_id = $1
-             ORDER BY ts.id ASC`,
-            [idTrabajador]
-        )
-
-                          const resenasResult = await client.query(
-            `SELECT r.id, r.descripcion, r."fechaCreacion", r.volveria,
-                    u.nombre, u.apellido,
-                    es.general AS estrellas,
-                    es.puntualidad, es.trato, es.claridad, es.pago,
-                    COALESCE((
-                        SELECT json_agg(json_build_object('id', e.id, 'nombre', e.nombre, 'positiva', e.positiva) ORDER BY e.id)
-                        FROM "reseña_etiqueta" re
-                        INNER JOIN "etiqueta" e ON e.id = re.idetiqueta
-                        WHERE WHERE re.idreseña = r.id
-                    ), '[]') AS etiquetas
-             FROM "ReseñaCliente" r
-             INNER JOIN "Estrellas" es ON es.id = r."idEstrellas"
-             INNER JOIN "Cliente" c ON c.id = r."idCliente"
-             INNER JOIN "Usuario" u ON u.id = c."IdPersona"
-             WHERE r."idTrabajador" = $1
-             ORDER BY r."fechaCreacion" DESC`,
-            [idTrabajador]
-        )
-        return {
-            ...trabajador,
-            servicios: serviciosResult.rows,
-            resenas: resenasResult.rows,
-        }
-    } catch (err) {
-        console.error('Error en obtenerPerfil (trabajador):', err)
-        throw err
-    } finally {
-        await client.end()
-    }
-}
-cancelarTrabajo = async (idTrabajo, idTrabajador, motivo = null) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
-        await client.query('BEGIN')
- 
-        const filaResult = await client.query(
-            `SELECT id, estado, "IdCliente" AS "idCliente", "IdTrabajador" AS "idTrabajador"
-             FROM "Cliente-Trabajador"
-             WHERE id = $1
-             FOR UPDATE`,
-            [idTrabajo]
-        )
-        const fila = filaResult.rows[0]
-        if (!fila) throw new Error('El trabajo no existe')
-        if (Number(fila.idTrabajador) !== Number(idTrabajador)) {
-            throw new Error('Este trabajo no te pertenece')
-        }
-        if (fila.estado !== 'EN PROCESO') {
-            throw new Error('Solo podés cancelar trabajos en proceso')
-        }
- 
-        await client.query(
-            `UPDATE "Cliente-Trabajador"
-             SET estado = 'CANCELADO',
-                 fecha_acabado = CURRENT_DATE,
-                 motivo_cancelacion = $2,
-                 cancelado_por = 'TRABAJADOR'
-             WHERE id = $1 AND estado = 'EN PROCESO'`,
-            [idTrabajo, motivo]
-        )
- 
-        await client.query('COMMIT')
- 
-        // OJO: si NotificacionServices todavía no tiene este método,
-        // agregalo (misma forma que notificarTrabajoFinalizado).
-        this.#notifSvc.notificarTrabajoCancelado({
-            idTrabajo,
-            idCliente: fila.idCliente,
-            canceladoPor: 'TRABAJADOR',
-            motivo,
-        }).catch(err => console.error('[Notif] Error notificarTrabajoCancelado:', err.message))
- 
-        return { idTrabajo, idCliente: fila.idCliente, cancelado: true }
-    } catch (err) {
-        try { await client.query('ROLLBACK') } catch (_) {}
-        console.error('Error en cancelarTrabajo:', err)
-        throw err
-    } finally {
-        await client.end()
-    }
-}
-actualizarPerfil = async (idTrabajador, body) => {
-    const client = new Client(config)
-    try {
-        await client.connect()
-        await client.query('BEGIN')
-
-        const sets = []
-        const values = []
-        let idx = 1
-
-        const agregarSet = (columna, valor) => {
-            sets.push(`"${columna}" = $${idx++}`)
-            values.push(valor)
-        }
-
-        if (body.servicios !== undefined) {
-            const servicios = Array.isArray(body.servicios) ? body.servicios : []
-
-            const existentesResult = await client.query(
-                `SELECT s.id, s.nombre
-                 FROM "Servicio" s
-                 INNER JOIN "Trabajador_Servicio" ts ON ts.servicios_id = s.id
-                 WHERE ts.trabajadores_id = $1`,
+            const serviciosResult = await client.query(
+                `SELECT s.id, s.nombre, s.categoria_id, ts.precio
+                 FROM "Trabajador_Servicio" ts
+                 INNER JOIN "Servicio" s ON s.id = ts.servicios_id
+                 WHERE ts.trabajadores_id = $1
+                 ORDER BY ts.id ASC`,
                 [idTrabajador]
             )
-            const existentes = existentesResult.rows
 
-            const idsNuevos = []
-            for (const item of servicios) {
-                const nombre = String(item.nombre ?? '').trim()
-                if (item.id && Number(item.id) > 0) {
-                    idsNuevos.push({ id: Number(item.id), precio: item.precio })
-                    continue
-                }
-                if (!nombre) continue
-                const yaExiste = existentes.find(
-                    (s) => s.nombre.toLowerCase() === nombre.toLowerCase()
+            // Solo reseñas que los clientes le dejaron al trabajador
+            const resenasResult = await client.query(
+                `SELECT r.id, r.descripcion, r."fechaCreacion", r.volveria,
+                        u.nombre, u.apellido,
+                        es.general AS estrellas,
+                        es.puntualidad, es.trato, es.claridad, es.pago,
+                        COALESCE((
+                            SELECT json_agg(
+                                json_build_object('id', e.id, 'nombre', e.nombre, 'positiva', e.positiva)
+                                ORDER BY e.id
+                            )
+                            FROM "reseña_etiqueta" re
+                            INNER JOIN "etiqueta" e ON e.id = re.idetiqueta
+                            WHERE re.idreseña = r.id
+                        ), '[]') AS etiquetas
+                 FROM "ReseñaCliente" r
+                 INNER JOIN "Estrellas" es ON es.id = r."idEstrellas"
+                 INNER JOIN "Cliente" c ON c.id = r."idCliente"
+                 INNER JOIN "Usuario" u ON u.id = c."IdPersona"
+                 WHERE r."idTrabajador" = $1 AND r.autor = 'CLIENTE'
+                 ORDER BY r."fechaCreacion" DESC`,
+                [idTrabajador]
+            )
+            return {
+                ...trabajador,
+                servicios: serviciosResult.rows,
+                resenas: resenasResult.rows,
+            }
+        } catch (err) {
+            console.error('Error en obtenerPerfil (trabajador):', err)
+            throw err
+        } finally {
+            await client.end()
+        }
+    }
+
+    cancelarTrabajo = async (idTrabajo, idTrabajador, motivo = null) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+            await client.query('BEGIN')
+
+            const filaResult = await client.query(
+                `SELECT id, estado, "IdCliente" AS "idCliente", "IdTrabajador" AS "idTrabajador"
+                 FROM "Cliente-Trabajador"
+                 WHERE id = $1
+                 FOR UPDATE`,
+                [idTrabajo]
+            )
+            const fila = filaResult.rows[0]
+            if (!fila) throw new Error('El trabajo no existe')
+            if (Number(fila.idTrabajador) !== Number(idTrabajador)) {
+                throw new Error('Este trabajo no te pertenece')
+            }
+            if (fila.estado !== 'EN PROCESO') {
+                throw new Error('Solo podés cancelar trabajos en proceso')
+            }
+
+            await client.query(
+                `UPDATE "Cliente-Trabajador"
+                 SET estado = 'CANCELADO',
+                     fecha_acabado = CURRENT_DATE,
+                     motivo_cancelacion = $2,
+                     cancelado_por = 'TRABAJADOR'
+                 WHERE id = $1 AND estado = 'EN PROCESO'`,
+                [idTrabajo, motivo]
+            )
+
+            await client.query('COMMIT')
+
+            // OJO: si NotificacionServices todavía no tiene este método,
+            // agregalo (misma forma que notificarTrabajoFinalizado).
+            this.#notifSvc.notificarTrabajoCancelado({
+                idTrabajo,
+                idCliente: fila.idCliente,
+                canceladoPor: 'TRABAJADOR',
+                motivo,
+            }).catch(err => console.error('[Notif] Error notificarTrabajoCancelado:', err.message))
+
+            return { idTrabajo, idCliente: fila.idCliente, cancelado: true }
+        } catch (err) {
+            try { await client.query('ROLLBACK') } catch (_) {}
+            console.error('Error en cancelarTrabajo:', err)
+            throw err
+        } finally {
+            await client.end()
+        }
+    }
+
+    actualizarPerfil = async (idTrabajador, body) => {
+        const client = new Client(config)
+        try {
+            await client.connect()
+            await client.query('BEGIN')
+
+            const sets = []
+            const values = []
+            let idx = 1
+
+            const agregarSet = (columna, valor) => {
+                sets.push(`"${columna}" = $${idx++}`)
+                values.push(valor)
+            }
+
+            if (body.servicios !== undefined) {
+                const servicios = Array.isArray(body.servicios) ? body.servicios : []
+
+                const existentesResult = await client.query(
+                    `SELECT s.id, s.nombre
+                     FROM "Servicio" s
+                     INNER JOIN "Trabajador_Servicio" ts ON ts.servicios_id = s.id
+                     WHERE ts.trabajadores_id = $1`,
+                    [idTrabajador]
                 )
-                if (yaExiste) {
-                    idsNuevos.push({ id: yaExiste.id, precio: item.precio })
-                    continue
-                }
-                const buscar = await client.query(
-                    `SELECT id FROM "Servicio" WHERE LOWER(nombre) = LOWER($1) LIMIT 1`,
-                    [nombre]
-                )
-                let idServicio = buscar.rows[0]?.id
-                if (!idServicio) {
-                    const insert = await client.query(
-                        `INSERT INTO "Servicio" (nombre, categoria_id) VALUES ($1, NULL) RETURNING id`,
+                const existentes = existentesResult.rows
+
+                const idsNuevos = []
+                for (const item of servicios) {
+                    const nombre = String(item.nombre ?? '').trim()
+                    if (item.id && Number(item.id) > 0) {
+                        idsNuevos.push({ id: Number(item.id), precio: item.precio })
+                        continue
+                    }
+                    if (!nombre) continue
+                    const yaExiste = existentes.find(
+                        (s) => s.nombre.toLowerCase() === nombre.toLowerCase()
+                    )
+                    if (yaExiste) {
+                        idsNuevos.push({ id: yaExiste.id, precio: item.precio })
+                        continue
+                    }
+                    const buscar = await client.query(
+                        `SELECT id FROM "Servicio" WHERE LOWER(nombre) = LOWER($1) LIMIT 1`,
                         [nombre]
                     )
-                    idServicio = insert.rows[0].id
+                    let idServicio = buscar.rows[0]?.id
+                    if (!idServicio) {
+                        const insert = await client.query(
+                            `INSERT INTO "Servicio" (nombre, categoria_id) VALUES ($1, NULL) RETURNING id`,
+                            [nombre]
+                        )
+                        idServicio = insert.rows[0].id
+                    }
+                    idsNuevos.push({ id: idServicio, precio: item.precio })
                 }
-                idsNuevos.push({ id: idServicio, precio: item.precio })
+
+                await client.query(
+                    `DELETE FROM "Trabajador_Servicio" WHERE trabajadores_id = $1`,
+                    [idTrabajador]
+                )
+                for (const srv of idsNuevos) {
+                    let precio = null
+                    if (srv.precio !== undefined && srv.precio !== null && srv.precio !== '') {
+                        const n = Number(String(srv.precio).replace(/\./g, '').replace(/,/g, '.'))
+                        precio = Number.isFinite(n) ? n : null
+                    }
+                    await client.query(
+                        `INSERT INTO "Trabajador_Servicio" (trabajadores_id, servicios_id, precio)
+                         VALUES ($1, $2, $3)`,
+                        [idTrabajador, srv.id, precio]
+                    )
+                }
             }
 
-            await client.query(
-                `DELETE FROM "Trabajador_Servicio" WHERE trabajadores_id = $1`,
-                [idTrabajador]
-            )
-            for (const srv of idsNuevos) {
-                let precio = null
-                if (srv.precio !== undefined && srv.precio !== null && srv.precio !== '') {
-                    const n = Number(String(srv.precio).replace(/\./g, '').replace(/,/g, '.'))
-                    precio = Number.isFinite(n) ? n : null
+            if (body.zonaCobertura !== undefined) {
+                agregarSet('zonaTrabajo', Array.isArray(body.zonaCobertura) ? body.zonaCobertura.join(', ') : body.zonaCobertura)
+            }
+            for (const campo of ['descripcion', 'zonaTrabajo', 'foto', 'portada', 'matricula', 'tarifaDesde', 'tiempoRespuesta']) {
+                if (body[campo] !== undefined) {
+                    if (campo === 'zonaTrabajo' && body.zonaCobertura !== undefined) continue
+                    agregarSet(campo, body[campo])
                 }
+            }
+            for (const campo of ['tasaAceptacion', 'añosExperiencia']) {
+                if (body[campo] !== undefined) agregarSet(campo, Number(body[campo]) || 0)
+            }
+            for (const campo of ['identidadVerificada', 'antecedentesVerificados', 'matriculaVerificada', 'seguroVigente', 'atiendeEmergencias']) {
+                if (body[campo] !== undefined) agregarSet(campo, !!body[campo])
+            }
+            for (const campo of ['idiomas', 'metodosPago', 'educacion', 'experiencia', 'aptitudes', 'portfolio', 'disponibilidad']) {
+                if (body[campo] !== undefined) {
+                    agregarSet(campo, JSON.stringify(Array.isArray(body[campo]) ? body[campo] : []))
+                }
+            }
+            if (body.horarioAtencion) {
+                const m = String(body.horarioAtencion).match(/(\d{1,2}:\d{2})[\s\S]*?(\d{1,2}:\d{2})/)
+                if (m) {
+                    agregarSet('DispComienzo', m[1])
+                    agregarSet('DispFinal', m[2])
+                }
+            }
+
+            if (sets.length > 0) {
                 await client.query(
-                    `INSERT INTO "Trabajador_Servicio" (trabajadores_id, servicios_id, precio)
-                     VALUES ($1, $2, $3)`,
-                    [idTrabajador, srv.id, precio]
+                    `UPDATE "Trabajador" SET ${sets.join(', ')} WHERE id = $${idx}`,
+                    [...values, idTrabajador]
                 )
             }
-        }
 
-        if (body.zonaCobertura !== undefined) {
-            agregarSet('zonaTrabajo', Array.isArray(body.zonaCobertura) ? body.zonaCobertura.join(', ') : body.zonaCobertura)
-        }
-        for (const campo of ['descripcion', 'zonaTrabajo', 'foto', 'portada', 'matricula', 'tarifaDesde', 'tiempoRespuesta']) {
-            if (body[campo] !== undefined) {
-                if (campo === 'zonaTrabajo' && body.zonaCobertura !== undefined) continue
-                agregarSet(campo, body[campo])
+            const personal = ['nombre', 'apellido', 'email', 'telefono', 'direccion']
+            const setsPersonal = []
+            const valuesPersonal = []
+            for (const campo of personal) {
+                if (body[campo] === undefined) continue
+                setsPersonal.push(`"${campo}" = $${setsPersonal.length + 1}`)
+                valuesPersonal.push(body[campo])
             }
-        }
-        for (const campo of ['tasaAceptacion', 'añosExperiencia']) {
-            if (body[campo] !== undefined) agregarSet(campo, Number(body[campo]) || 0)
-        }
-        for (const campo of ['identidadVerificada', 'antecedentesVerificados', 'matriculaVerificada', 'seguroVigente', 'atiendeEmergencias']) {
-            if (body[campo] !== undefined) agregarSet(campo, !!body[campo])
-        }
-        for (const campo of ['idiomas', 'metodosPago', 'educacion', 'experiencia', 'aptitudes', 'portfolio', 'disponibilidad']) {
-            if (body[campo] !== undefined) {
-                agregarSet(campo, JSON.stringify(Array.isArray(body[campo]) ? body[campo] : []))
-            }
-        }
-        if (body.horarioAtencion) {
-            const m = String(body.horarioAtencion).match(/(\d{1,2}:\d{2})[\s\S]*?(\d{1,2}:\d{2})/)
-            if (m) {
-                agregarSet('DispComienzo', m[1])
-                agregarSet('DispFinal', m[2])
-            }
-        }
-
-        if (sets.length > 0) {
-            await client.query(
-                `UPDATE "Trabajador" SET ${sets.join(', ')} WHERE id = $${idx}`,
-                [...values, idTrabajador]
-            )
-        }
-
-        const personal = ['nombre', 'apellido', 'email', 'telefono', 'direccion']
-        const setsPersonal = []
-        const valuesPersonal = []
-        for (const campo of personal) {
-            if (body[campo] === undefined) continue
-            setsPersonal.push(`"${campo}" = $${setsPersonal.length + 1}`)
-            valuesPersonal.push(body[campo])
-        }
-        if (setsPersonal.length > 0) {
-            const idPersonaResult = await client.query(
-                `SELECT "IdPersona" FROM "Trabajador" WHERE id = $1`,
-                [idTrabajador]
-            )
-            const idPersona = idPersonaResult.rows[0]?.IdPersona
-            if (idPersona) {
-                await client.query(
-                    `UPDATE "Usuario" SET ${setsPersonal.join(', ')} WHERE id = $${setsPersonal.length + 1}`,
-                    [...valuesPersonal, idPersona]
+            if (setsPersonal.length > 0) {
+                const idPersonaResult = await client.query(
+                    `SELECT "IdPersona" FROM "Trabajador" WHERE id = $1`,
+                    [idTrabajador]
                 )
+                const idPersona = idPersonaResult.rows[0]?.IdPersona
+                if (idPersona) {
+                    await client.query(
+                        `UPDATE "Usuario" SET ${setsPersonal.join(', ')} WHERE id = $${setsPersonal.length + 1}`,
+                        [...valuesPersonal, idPersona]
+                    )
+                }
             }
-        }
 
-        await client.query('COMMIT')
-        return { success: true, id: idTrabajador }
-    } catch (err) {
-        try { await client.query('ROLLBACK') } catch (_) {}
-        console.error('Error en actualizarPerfil (trabajador):', err)
-        throw err
-    } finally {
-        await client.end()
+            await client.query('COMMIT')
+            return { success: true, id: idTrabajador }
+        } catch (err) {
+            try { await client.query('ROLLBACK') } catch (_) {}
+            console.error('Error en actualizarPerfil (trabajador):', err)
+            throw err
+        } finally {
+            await client.end()
+        }
     }
-}
 }

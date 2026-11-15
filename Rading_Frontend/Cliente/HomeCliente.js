@@ -201,7 +201,16 @@ export default function HomeCliente({ route, navigation }) {
       const resp = await fetch(`${API_BASE_URL}/cliente/recientes/${usuario.idCliente}`);
       if (!resp.ok) throw new Error('Respuesta no OK al pedir recientes');
       const data = await resp.json();
-      setRecientes(data);
+
+      // El backend devuelve un registro por trabajo; acá mostramos
+      // un solo chip por trabajador (el más reciente, que viene primero).
+      const vistos = new Set();
+      const unicos = (Array.isArray(data) ? data : []).filter((r) => {
+        if (vistos.has(r.idTrabajador)) return false;
+        vistos.add(r.idTrabajador);
+        return true;
+      });
+      setRecientes(unicos);
     } catch (err) {
       console.error('Error al cargar recientes:', err);
       setRecientes([]);
