@@ -20,19 +20,13 @@ import Header from './Header';
 import API_URL from './configS';
 
 /* ------------------------------------------------------------------ */
-/*  Helpers de estilo (se llaman desde createStyles)                    */
-/* ------------------------------------------------------------------ */
-
-const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 };
-
-/* ------------------------------------------------------------------ */
 /*  Componentes reutilizables                                          */
 /* ------------------------------------------------------------------ */
 
-// ★ CAMBIO: ahora recibe `styles` como prop en vez de leerlo de una
-// variable global que nunca se definía (esa era la causa del
-// "ReferenceError: styles is not defined").
+// Si no se pasa `iconColor`, se usa el color primario del tema
+// (antes quedaba undefined y el ícono no se veía).
 function SettingRow({ icon, iconColor, titulo, subtitulo, onPress, rightContent, disabled, colors, styles }) {
+  const color = iconColor ?? colors.primary;
   return (
     <TouchableOpacity
       style={[styles.settingRow, { borderBottomColor: colors.divider }, disabled && { opacity: 0.5 }]}
@@ -40,8 +34,8 @@ function SettingRow({ icon, iconColor, titulo, subtitulo, onPress, rightContent,
       activeOpacity={disabled ? 1 : 0.65}
       disabled={disabled}
     >
-      <View style={[styles.settingIconWrap, { backgroundColor: `${iconColor}15` }]}>
-        <Ionicons name={icon} size={18} color={iconColor} />
+      <View style={[styles.settingIconWrap, { backgroundColor: `${color}15` }]}>
+        <Ionicons name={icon} size={18} color={color} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={[styles.settingTitulo, { color: colors.text }]}>{titulo}</Text>
@@ -54,15 +48,14 @@ function SettingRow({ icon, iconColor, titulo, subtitulo, onPress, rightContent,
   );
 }
 
-// ★ CAMBIO: acepta `guardando` para mostrar un spinner chiquito pegado
-// al switch y deshabilitarlo mientras ESE toggle en particular está
-// guardándose (los demás switches quedan libres, no se bloquea toda la
-// pantalla). También recibe `styles` como prop (ver comentario arriba).
+// `guardando` muestra un spinner pegado al switch y lo deshabilita mientras
+// ESE toggle se está guardando (los demás quedan libres).
 function ToggleRow({ icon, iconColor, titulo, subtitulo, value, onValueChange, disabled, guardando, colors, styles }) {
+  const color = iconColor ?? colors.primary;
   return (
     <View style={[styles.settingRow, { borderBottomColor: colors.divider }, disabled && { opacity: 0.5 }]}>
-      <View style={[styles.settingIconWrap, { backgroundColor: `${iconColor}15` }]}>
-        <Ionicons name={icon} size={18} color={iconColor} />
+      <View style={[styles.settingIconWrap, { backgroundColor: `${color}15` }]}>
+        <Ionicons name={icon} size={18} color={color} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={[styles.settingTitulo, { color: colors.text }]}>{titulo}</Text>
@@ -72,13 +65,13 @@ function ToggleRow({ icon, iconColor, titulo, subtitulo, value, onValueChange, d
       </View>
       <View style={styles.toggleWrap}>
         {guardando && (
-          <ActivityIndicator size="small" color={iconColor} style={{ marginRight: 8 }} />
+          <ActivityIndicator size="small" color={color} style={{ marginRight: 8 }} />
         )}
         <Switch
           value={value}
           onValueChange={disabled || guardando ? undefined : onValueChange}
-          trackColor={{ false: '#30363D', true: `${iconColor}40` }}
-          thumbColor={value ? iconColor : '#8B949E'}
+          trackColor={{ false: '#30363D', true: `${color}40` }}
+          thumbColor={value ? color : '#8B949E'}
           disabled={disabled || guardando}
         />
       </View>
@@ -86,7 +79,6 @@ function ToggleRow({ icon, iconColor, titulo, subtitulo, value, onValueChange, d
   );
 }
 
-// ★ CAMBIO: recibe `styles` como prop.
 function SectionCard({ titulo, subtitulo, children, style, colors, styles }) {
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }, style]}>
@@ -105,7 +97,6 @@ function SectionCard({ titulo, subtitulo, children, style, colors, styles }) {
 /*  Modal para cambiar contraseña                                      */
 /* ------------------------------------------------------------------ */
 
-// ★ CAMBIO: recibe `styles` como prop.
 function PasswordModal({ visible, onCerrar, colors, styles }) {
   const [actual, setActual] = useState('');
   const [nueva, setNueva] = useState('');
@@ -240,7 +231,6 @@ function PasswordModal({ visible, onCerrar, colors, styles }) {
 /*  Modal para editar perfil                                           */
 /* ------------------------------------------------------------------ */
 
-// ★ CAMBIO: recibe `styles` como prop.
 function ProfileModal({ visible, onCerrar, colors, navigation, usuario, styles }) {
   const irAPerfil = () => {
     onCerrar();
@@ -285,17 +275,16 @@ function ProfileModal({ visible, onCerrar, colors, navigation, usuario, styles }
 
 /* ------------------------------------------------------------------ */
 /*  Pantalla principal: Configuración                                  */
-/* ==================================================================== */
+/* ------------------------------------------------------------------ */
 
 export default function Configuracion(props) {
   const usuario = props.usuario ?? props.route?.params?.usuario;
   const navigation = props.navigation ?? null;
   const { isDark, colors, setDarkMode, updatePreference, syncUsuario } = useTheme();
 
-  // ★ CAMBIO: esto es lo que faltaba. `createStyles` estaba definido al
-  // final del archivo pero nunca se llamaba, así que `styles` no existía
-  // en ningún lado (de ahí el "ReferenceError: styles is not defined").
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
+  const isTrabajador = usuario?.tipo === 'trabajador';
 
   /* ---------------- Estado ---------------- */
   const [notifOfertas, setNotifOfertas] = useState(true);
@@ -310,38 +299,27 @@ export default function Configuracion(props) {
   const [modalPassword, setModalPassword] = useState(false);
   const [modalProfile, setModalProfile] = useState(false);
 
-  // ★ CAMBIO: `cargando` ahora SÍ se usa para tapar los toggles hasta que
-  // llegue la config real — evita el "parpadeo" de ver los defaults del
-  // useState antes de que el fetch responda.
+  // Tapa los toggles hasta que llegue la config real (evita el parpadeo de defaults)
   const [cargando, setCargando] = useState(true);
 
-  // ★ CAMBIO: qué claves están guardándose ahora mismo, para deshabilitar
-  // SOLO ese switch puntual y mostrarle su spinner, sin bloquear el resto.
+  // Qué claves están guardándose ahora mismo
   const [guardandoKeys, setGuardandoKeys] = useState({});
 
-  // ★ CAMBIO: cola de guardado por clave. Cada clave tiene su propia
-  // promesa encadenada, así dos toggles rápidos del MISMO switch se
-  // ejecutan en el orden en que se tocaron (nunca se pisan al revés),
-  // mientras que switches DISTINTOS se guardan en paralelo sin bloquearse
-  // entre sí.
+  // Cola de guardado por clave: dos toggles rápidos del MISMO switch se
+  // ejecutan en orden; switches distintos se guardan en paralelo.
   const colasRef = useRef({});
-
-  const isTrabajador = usuario?.tipo === 'trabajador';
 
   const encolarGuardado = useCallback((key, fn) => {
     const colaAnterior = colasRef.current[key] || Promise.resolve();
     setGuardandoKeys((prev) => ({ ...prev, [key]: true }));
 
     const nuevaCola = colaAnterior
-      .catch(() => {}) // si la anterior falló, igual seguimos con esta
+      .catch(() => {})
       .then(fn)
       .catch((e) => {
         console.error(`[Configuracion] Error guardando ${key}:`, e?.message);
       })
       .finally(() => {
-        // Solo apagamos el spinner si esta sigue siendo la última
-        // operación encolada para esta clave (evita parpadeos si ya
-        // hay otra en curso).
         if (colasRef.current[key] === nuevaCola) {
           setGuardandoKeys((prev) => {
             const copia = { ...prev };
@@ -386,9 +364,6 @@ export default function Configuracion(props) {
   }, [usuario?.id]);
 
   /* ---------------- Handlers ---------------- */
-  // ★ CAMBIO: cada handler actualiza el estado local al toque (feedback
-  // inmediato) y ENCOLA el guardado real contra el backend, mostrando el
-  // spinner de esa fila mientras está en vuelo.
   const handleToggleTheme = () => {
     const nuevo = !isDark;
     setDarkMode(nuevo, usuario?.id);
@@ -431,13 +406,10 @@ export default function Configuracion(props) {
     }
   };
 
-  // ★ CAMBIO: mientras carga la config inicial, mostramos un loader en vez
-  // de los toggles con sus valores default — así no hay parpadeo ni
-  // sensación de "se resetea solo".
   if (cargando) {
     return (
       <View style={[styles.root, { backgroundColor: colors.background }]}>
-  <Header usuario={usuario} />      
+        <Header usuario={usuario} />
         <View style={styles.loaderFull}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loaderText, { color: colors.textSecondary }]}>
@@ -450,7 +422,7 @@ export default function Configuracion(props) {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-     <Header usuario={usuario} /> 
+      <Header usuario={usuario} />
 
       <View style={[styles.backBar, { borderBottomColor: colors.divider }]}>
         <TouchableOpacity
@@ -500,8 +472,12 @@ export default function Configuracion(props) {
         >
           <ToggleRow
             icon="briefcase-outline"
-            titulo="Ofertas de trabajo"
-            subtitulo="Nuevos trabajos disponibles"
+            titulo={isTrabajador ? 'Nuevos trabajos' : 'Ofertas recibidas'}
+            subtitulo={
+              isTrabajador
+                ? 'Solicitudes disponibles para tus servicios'
+                : 'Cuando un trabajador te manda una oferta'
+            }
             value={notifOfertas}
             onValueChange={handleToggleOfertas}
             guardando={!!guardandoKeys.notifOfertas}
@@ -518,17 +494,19 @@ export default function Configuracion(props) {
             colors={colors}
             styles={styles}
           />
-          <ToggleRow
-            icon="star-outline"
-            iconColor={colors.warning}
-            titulo="Reseñas"
-            subtitulo="Cuando te califican"
-            value={notifResenas}
-            onValueChange={handleToggleResenas}
-            guardando={!!guardandoKeys.notifResenas}
-            colors={colors}
-            styles={styles}
-          />
+          {isTrabajador && (
+            <ToggleRow
+              icon="star-outline"
+              iconColor={colors.warning}
+              titulo="Reseñas"
+              subtitulo="Cuando te califican"
+              value={notifResenas}
+              onValueChange={handleToggleResenas}
+              guardando={!!guardandoKeys.notifResenas}
+              colors={colors}
+              styles={styles}
+            />
+          )}
           <ToggleRow
             icon="volume-high-outline"
             titulo="Sonido"
@@ -705,7 +683,6 @@ const createStyles = (colors, isDark) => StyleSheet.create({
   root: { flex: 1 },
   scrollContent: { paddingBottom: 40 },
 
-  // ★ CAMBIO: loader inicial de pantalla completa
   loaderFull: {
     flex: 1,
     alignItems: 'center',
@@ -766,7 +743,6 @@ const createStyles = (colors, isDark) => StyleSheet.create({
   settingTitulo: { fontSize: 13.5, fontWeight: '700' },
   settingSubtitulo: { fontSize: 11, marginTop: 1, fontWeight: '500' },
 
-  // ★ CAMBIO: wrapper para alinear spinner + switch
   toggleWrap: {
     flexDirection: 'row',
     alignItems: 'center',

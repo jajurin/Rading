@@ -3,20 +3,97 @@ import config from '../../configs/dbconfig.js'
 
 const THROTTLE_SEGUNDOS_MENSAJE = 60
 
+// Qué columna de configuracionusuario controla cada tipo de notificación.
+// Los tipos que no están acá (códigos de llegada/cierre, trabajo finalizado)
+// se envían siempre, porque son parte del flujo del trabajo.
+const PREF_POR_TIPO = {
+    MENSAJE: 'notifmensajes',
+
+    OFERTA_NUEVA: 'notifofertas',
+    SOLICITUD_NUEVA: 'notifofertas',
+    OFERTA_ACEPTADA: 'notifofertas',
+    OFERTA_RECHAZADA: 'notifofertas',
+    TRABAJO_ACEPTADO: 'notifofertas',
+    SUBASTA_CIERRE: 'notifofertas',
+
+    RESEÑA_NUEVA: 'notifresenas',
+}
+
+// Tipos que no deben repetirse: si ya existe una notificación igual
+// (mismos valores en `data`), no se crea otra.
+// `texto` se compara como texto y `numero` como número (93600 == "93600.00").
+const DEDUPE_POR_TIPO = {
+    OFERTA_NUEVA: { texto: ['idTrabajo', 'idTrabajador'], numero: ['precio'] },
+}
+
 export default class notificacionRepository {
 
+    // Devuelve la notificación creada, o null si:
+    //  - el usuario tiene desactivado ese tipo de aviso en Configuración, o
+    //  - ya existe una notificación igual (ver DEDUPE_POR_TIPO).
     crear = async ({ idUsuario, tipo, titulo, mensaje, data = {} }) => {
         const client = new Client(config)
+        let enTransaccion = false
         try {
             await client.connect()
+
+            // Las columnas/claves salen de mapas fijos (nunca del input), así que es seguro interpolarlas.
+            const filtros = []
+
+            // Si el usuario no tiene fila en configuracionusuario, se asume activado.
+            const col = PREF_POR_TIPO[tipo]
+            if (col) {
+                filtros.push(
+                    `COALESCE((SELECT cu.${col} FROM configuracionusuario cu WHERE cu.idusuario = $1::bigint), true)`
+                )
+            }
+
+            const dedupe = DEDUPE_POR_TIPO[tipo]
+            let claveLock = null
+            if (dedupe) {
+                const iguales = [
+                    ...dedupe.texto.map(
+                        (k) => `(n.data->>'${k}') IS NOT DISTINCT FROM ($5::jsonb->>'${k}')`
+                    ),
+                    ...dedupe.numero.map(
+                        (k) => `NULLIF(n.data->>'${k}', '')::numeric IS NOT DISTINCT FROM NULLIF($5::jsonb->>'${k}', '')::numeric`
+                    ),
+                ]
+                filtros.push(
+                    `NOT EXISTS (
+                         SELECT 1 FROM "Notificacion" n
+                         WHERE n."idUsuario" = $1::bigint
+                           AND n.tipo = $2::varchar
+                           AND ${iguales.join(' AND ')}
+                     )`
+                )
+                // Lock por clave: si llegan dos pedidos idénticos al mismo tiempo,
+                // el segundo espera al primero y recién ahí evalúa el NOT EXISTS.
+                claveLock = `${tipo}:${idUsuario}:${dedupe.texto.map((k) => data[k]).join(':')}`
+                await client.query('BEGIN')
+                enTransaccion = true
+                await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [claveLock])
+            }
+
+            const where = filtros.length ? `WHERE ${filtros.join(' AND ')}` : ''
+
             const result = await client.query(
                 `INSERT INTO "Notificacion" ("idUsuario", tipo, titulo, mensaje, data, leida, created_at)
-                 VALUES ($1, $2, $3, $4, $5, false, now())
+                 SELECT $1::bigint, $2::varchar, $3::varchar, $4::varchar, $5::jsonb, false, now()
+                 ${where}
                  RETURNING id, "idUsuario", tipo, titulo, mensaje, data, leida, created_at`,
                 [idUsuario, tipo, titulo, mensaje, JSON.stringify(data)]
             )
-            return result.rows[0]
+
+            if (enTransaccion) {
+                await client.query('COMMIT')
+                enTransaccion = false
+            }
+            return result.rows[0] ?? null
         } catch (err) {
+            if (enTransaccion) {
+                try { await client.query('ROLLBACK') } catch {}
+            }
             console.error('Error en notificacionRepository.crear:', err.message)
             throw err
         } finally {
@@ -30,14 +107,18 @@ export default class notificacionRepository {
             await client.connect()
             const result = await client.query(
                 `INSERT INTO "Notificacion" ("idUsuario", tipo, titulo, mensaje, data, leida, created_at)
-                 SELECT $1, 'MENSAJE', $2, $3, $4, false, now()
-                 WHERE NOT EXISTS (
+                 SELECT $1::bigint, 'MENSAJE', $2::varchar, $3::varchar, $4::jsonb, false, now()
+                 WHERE COALESCE(
+                         (SELECT cu.notifmensajes FROM configuracionusuario cu WHERE cu.idusuario = $1::bigint),
+                         true
+                       )
+                   AND NOT EXISTS (
                      SELECT 1 FROM "Notificacion" n
-                     WHERE n."idUsuario" = $1
+                     WHERE n."idUsuario" = $1::bigint
                        AND n.tipo = 'MENSAJE'
                        AND n.data->>'chatId' = $5
                        AND n.created_at > now() - ($6 || ' seconds')::interval
-                 )
+                   )
                  RETURNING id`,
                 [idUsuario, titulo, mensaje, JSON.stringify(data), String(chatId), String(THROTTLE_SEGUNDOS_MENSAJE)]
             )
@@ -50,6 +131,7 @@ export default class notificacionRepository {
         }
     }
 
+    // Salta a los trabajadores que tienen desactivadas las notificaciones de ofertas
     crearParaTrabajadoresDeServicio = async ({ servicioId, titulo, mensaje, data = {} }) => {
         const client = new Client(config)
         try {
@@ -59,7 +141,9 @@ export default class notificacionRepository {
                  SELECT t."IdPersona", 'SOLICITUD_NUEVA', $1, $2, $3, false, now()
                  FROM "Trabajador_Servicio" ts
                  INNER JOIN "Trabajador" t ON t.id = ts.trabajadores_id
+                 LEFT JOIN configuracionusuario cu ON cu.idusuario = t."IdPersona"
                  WHERE ts.servicios_id = $4
+                   AND COALESCE(cu.notifofertas, true)
                  RETURNING id`,
                 [titulo, mensaje, JSON.stringify(data), servicioId]
             )

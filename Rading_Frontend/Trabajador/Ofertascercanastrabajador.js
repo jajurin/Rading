@@ -353,7 +353,7 @@ export default function OfertasCercanasTrabajador() {
 
     return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
-     <Header usuario={usuario} direccion={direccion} />
+     <Header usuario={usuario}/>
 
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
